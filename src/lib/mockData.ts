@@ -4,7 +4,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: '10000000-0000-0000-0000-000000000001',
     name: 'Rajesh Sharma',
-    email: 'admin@capitalgrow.com',
+    email: 'admin@time2trade.com',
     phone: '+91 98765 43210',
     role: 'admin',
     is_active: true,
@@ -16,7 +16,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: '10000000-0000-0000-0000-000000000002',
     name: 'Priya Verma',
-    email: 'priya.v@capitalgrow.com',
+    email: 'priya.v@time2trade.com',
     phone: '+91 98765 43211',
     role: 'telecaller',
     is_active: true,
@@ -28,7 +28,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: '10000000-0000-0000-0000-000000000003',
     name: 'Ankit Kumar',
-    email: 'ankit.k@capitalgrow.com',
+    email: 'ankit.k@time2trade.com',
     phone: '+91 98765 43212',
     role: 'telecaller',
     is_active: true,
@@ -40,7 +40,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: '10000000-0000-0000-0000-000000000004',
     name: 'Vikram Malhotra',
-    email: 'vikram.m@capitalgrow.com',
+    email: 'vikram.m@time2trade.com',
     phone: '+91 98765 43213',
     role: 'relationship_manager',
     is_active: true,
@@ -52,7 +52,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: '10000000-0000-0000-0000-000000000005',
     name: 'Rahul Saxena',
-    email: 'rahul.s@capitalgrow.com',
+    email: 'rahul.s@time2trade.com',
     phone: '+91 98765 43214',
     role: 'relationship_manager',
     is_active: true,
@@ -334,7 +334,7 @@ export const INITIAL_USER_PRESENCE: import('../types').UserPresence[] = [
   {
     user_id: '10000000-0000-0000-0000-000000000001',
     user_name: 'Rajesh Sharma',
-    user_email: 'admin@capitalgrow.com',
+    user_email: 'admin@time2trade.com',
     user_role: 'admin',
     current_status: 'online',
     last_status_change: new Date(Date.now() - 3600000 * 4).toISOString(),
@@ -346,7 +346,7 @@ export const INITIAL_USER_PRESENCE: import('../types').UserPresence[] = [
   {
     user_id: '10000000-0000-0000-0000-000000000002',
     user_name: 'Priya Verma',
-    user_email: 'priya.v@capitalgrow.com',
+    user_email: 'priya.v@time2trade.com',
     user_role: 'telecaller',
     current_status: 'online',
     last_status_change: new Date(Date.now() - 3600000 * 2).toISOString(),
@@ -358,7 +358,7 @@ export const INITIAL_USER_PRESENCE: import('../types').UserPresence[] = [
   {
     user_id: '10000000-0000-0000-0000-000000000003',
     user_name: 'Ankit Kumar',
-    user_email: 'ankit.k@capitalgrow.com',
+    user_email: 'ankit.k@time2trade.com',
     user_role: 'telecaller',
     current_status: 'on_break',
     last_status_change: new Date(Date.now() - 900000).toISOString(),
@@ -370,7 +370,7 @@ export const INITIAL_USER_PRESENCE: import('../types').UserPresence[] = [
   {
     user_id: '10000000-0000-0000-0000-000000000004',
     user_name: 'Vikram Malhotra',
-    user_email: 'vikram.m@capitalgrow.com',
+    user_email: 'vikram.m@time2trade.com',
     user_role: 'relationship_manager',
     current_status: 'online',
     last_status_change: new Date(Date.now() - 3600000 * 3).toISOString(),
@@ -382,7 +382,7 @@ export const INITIAL_USER_PRESENCE: import('../types').UserPresence[] = [
   {
     user_id: '10000000-0000-0000-0000-000000000005',
     user_name: 'Rahul Saxena',
-    user_email: 'rahul.s@capitalgrow.com',
+    user_email: 'rahul.s@time2trade.com',
     user_role: 'relationship_manager',
     current_status: 'on_lunch',
     last_status_change: new Date(Date.now() - 1800000).toISOString(),

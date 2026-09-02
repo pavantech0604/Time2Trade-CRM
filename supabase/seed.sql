@@ -4,11 +4,11 @@
 
 -- 1. Insert Users (Admin, Telecallers, Relationship Managers)
 INSERT INTO public.users (id, name, email, phone, role) VALUES
-('10000000-0000-0000-0000-000000000001', 'Rajesh Sharma', 'admin@capitalgrow.com', '+91 98765 43210', 'admin'),
-('10000000-0000-0000-0000-000000000002', 'Priya Verma', 'priya.v@capitalgrow.com', '+91 98765 43211', 'telecaller'),
-('10000000-0000-0000-0000-000000000003', 'Ankit Kumar', 'ankit.k@capitalgrow.com', '+91 98765 43212', 'telecaller'),
-('10000000-0000-0000-0000-000000000004', 'Vikram Malhotra', 'vikram.m@capitalgrow.com', '+91 98765 43213', 'relationship_manager'),
-('10000000-0000-0000-0000-000000000005', 'Rahul Saxena', 'rahul.s@capitalgrow.com', '+91 98765 43214', 'relationship_manager')
+('10000000-0000-0000-0000-000000000001', 'Rajesh Sharma', 'admin@time2trade.com', '+91 98765 43210', 'admin'),
+('10000000-0000-0000-0000-000000000002', 'Priya Verma', 'priya.v@time2trade.com', '+91 98765 43211', 'telecaller'),
+('10000000-0000-0000-0000-000000000003', 'Ankit Kumar', 'ankit.k@time2trade.com', '+91 98765 43212', 'telecaller'),
+('10000000-0000-0000-0000-000000000004', 'Vikram Malhotra', 'vikram.m@time2trade.com', '+91 98765 43213', 'relationship_manager'),
+('10000000-0000-0000-0000-000000000005', 'Rahul Saxena', 'rahul.s@time2trade.com', '+91 98765 43214', 'relationship_manager')
 ON CONFLICT (email) DO NOTHING;
 
 -- 2. Insert Leads

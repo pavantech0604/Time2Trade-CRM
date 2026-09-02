@@ -209,14 +209,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Check local persisted session
-        const storedUser = localStorage.getItem('capital_grow_auth_user');
+        const storedUser = localStorage.getItem('time2trade_auth_user');
         if (storedUser) {
           const parsed: User = JSON.parse(storedUser);
           if (parsed && parsed.id && parsed.is_active && parsed.approval_status === 'approved') {
             setCurrentUser(parsed);
             if (supabase && !useMocks) await loadSupabaseData();
           } else {
-            localStorage.removeItem('capital_grow_auth_user');
+            localStorage.removeItem('time2trade_auth_user');
           }
         }
       } catch (err) {
@@ -479,7 +479,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Verified active user -> Login success
       setCurrentUser(matched);
-      localStorage.setItem('capital_grow_auth_user', JSON.stringify(matched));
+      localStorage.setItem('time2trade_auth_user', JSON.stringify(matched));
       if (supabase && !useMocks) {
         await loadSupabaseData();
       }
@@ -577,7 +577,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Sign out warning:', err);
     } finally {
       setCurrentUser(null);
-      localStorage.removeItem('capital_grow_auth_user');
+      localStorage.removeItem('time2trade_auth_user');
     }
   };
 
@@ -745,10 +745,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, avatar_url: url } : u));
     
     // Persist to local storage so it survives refresh
-    const storedUser = localStorage.getItem('capital_grow_auth_user');
+    const storedUser = localStorage.getItem('time2trade_auth_user');
     if (storedUser) {
       const parsed = JSON.parse(storedUser);
-      localStorage.setItem('capital_grow_auth_user', JSON.stringify({ ...parsed, avatar_url: url }));
+      localStorage.setItem('time2trade_auth_user', JSON.stringify({ ...parsed, avatar_url: url }));
     }
 
     if (supabase && !useMocks) {

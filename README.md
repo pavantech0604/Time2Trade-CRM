@@ -1,4 +1,4 @@
-# Capital Grow - Stock Advisory & Trading Operations Portal
+# Time2Trade - Stock Advisory & Trading Operations Portal
 
 A premium, production-ready, mobile-first Employee Operational Desk and Stock-Trading Advisory Portal built using **React**, **TypeScript**, **Tailwind CSS**, and **Supabase** (PostgreSQL, real-time presence/activity notifications, client ledgers, round-robin lead allocation, and SEBI compliance data registers).
 
@@ -6,7 +6,7 @@ A premium, production-ready, mobile-first Employee Operational Desk and Stock-Tr
 
 ## 🐂 Brand Design & Logo Theme System
 
-The design system and color palette of the application are derived directly from the dominant colors of the **Capital Grow logo** (`logo.png`):
+The design system and color palette of the application are derived directly from the dominant colors of the **Time2Trade logo** (`logo.png`):
 - **Navy Body (`#091A2F`)**: Utilized as the primary background and surface tone for dark mode interfaces.
 - **Brand Gold (`#C5A028`)**: Representing the bull's arc and upward trending arrows. Applied to primary visual badges, highlight metrics, active navigation indicators, and key focus states.
 - **Brand Emerald (`#16A34A`)**: Representing the bullish performance bars and success indicators. Applied to active status pills, profit indicators, and main CTA buttons.
