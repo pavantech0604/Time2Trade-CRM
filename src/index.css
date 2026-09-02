@@ -487,3 +487,28 @@ textarea:focus {
   background-color: rgba(13, 148, 136, 0.1) !important;
   box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.05) !important;
 }
+
+/* ==========================================================================
+   Mobile-First Device Optimizations & Native App Touch Feel
+   ========================================================================== */
+.safe-area-bottom {
+  padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Smooth Tap Response */
+button, select, input, textarea, a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Touch scrolling on overflow containers */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Mobile card elevation */
+@media (max-width: 768px) {
+  .metric-card, .table-card {
+    border-radius: 1rem;
+  }
+}

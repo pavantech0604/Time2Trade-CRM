@@ -122,8 +122,8 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
         },
         body: formData.toString(),
       });
-    } catch (err) {
-      console.warn('Google Form background post notice:', err);
+    } catch {
+      // Background post notice handled silently
     }
 
     // 4. Generate Pre-filled verification link

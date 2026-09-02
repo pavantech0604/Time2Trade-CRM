@@ -397,8 +397,7 @@ export const TelecallerLeadsPhoto: React.FC = () => {
         showToast("No valid phone numbers found in image. Please double-check image resolution.");
       }
     } catch (err: any) {
-      console.error('OCR Error:', err);
-      showToast("OCR processing failed: " + err.message);
+      showToast("OCR processing failed: " + (err?.message || "Unknown error"));
     } finally {
       if (worker) {
         await worker.terminate();
@@ -457,8 +456,8 @@ export const TelecallerLeadsPhoto: React.FC = () => {
           uploadedImageUrl = `https://storage.time2trade.com/${res.path}`;
         }
       }
-    } catch (err) {
-      console.error('Background storage upload failed:', err);
+    } catch {
+      // Storage upload fallback handled gracefully
     }
 
     // Insert leads

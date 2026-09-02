@@ -117,10 +117,48 @@ export const Layout: React.FC<LayoutProps> = ({
           onToggleMobileMenu={() => setIsMobileMenuOpen(true)}
         />
         
-        {/* Responsive padding: smaller for phone, larger for desktop */}
-        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto space-y-6 overflow-y-auto">
+        {/* Responsive padding: mobile-first optimized with bottom navbar offset */}
+        <main className="flex-1 p-3.5 sm:p-6 md:p-8 pb-24 md:pb-8 max-w-7xl w-full mx-auto space-y-6 overflow-y-auto">
           {children}
         </main>
+
+        {/* Mobile-First Native Bottom Navigation Bar */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-slate-200/90 py-1.5 px-2 flex items-center justify-around shadow-2xl safe-area-bottom">
+          {mobileNavItems.map((item) => {
+            const Icon = item.icon;
+            const isMenuTrigger = item.id === 'mobile-menu';
+            const isActive = !isMenuTrigger && activeTab === item.id;
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  if (isMenuTrigger) {
+                    setIsMobileMenuOpen(true);
+                  } else {
+                    setActiveTab(item.id);
+                  }
+                }}
+                className={`flex flex-col items-center justify-center min-h-[48px] min-w-[56px] px-2 py-1 rounded-2xl transition-all cursor-pointer relative active:scale-95 ${
+                  isActive
+                    ? 'text-blue-700 font-bold bg-blue-50/80 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 font-medium'
+                }`}
+              >
+                <div className="relative">
+                  <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110 text-blue-600' : 'text-slate-400'}`} />
+                  {isActive && (
+                    <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-blue-600" />
+                  )}
+                </div>
+                <span className={`text-[10px] mt-0.5 tracking-tight ${isActive ? 'font-black text-blue-700' : 'text-slate-500'}`}>
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
     </div>
   );

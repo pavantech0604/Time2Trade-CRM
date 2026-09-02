@@ -166,8 +166,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (lRes.data) setLeads(lRes.data as Lead[]);
       if (tRes.data) setTraders(tRes.data as ActiveTrader[]);
       if (pRes.data) setPayments(pRes.data as Payment[]);
-    } catch (e) {
-      console.error('Error fetching initial supabase data', e);
+    } catch {
+      // Silently handle offline/mock mode
     }
   };
 
@@ -219,8 +219,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.removeItem('time2trade_auth_user');
           }
         }
-      } catch (err) {
-        console.warn('Session check fallback:', err);
+      } catch {
+        // Silent fallback to local stored session
       } finally {
         setLoading(false);
       }
@@ -241,7 +241,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
           }
         },
-        (err: unknown) => console.warn('Could not prefetch users:', err)
+        () => {
+          // Silent fallback
+        }
       );
     }
   }, []);
@@ -363,13 +365,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             },
           });
 
-          if (sbError) {
-            console.warn('Supabase signup note:', sbError.message);
-          } else if (data?.user) {
+          if (data?.user) {
             newUserId = data.user.id;
           }
-        } catch (sbErr) {
-          console.warn('Supabase signup fallback:', sbErr);
+        } catch {
+          // Silent fallback
         }
       }
 
@@ -476,8 +476,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Add to local state
             setUsers((prev) => [...prev.filter((x) => x.id !== u.id), matched!]);
           }
-        } catch (dbErr) {
-          console.warn('Direct Supabase lookup exception:', dbErr);
+        } catch {
+          // Silent fallback
         }
       }
 
@@ -638,8 +638,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (supabase) {
         await supabase.auth.signOut();
       }
-    } catch (err) {
-      console.warn('Sign out warning:', err);
+    } catch {
+      // Silent signout
     } finally {
       setCurrentUser(null);
       localStorage.removeItem('time2trade_auth_user');

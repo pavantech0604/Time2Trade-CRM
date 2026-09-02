@@ -94,7 +94,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPaymentForm, onToggleMobil
   };
 
   return (
-    <header className="h-16 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl px-6 flex items-center justify-between sticky top-0 z-30 font-sans">
+    <header className="h-16 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 font-sans">
       {/* Toast Alert on Status Change */}
       {statusToast && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white border border-blue-200 text-blue-800 text-xs px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in fade-in slide-in-from-top-3">
