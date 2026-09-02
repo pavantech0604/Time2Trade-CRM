@@ -115,7 +115,7 @@ const generateUUID = () => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const useMocks = !isSupabaseConfigured || import.meta.env.VITE_ENABLE_MOCK_FALLBACK === 'true';
 
-  const [users, setUsers] = useState<User[]>(useMocks ? INITIAL_USERS : []);
+  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -227,6 +227,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     checkSession();
+
+    // Fetch staff list from Supabase if connected
+    if (supabase && !useMocks) {
+      supabase.from('users').select('*').then(
+        ({ data }) => {
+          if (data && data.length > 0) {
+            setUsers((prev) => {
+              const map = new Map<string, User>();
+              prev.forEach((u) => map.set(u.email.toLowerCase(), u));
+              (data as User[]).forEach((u) => map.set(u.email.toLowerCase(), u));
+              return Array.from(map.values());
+            });
+          }
+        },
+        (err: unknown) => console.warn('Could not prefetch users:', err)
+      );
+    }
   }, []);
 
   // Presence updater helper
@@ -421,22 +438,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const normalizedEmail = emailInput.trim().toLowerCase();
 
-      // Find user
+      // 1. Find user in current state
       let matched = users.find(
         (u) =>
           u.email.toLowerCase() === normalizedEmail ||
           u.email.toLowerCase().replace('.com', '.in') === normalizedEmail ||
-          u.email.toLowerCase().replace('.in', '.com') === normalizedEmail
+          u.email.toLowerCase().replace('.in', '.com') === normalizedEmail ||
+          u.email.toLowerCase().replace('time2trade.com', 'capitalgrow.com') === normalizedEmail ||
+          u.email.toLowerCase().replace('capitalgrow.com', 'time2trade.com') === normalizedEmail
       );
 
-      // Role keyword matching fallback for staff testing
+      // 2. Query Supabase directly if connected
+      if (!matched && supabase && !useMocks) {
+        try {
+          const alternateEmail = normalizedEmail.includes('time2trade.com')
+            ? normalizedEmail.replace('time2trade.com', 'capitalgrow.com')
+            : normalizedEmail.replace('capitalgrow.com', 'time2trade.com');
+
+          const { data: dbUsers } = await supabase
+            .from('users')
+            .select('*')
+            .or(`email.ilike.${normalizedEmail},email.ilike.${alternateEmail}`);
+
+          if (dbUsers && dbUsers.length > 0) {
+            const u = dbUsers[0];
+            matched = {
+              id: u.id,
+              name: u.name,
+              email: u.email,
+              phone: u.phone,
+              role: u.role as UserRole,
+              is_active: u.is_active !== false,
+              approval_status: (u.approval_status || 'approved') as ApprovalStatus,
+              avatar_url: u.avatar_url,
+              created_at: u.created_at || new Date().toISOString(),
+            };
+            // Add to local state
+            setUsers((prev) => [...prev.filter((x) => x.id !== u.id), matched!]);
+          }
+        } catch (dbErr) {
+          console.warn('Direct Supabase lookup exception:', dbErr);
+        }
+      }
+
+      // 3. Fallback to INITIAL_USERS template data
+      if (!matched) {
+        matched = INITIAL_USERS.find(
+          (u) =>
+            u.email.toLowerCase() === normalizedEmail ||
+            u.email.toLowerCase().replace('time2trade.com', 'capitalgrow.com') === normalizedEmail ||
+            u.email.toLowerCase().replace('capitalgrow.com', 'time2trade.com') === normalizedEmail
+        );
+      }
+
+      // 4. Role keyword matching fallback for staff testing
       if (!matched) {
         if (normalizedEmail.includes('telecaller') || normalizedEmail.includes('priya') || normalizedEmail.includes('ankit')) {
-          matched = users.find((u) => u.role === 'telecaller' && u.approval_status === 'approved');
+          matched = users.find((u) => u.role === 'telecaller' && u.approval_status === 'approved') ||
+            INITIAL_USERS.find((u) => u.role === 'telecaller');
         } else if (normalizedEmail.includes('rm') || normalizedEmail.includes('vikram') || normalizedEmail.includes('rahul')) {
-          matched = users.find((u) => u.role === 'relationship_manager' && u.approval_status === 'approved');
+          matched = users.find((u) => u.role === 'relationship_manager' && u.approval_status === 'approved') ||
+            INITIAL_USERS.find((u) => u.role === 'relationship_manager');
         } else if (normalizedEmail.includes('admin') || normalizedEmail.includes('rajesh')) {
-          matched = users.find((u) => u.role === 'admin' && u.approval_status === 'approved');
+          matched = users.find((u) => u.role === 'admin' && u.approval_status === 'approved') ||
+            INITIAL_USERS.find((u) => u.role === 'admin');
         }
       }
 

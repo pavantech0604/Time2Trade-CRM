@@ -154,6 +154,43 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               </div>
             </div>
 
+            {/* Quick-fill Demo Roles */}
+            <div className="pt-1">
+              <p className="text-[10px] font-mono text-slate-400 mb-1.5 uppercase font-semibold">Quick Demo Login:</p>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('admin@time2trade.com');
+                    setPassword('123456');
+                  }}
+                  className="py-1 px-2 text-[10px] font-medium bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 rounded-lg transition-colors border border-slate-200/60"
+                >
+                  👑 Admin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('priya.v@time2trade.com');
+                    setPassword('123456');
+                  }}
+                  className="py-1 px-2 text-[10px] font-medium bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 rounded-lg transition-colors border border-slate-200/60"
+                >
+                  📞 Telecaller
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('vikram.m@time2trade.com');
+                    setPassword('123456');
+                  }}
+                  className="py-1 px-2 text-[10px] font-medium bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 rounded-lg transition-colors border border-slate-200/60"
+                >
+                  🤝 RM
+                </button>
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={isLoading}
