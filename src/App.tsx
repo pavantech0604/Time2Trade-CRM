@@ -11,6 +11,7 @@ import { ExpenseModule } from './components/admin/ExpenseModule';
 import { ReportsModule } from './components/admin/ReportsModule';
 import { TelecallerDashboard } from './components/telecaller/TelecallerDashboard';
 import { TelecallerLeadsPhoto } from './components/telecaller/TelecallerLeadsPhoto';
+import { EmployeeSalesDashboard } from './components/admin/EmployeeSalesDashboard';
 import { RMDashboard } from './components/rm/RMDashboard';
 import { PublicPaymentForm } from './components/payments/PublicPaymentForm';
 import { LoginPage } from './components/auth/LoginPage';
@@ -93,6 +94,8 @@ const MainApp: React.FC = () => {
         return <ExpenseModule />;
       case 'reports':
         return <ReportsModule />;
+      case 'employee-sales':
+        return <EmployeeSalesDashboard />;
 
       // Telecaller View
       case 'telecaller-leads':

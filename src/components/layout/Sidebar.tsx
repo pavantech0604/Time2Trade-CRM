@@ -62,6 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       { id: 'leads-management', label: 'Leads Master', icon: Users, badge: pendingHandoffs },
       { id: 'active-traders', label: 'Active Traders', icon: TrendingUp },
       { id: 'payment-verification', label: 'Payment Verification', icon: ShieldCheck, badge: pendingVerifications },
+      { id: 'employee-sales', label: 'Employee Sales', icon: FileSpreadsheet },
       { id: 'employee-management', label: 'Staff & Roles', icon: UserCog, badge: pendingReviews },
       { id: 'admin-attendance', label: 'Attendance Board', icon: Clock },
       { id: 'expenses', label: 'Expenses Manager', icon: Receipt },

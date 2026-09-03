@@ -59,6 +59,7 @@ export const Layout: React.FC<LayoutProps> = ({
       // Admin default
       items = [
         { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+        { id: 'employee-sales', label: 'Emp Sales', icon: FileSpreadsheet },
         { id: 'employee-management', label: 'Staff', icon: UserCog },
         { id: 'admin-attendance', label: 'Shifts', icon: Clock },
       ];
