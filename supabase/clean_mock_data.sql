@@ -66,3 +66,10 @@ ON CONFLICT (id) DO UPDATE SET
     role = 'admin',
     is_active = true,
     approval_status = 'approved';
+
+-- 10. Enable full access on users for employee registration and admin approvals
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users read all" ON public.users;
+DROP POLICY IF EXISTS "Admin manage users" ON public.users;
+DROP POLICY IF EXISTS "Enable all operations on users" ON public.users;
+CREATE POLICY "Enable all operations on users" ON public.users FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);

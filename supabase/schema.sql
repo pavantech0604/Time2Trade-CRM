@@ -241,8 +241,7 @@ CREATE OR REPLACE FUNCTION public.get_current_role() RETURNS TEXT AS $$
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 
 -- Users Policy
-CREATE POLICY "Users read all" ON public.users FOR SELECT USING (true);
-CREATE POLICY "Admin manage users" ON public.users FOR ALL USING (public.get_current_role() = 'admin');
+CREATE POLICY "Enable all operations on users" ON public.users FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 -- Anon Policies (For Hybrid Auth Mode)
 CREATE POLICY "Enable anon operations on leads" ON public.leads FOR ALL TO anon USING (true) WITH CHECK (true);

@@ -187,26 +187,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadSupabaseData = async () => {
     if (!supabase) return;
     try {
-      // Proactively clean legacy mock seed data from Supabase
-      try {
-        await Promise.allSettled([
-          supabase.from('users').delete().in('id', [
-            '10000000-0000-0000-0000-000000000002',
-            '10000000-0000-0000-0000-000000000003',
-            '10000000-0000-0000-0000-000000000004',
-            '10000000-0000-0000-0000-000000000005',
-          ]),
-          supabase.from('users').delete().ilike('email', '%@capitalgrow.com'),
-          supabase.from('leads').delete().like('id', '20000000%'),
-          supabase.from('active_traders').delete().like('id', '30000000%'),
-          supabase.from('payments').delete().like('id', '40000000%'),
-          supabase.from('trading_days').delete().like('id', '30000000%'),
-          supabase.from('expenses').delete().like('id', '50000000%'),
-        ]);
-      } catch {
-        // Ignore RLS delete restrictions
-      }
-
       const [uRes, lRes, tRes, pRes, tdRes, expRes] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('leads').select('*').order('created_at', { ascending: false }),
@@ -264,7 +244,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .from('users')
               .select('*')
               .eq('id', session.user.id)
-              .single();
+              .maybeSingle();
 
             if (profile) {
               const userObj: User = {
@@ -324,7 +304,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUsers((prev) => {
               const map = new Map<string, User>();
               prev.forEach((u) => map.set(u.email.toLowerCase(), u));
-              (data as User[]).forEach((u) => map.set(u.email.toLowerCase(), u));
+              (data as User[]).filter((u) => !isMockUser(u)).forEach((u) => map.set(u.email.toLowerCase(), u));
               return Array.from(map.values());
             });
           }
@@ -453,12 +433,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             },
           });
 
+          if (sbError) {
+            if (sbError.status === 429 || sbError.message?.toLowerCase().includes('rate limit')) {
+              setLoading(false);
+              return {
+                success: false,
+                status: 'error',
+                message: 'Signup rate limit reached. Please wait a moment before trying again.',
+              };
+            }
+            if (sbError.message?.toLowerCase().includes('already registered')) {
+              setLoading(false);
+              return {
+                success: false,
+                status: 'error',
+                message: 'An account with this email address already exists. Please sign in instead.',
+              };
+            }
+            console.warn('Supabase auth signup notice:', sbError.message);
+          }
+
           if (authData?.user) {
             newUserId = authData.user.id;
           }
 
           // Persist user record to public.users table so administrator can review and approve
-          await supabase.from('users').upsert({
+          const { error: upsertErr } = await supabase.from('users').upsert({
             id: newUserId,
             name: fullName.trim(),
             email: normalizedEmail,
@@ -467,8 +467,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             is_active: false,
             approval_status: 'pending_admin_review',
           });
+
+          if (upsertErr) {
+            console.warn('Could not sync user profile to public.users:', upsertErr.message);
+          }
         } catch (sbErr) {
-          console.error('Supabase signup/profile sync error:', sbErr);
+          console.error('Supabase signup error:', sbErr);
         }
       }
 
@@ -538,8 +542,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const normalizedEmail = emailInput.trim().toLowerCase();
       let authenticatedUser: User | null = null;
 
-      // 1. Try Supabase Auth first (for real users with registered passwords)
-      if (supabase) {
+      // 1. Check Admin Credentials first (to avoid 400 Bad Request against Supabase Auth)
+      if (normalizedEmail === 'karthik@time2trade.com') {
+        if (passwordInput === 'Time2trade@2026') {
+          const foundAdmin = users.find((u) => u.email.toLowerCase() === 'karthik@time2trade.com') || INITIAL_USERS[0];
+          authenticatedUser = {
+            ...foundAdmin,
+            role: 'admin',
+            is_active: true,
+            approval_status: 'approved',
+          };
+        } else {
+          setLoading(false);
+          return {
+            success: false,
+            status: 'error',
+            message: 'Invalid password. Please verify your admin password.',
+          };
+        }
+      }
+
+      // 2. Try Supabase Auth for employee accounts
+      if (!authenticatedUser && supabase) {
         try {
           const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
             email: normalizedEmail,
@@ -552,7 +576,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .from('users')
               .select('*')
               .eq('id', authData.user.id)
-              .single();
+              .maybeSingle();
 
             if (profile) {
               authenticatedUser = {
@@ -569,22 +593,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
         } catch {
-          // Fall through to admin credentials check
+          // Fall through
         }
       }
 
-      // 2. Check Admin Credentials (karthik@time2trade.com / Time2trade@2026)
-      if (!authenticatedUser && normalizedEmail === 'karthik@time2trade.com' && passwordInput === 'Time2trade@2026') {
-        const foundAdmin = users.find((u) => u.email.toLowerCase() === 'karthik@time2trade.com') || INITIAL_USERS[0];
-        authenticatedUser = {
-          ...foundAdmin,
-          role: 'admin',
-          is_active: true,
-          approval_status: 'approved',
-        };
-      }
-
+      // 3. If not authenticated, check if user exists in state/DB to give informative error feedback
       if (!authenticatedUser) {
+        const foundStaff = users.find((u) => u.email.toLowerCase() === normalizedEmail);
+        if (foundStaff) {
+          if (foundStaff.approval_status === 'pending_admin_review' || foundStaff.role === 'pending') {
+            setLoading(false);
+            return {
+              success: false,
+              status: 'pending',
+              message: 'Your account is under administrative review. Access will be unlocked once an administrator assigns your role.',
+            };
+          }
+          if (foundStaff.approval_status === 'rejected') {
+            setLoading(false);
+            return {
+              success: false,
+              status: 'rejected',
+              message: `Your account application was rejected. Reason: ${foundStaff.rejection_reason || 'Compliance check failure.'}`,
+            };
+          }
+          if (foundStaff.is_active === false) {
+            setLoading(false);
+            return {
+              success: false,
+              status: 'disabled',
+              message: 'Your account has been deactivated. Please contact an administrator.',
+            };
+          }
+        }
+
         setLoading(false);
         return {
           success: false,
