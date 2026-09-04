@@ -117,7 +117,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
           onClick={() => setIsProfileModalOpen(true)}
           className="w-full flex items-center gap-3 p-2.5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all text-left cursor-pointer relative group"
         >
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-md overflow-hidden relative">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-primary to-brand-accent flex items-center justify-center text-white font-bold text-xs shadow-md overflow-hidden relative">
             {currentUser.avatar_url ? (
               <img src={currentUser.avatar_url} alt={currentUser.name} className="w-full h-full object-cover" />
             ) : (
