@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   Database,
   Camera,
+  Target,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ProfileModal } from './ProfileModal';
@@ -32,7 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
 
   if (!currentUser) return null;
 
-  const pendingHandoffs = leads.filter((l) => l.status === 'interested_rm_required').length;
+  const pendingHandoffs = leads.filter((l) => l.status === 'interested').length;
   const pendingVerifications = payments.filter((p) => p.status === 'pending_verification').length;
   const pendingReviews = users.filter(
     (u) => u.approval_status === 'pending_admin_review' || u.role === 'pending'
@@ -41,17 +42,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
   const role = currentUser.role;
 
   const getNavItems = () => {
-    if (role === 'telecaller') {
+    if (role === 'employee') {
       return [
-        { id: 'telecaller-leads', label: 'My Assigned Leads', icon: PhoneCall },
-        { id: 'public-payment-form', label: 'Submit Payment Proof', icon: CreditCard },
-      ];
-    }
-
-    if (role === 'relationship_manager') {
-      return [
-        { id: 'rm-leads', label: 'Pipeline Handoffs', icon: UserCheck, badge: pendingHandoffs },
-        { id: 'rm-traders', label: 'My Active Traders', icon: TrendingUp },
+        { id: 'employee-dashboard', label: 'My Dashboard', icon: LayoutDashboard },
         { id: 'public-payment-form', label: 'Submit Payment Proof', icon: CreditCard },
       ];
     }
@@ -59,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     // Admin default
     return [
       { id: 'dashboard', label: 'Admin Overview', icon: LayoutDashboard },
-      { id: 'leads-management', label: 'Leads Master', icon: Users, badge: pendingHandoffs },
+      { id: 'employee-scorecards', label: 'Employee Scorecards', icon: Target },
       { id: 'active-traders', label: 'Active Traders', icon: TrendingUp },
       { id: 'payment-verification', label: 'Payment Verification', icon: ShieldCheck, badge: pendingVerifications },
       { id: 'employee-sales', label: 'Employee Sales', icon: FileSpreadsheet },
@@ -98,8 +91,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
                 onClick={() => setActiveTab(item.id)}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
                   isActive
-                    ? 'bg-blue-550/10 text-blue-700 border border-blue-200 shadow-sm font-bold'
-                    : 'text-slate-550 hover:text-slate-900 hover:bg-slate-50 border border-transparent'
+                    ? 'bg-blue-500/10 text-blue-700 border border-blue-200 shadow-sm font-bold'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 border border-transparent'
                 }`}
               >
                 <div className="flex items-center gap-3">

@@ -4,14 +4,17 @@ import { Lead } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
 import { Search, Camera, CheckCircle2, TrendingUp, Target } from 'lucide-react';
 
-export const LeadsManagement: React.FC = () => {
+export const EmployeeScorecards: React.FC = () => {
   const { leads, users } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
   // Table ONLY displays leads successfully converted to active traders
   const filteredLeads = leads.filter((l) => {
     if (l.status !== 'active_trader') return false;
+    
+    if (selectedEmployeeId && l.assigned_to !== selectedEmployeeId) return false;
 
     const matchesSearch =
       l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -23,34 +26,24 @@ export const LeadsManagement: React.FC = () => {
 
   // Calculate detailed performance scorecard metrics for ALL active employees
   const staffMetrics = users
-    .filter((u) => (u.role === 'telecaller' || u.role === 'relationship_manager') && u.is_active)
+    .filter((u) => (u.role === 'employee') && u.is_active)
     .map((user) => {
-      const isRM = user.role === 'relationship_manager';
-      
-      // Filter leads handled by this employee
-      const handledLeads = leads.filter(
-        (l) => isRM ? l.rm_assigned_to === user.id : l.assigned_to === user.id
-      );
+      const handledLeads = leads.filter((l) => l.assigned_to === user.id);
 
       // Filtered count (leads called/actioned from fresh state)
-      const filteredCount = isRM 
-        ? handledLeads.filter((l) => l.status === 'active_trader' || l.status === 'lost' || l.status === 'rm_contacted').length
-        : handledLeads.filter((l) => l.status !== 'new').length;
+      const filteredCount = handledLeads.length;
 
       // Conversions count (leads successfully converted to active traders)
       const conversionsCount = handledLeads.filter((l) => l.status === 'active_trader').length;
 
-      // Sub-metric: leads scanned via A4 photo tool by this employee
-      const photoScannedCount = handledLeads.filter((l) => l.source === 'leads_photo').length;
-      
+
       return {
         id: user.id,
         name: user.name,
-        role: user.role === 'telecaller' ? 'Telecaller' : 'Relationship Manager',
+        role: 'Employee',
         handled: handledLeads.length,
         filtered: filteredCount,
         conversions: conversionsCount,
-        photoScanned: photoScannedCount,
         conversionRate: handledLeads.length > 0 
           ? ((conversionsCount / handledLeads.length) * 100).toFixed(1) 
           : '0.0',
@@ -62,10 +55,10 @@ export const LeadsManagement: React.FC = () => {
       
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase font-heading">
+        <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">
           Converted Traders Registry
         </h2>
-        <p className="text-xs text-slate-500 mt-1">
+        <p className="text-sm text-slate-500 mt-1 font-medium">
           Master directory of leads converted to active trading accounts. View conversion stats and employee scorecards.
         </p>
       </div>
@@ -87,7 +80,12 @@ export const LeadsManagement: React.FC = () => {
             return (
               <div 
                 key={metric.id} 
-                className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 rounded-3xl bg-white border border-slate-100 shadow-sm hover:shadow-md hover:border-[#C5A028]/30 transition-all duration-200"
+                onClick={() => setSelectedEmployeeId(selectedEmployeeId === metric.id ? null : metric.id)}
+                className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-6 rounded-2xl border transition-all duration-200 cursor-pointer ${
+                  selectedEmployeeId === metric.id 
+                    ? 'bg-blue-50/50 border-blue-400 shadow-md ring-2 ring-blue-500/20' 
+                    : 'bg-white border-slate-200 shadow-sm hover:shadow-md hover:border-[#C5A028]/30'
+                }`}
               >
                 {/* Employee Info */}
                 <div className="flex items-center gap-4 min-w-0 lg:min-w-[240px] w-full lg:w-auto">
@@ -98,31 +96,28 @@ export const LeadsManagement: React.FC = () => {
                     <h4 className="font-bold text-slate-800 text-sm leading-snug truncate">{metric.name}</h4>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${
-                        metric.role === 'Telecaller' 
+                        metric.role === 'Employee' 
                           ? 'bg-blue-50 text-blue-700 border-blue-100' 
                           : 'bg-emerald-50 text-emerald-600 border-emerald-100'
                       }`}>
                         {metric.role}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {metric.photoScanned} scans
                       </span>
                     </div>
                   </div>
                 </div>
 
                 {/* Performance Counts */}
-                <div className="grid grid-cols-3 gap-2.5 sm:gap-6 w-full lg:w-auto text-center lg:text-left bg-slate-50 lg:bg-transparent p-3.5 lg:p-0 rounded-2xl border border-slate-150 lg:border-none">
+                <div className="grid grid-cols-3 gap-2.5 sm:gap-6 w-full lg:w-auto text-center lg:text-left bg-slate-50 lg:bg-transparent p-3.5 lg:p-0 rounded-2xl border border-slate-200 lg:border-none">
                   <div className="min-w-[60px]">
-                    <span className="text-[9px] text-slate-450 uppercase font-bold tracking-wider block">Handled</span>
+                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Handled</span>
                     <span className="text-sm font-black text-slate-800 mt-0.5 block">{metric.handled}</span>
                   </div>
                   <div className="min-w-[60px]">
-                    <span className="text-[9px] text-slate-450 uppercase font-bold tracking-wider block">Filtered</span>
+                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Filtered</span>
                     <span className="text-sm font-black text-slate-800 mt-0.5 block">{metric.filtered}</span>
                   </div>
                   <div className="min-w-[60px]">
-                    <span className="text-[9px] text-slate-450 uppercase font-bold tracking-wider block">Traders</span>
+                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Traders</span>
                     <span className="text-sm font-black text-emerald-600 mt-0.5 block">{metric.conversions}</span>
                   </div>
                 </div>
@@ -156,26 +151,36 @@ export const LeadsManagement: React.FC = () => {
       </div>
 
       {/* Filter Bar (Light Theme) */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search active traders by name, phone, RM..."
+            placeholder="Search active traders by name, phone..."
             className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
           />
         </div>
 
-        <div className="text-xs font-mono font-bold text-[#C5A028] bg-[#C5A028]/10 px-3.5 py-1.5 rounded-full border border-[#C5A028]/20 flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-[#C5A028]" />
-          <span>Showing {filteredLeads.length} Converted Traders</span>
+        <div className="flex items-center gap-3">
+          {selectedEmployeeId && (
+            <button
+              onClick={() => setSelectedEmployeeId(null)}
+              className="text-[10px] font-bold text-slate-500 hover:text-slate-800 bg-slate-100 px-3 py-1.5 rounded-full cursor-pointer transition-colors"
+            >
+              Clear Filter
+            </button>
+          )}
+          <div className="text-xs font-mono font-bold text-[#C5A028] bg-[#C5A028]/10 px-3.5 py-1.5 rounded-full border border-[#C5A028]/20 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-[#C5A028]" />
+            <span>Showing {filteredLeads.length} Converted Traders</span>
+          </div>
         </div>
       </div>
 
       {/* Leads Table Card (Light Theme) */}
-      <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         {/* Mobile View: Cards Layout (Purely Read-only) */}
         <div className="block md:hidden divide-y divide-slate-100">
           {filteredLeads.length === 0 ? (
@@ -186,7 +191,7 @@ export const LeadsManagement: React.FC = () => {
                 <div className="flex justify-between items-start">
                   <div>
                     <h4 className="text-xs font-bold text-slate-800">{lead.name}</h4>
-                    <p className="text-[10px] text-slate-450 font-mono mt-0.5">{lead.phone}</p>
+                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">{lead.phone}</p>
                   </div>
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-600 border border-emerald-100">
                     Active Trader
@@ -198,13 +203,11 @@ export const LeadsManagement: React.FC = () => {
                     <span className="text-slate-400">Source:</span> {lead.source}
                   </div>
                   <div>
-                    <span className="text-slate-400">Scanned By:</span> {lead.assigned_to_name || 'Unassigned'}
+                    <span className="text-slate-400">Added By:</span> {lead.assigned_to_name || 'Unassigned'}
                   </div>
+                  
                   <div>
-                    <span className="text-slate-400">Activated By:</span> {lead.rm_assigned_to_name || 'None'}
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Scan Date:</span> {lead.upload_date || 'N/A'}
+                    <span className="text-slate-400">Added Date:</span> {new Date(lead.created_at).toLocaleDateString()}
                   </div>
                 </div>
               </div>
@@ -220,8 +223,7 @@ export const LeadsManagement: React.FC = () => {
                 <th className="py-3.5 px-4">Trader Name</th>
                 <th className="py-3.5 px-4">Phone</th>
                 <th className="py-3.5 px-4">Lead Source</th>
-                <th className="py-3.5 px-4">Assigned Telecaller</th>
-                <th className="py-3.5 px-4">RM Verification Desk</th>
+                <th className="py-3.5 px-4">Assigned Employee</th>
                 <th className="py-3.5 px-4">Created Date</th>
               </tr>
             </thead>
@@ -238,21 +240,11 @@ export const LeadsManagement: React.FC = () => {
                     <td className="py-3.5 px-4 font-bold text-slate-800">{lead.name}</td>
                     <td className="py-3.5 px-4 font-mono text-slate-600">{lead.phone}</td>
                     <td className="py-3.5 px-4">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono border ${
-                        lead.source === 'leads_photo' 
-                          ? 'bg-purple-50 text-purple-600 border-purple-100' 
-                          : 'bg-slate-100 text-slate-500 border-slate-200'
-                      }`}>
-                        {lead.source === 'leads_photo' ? 'Photo Scan' : lead.source}
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-mono border bg-slate-100 text-slate-500 border-slate-200">
+                        {lead.source === 'manual' ? 'Manual Entry' : lead.source}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-slate-500">{lead.assigned_to_name || 'Unassigned'}</td>
-                    <td className="py-3.5 px-4">
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1.5 w-fit">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        Converted by {lead.rm_assigned_to_name || 'RM'}
-                      </span>
-                    </td>
                     <td className="py-3.5 px-4 text-slate-400 font-mono">
                       {new Date(lead.created_at).toLocaleDateString()}
                     </td>

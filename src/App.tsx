@@ -2,17 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Layout } from './components/layout/Layout';
 import { AdminOverview } from './components/admin/AdminOverview';
-import { LeadsManagement } from './components/admin/LeadsManagement';
+import { EmployeeScorecards } from './components/admin/EmployeeScorecards';
 import { ActiveTradersView } from './components/admin/ActiveTradersView';
 import { PaymentVerification } from './components/admin/PaymentVerification';
 import { EmployeeManagement } from './components/admin/EmployeeManagement';
 import { AttendanceDashboard } from './components/admin/AttendanceDashboard';
 import { ExpenseModule } from './components/admin/ExpenseModule';
 import { ReportsModule } from './components/admin/ReportsModule';
-import { TelecallerDashboard } from './components/telecaller/TelecallerDashboard';
-import { TelecallerLeadsPhoto } from './components/telecaller/TelecallerLeadsPhoto';
+import { EmployeeDashboard } from './components/employee/EmployeeDashboard';
 import { EmployeeSalesDashboard } from './components/admin/EmployeeSalesDashboard';
-import { RMDashboard } from './components/rm/RMDashboard';
 import { PublicPaymentForm } from './components/payments/PublicPaymentForm';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
@@ -28,10 +26,8 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     if (!currentUser) return;
 
-    if (currentUser.role === 'telecaller') {
-      setActiveTab('telecaller-leads');
-    } else if (currentUser.role === 'relationship_manager') {
-      setActiveTab('rm-leads');
+    if (currentUser.role === 'employee') {
+      setActiveTab('employee-dashboard');
     } else if (currentUser.role === 'admin') {
       setActiveTab('dashboard');
     }
@@ -80,8 +76,8 @@ const MainApp: React.FC = () => {
       // Admin Views
       case 'dashboard':
         return <AdminOverview onNavigate={setActiveTab} />;
-      case 'leads-management':
-        return <LeadsManagement />;
+      case 'employee-scorecards':
+        return <EmployeeScorecards />;
       case 'active-traders':
         return <ActiveTradersView />;
       case 'payment-verification':
@@ -97,33 +93,23 @@ const MainApp: React.FC = () => {
       case 'employee-sales':
         return <EmployeeSalesDashboard />;
 
-      // Telecaller View
-      case 'telecaller-leads':
-        return <TelecallerDashboard />;
-      case 'telecaller-leads-photo':
-        return <TelecallerLeadsPhoto />;
-
-      // RM Views
-      case 'rm-leads':
-        return <RMDashboard activeTab="rm-leads" />;
-      case 'rm-traders':
-        return <RMDashboard activeTab="rm-traders" />;
+      // Employee View
+      case 'employee-dashboard':
+        return <EmployeeDashboard />;
 
       // Payment Submission Portal
       case 'public-payment-form':
         return (
           <PublicPaymentForm
             onBack={() => {
-              if (currentUser.role === 'telecaller') setActiveTab('telecaller-leads');
-              else if (currentUser.role === 'relationship_manager') setActiveTab('rm-leads');
+            if (currentUser.role === 'employee') setActiveTab('employee-dashboard');
               else setActiveTab('dashboard');
             }}
           />
         );
 
       default:
-        if (currentUser.role === 'telecaller') return <TelecallerDashboard />;
-        if (currentUser.role === 'relationship_manager') return <RMDashboard activeTab="rm-leads" />;
+        if (currentUser.role === 'employee') return <EmployeeDashboard />;
         return <AdminOverview onNavigate={setActiveTab} />;
     }
   };

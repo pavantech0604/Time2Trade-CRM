@@ -25,9 +25,9 @@ export const LeadUploadModule: React.FC = () => {
   const [errorLog, setErrorLog] = useState<string[]>([]);
   const [parsedPreview, setParsedPreview] = useState<Partial<Lead>[]>([]);
 
-  // Get active telecallers
-  const telecallers = users.filter(
-    (u) => u.role === 'telecaller' && u.is_active && u.approval_status === 'approved'
+  // Get active employees
+  const employees = users.filter(
+    (u) => u.role === 'employee' && u.is_active && u.approval_status === 'approved'
   );
 
   const handleDrag = (e: React.DragEvent) => {
@@ -94,7 +94,7 @@ export const LeadUploadModule: React.FC = () => {
           phone,
           email: email && email.includes('@') ? email : undefined,
           source,
-          status: 'new',
+          status: 'callback_requested',
         });
       });
 
@@ -102,11 +102,11 @@ export const LeadUploadModule: React.FC = () => {
       if (validRows.length === 0 && errors.length === 0) {
         // Mock sample generated batch for demo XLSX binary parsing
         const demoBatch: Partial<Lead>[] = [
-          { name: 'Sameer Singhania', phone: '+91 98220 11992', email: 'sameer.s@gmail.com', source: 'Excel Meta Lead Gen', status: 'new' },
-          { name: 'Kavita Joshi', phone: '+91 97110 44332', email: 'kavita.j@yahoo.com', source: 'Excel Meta Lead Gen', status: 'new' },
-          { name: 'Rohan Deshmukh', phone: '+91 98450 66778', email: 'rohan.d@outlook.com', source: 'Excel Meta Lead Gen', status: 'new' },
-          { name: 'Neha Aggarwal', phone: '+91 98100 55443', email: 'neha.a@gmail.com', source: 'Excel Meta Lead Gen', status: 'new' },
-          { name: 'Alok Bhatt', phone: '+91 94140 22119', email: 'alok.b@hotmail.com', source: 'Excel Meta Lead Gen', status: 'new' },
+          { name: 'Sameer Singhania', phone: '+91 98220 11992', email: 'sameer.s@gmail.com', source: 'Excel Meta Lead Gen', status: 'callback_requested' },
+          { name: 'Kavita Joshi', phone: '+91 97110 44332', email: 'kavita.j@yahoo.com', source: 'Excel Meta Lead Gen', status: 'callback_requested' },
+          { name: 'Rohan Deshmukh', phone: '+91 98450 66778', email: 'rohan.d@outlook.com', source: 'Excel Meta Lead Gen', status: 'callback_requested' },
+          { name: 'Neha Aggarwal', phone: '+91 98100 55443', email: 'neha.a@gmail.com', source: 'Excel Meta Lead Gen', status: 'callback_requested' },
+          { name: 'Alok Bhatt', phone: '+91 94140 22119', email: 'alok.b@hotmail.com', source: 'Excel Meta Lead Gen', status: 'callback_requested' },
         ];
         validRows.push(...demoBatch);
       }
@@ -126,12 +126,12 @@ export const LeadUploadModule: React.FC = () => {
     const todayDate = new Date().toISOString().split('T')[0];
     const batchId = `batch-${Date.now()}`;
 
-    // Round-robin distribution to telecallers
+    // Round-robin distribution to employees
     let assignedCount = 0;
 
     parsedPreview.forEach((leadRow, idx) => {
-      const assignedTelecaller = telecallers.length > 0
-        ? telecallers[idx % telecallers.length]
+      const assignedEmployee = employees.length > 0
+        ? employees[idx % employees.length]
         : undefined;
 
       addLead({
@@ -139,14 +139,14 @@ export const LeadUploadModule: React.FC = () => {
         phone: leadRow.phone || '+91 98000 00000',
         email: leadRow.email,
         source: leadRow.source || 'Excel Upload',
-        assigned_to: assignedTelecaller?.id,
-        assigned_to_name: assignedTelecaller?.name,
-        status: 'new',
+        assigned_to: assignedEmployee?.id,
+        assigned_to_name: assignedEmployee?.name,
+        status: 'callback_requested',
         upload_batch_id: batchId,
         upload_date: todayDate,
       });
 
-      if (assignedTelecaller) assignedCount++;
+      if (assignedEmployee) assignedCount++;
     });
 
     const summary: LeadUploadBatch = {
@@ -158,7 +158,7 @@ export const LeadUploadModule: React.FC = () => {
       valid_rows: parsedPreview.length,
       invalid_rows: errorLog.length,
       distribution_date: todayDate,
-      telecallers_distributed: telecallers.length,
+      employees_distributed: employees.length,
       created_at: new Date().toISOString(),
     };
 
@@ -195,7 +195,7 @@ export const LeadUploadModule: React.FC = () => {
             Excel Bulk Lead Upload & Auto-Distribution
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Upload raw lead sheets (.xlsx, .xls, .csv). Validated rows are automatically distributed round-robin to active telecallers.
+            Upload raw lead sheets (.xlsx, .xls, .csv). Validated rows are automatically distributed round-robin to active employees.
           </p>
         </div>
 
@@ -259,7 +259,7 @@ export const LeadUploadModule: React.FC = () => {
               </h3>
             </div>
             <span className="text-xs font-mono text-slate-400">
-              Active Telecallers for Distribution: <strong className="text-emerald-400">{telecallers.length}</strong>
+              Active Employees for Distribution: <strong className="text-emerald-400">{employees.length}</strong>
             </span>
           </div>
 
@@ -298,7 +298,7 @@ export const LeadUploadModule: React.FC = () => {
                   </div>
                   <div className="text-right">
                     <span className="text-[11px] font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-lg">
-                      → Assigned to: {telecallers[idx % (telecallers.length || 1)]?.name || 'Unassigned Queue'}
+                      → Assigned to: {employees[idx % (employees.length || 1)]?.name || 'Unassigned Queue'}
                     </span>
                   </div>
                 </div>
@@ -362,8 +362,8 @@ export const LeadUploadModule: React.FC = () => {
               <span className="font-bold text-rose-400 text-base">{batchSummary.invalid_rows}</span>
             </div>
             <div>
-              <span className="text-slate-400 block text-[10px] font-mono">TELECALLERS ASSIGNED</span>
-              <span className="font-bold text-blue-400 text-base">{batchSummary.telecallers_distributed}</span>
+              <span className="text-slate-400 block text-[10px] font-mono">EMPLOYEES ASSIGNED</span>
+              <span className="font-bold text-blue-400 text-base">{batchSummary.employees_distributed}</span>
             </div>
           </div>
         </div>

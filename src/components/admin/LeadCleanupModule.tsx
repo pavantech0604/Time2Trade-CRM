@@ -58,7 +58,7 @@ export const LeadCleanupModule: React.FC = () => {
 
     selectedLeadIds.forEach((id) => {
       updateLead(id, {
-        status: 'archived',
+        status: 'lost',
         is_archived: true,
         archived_at: new Date().toISOString(),
       });
@@ -184,7 +184,7 @@ export const LeadCleanupModule: React.FC = () => {
                 <th className="py-3 px-4 font-semibold">Phone</th>
                 <th className="py-3 px-4 font-semibold">Status</th>
                 <th className="py-3 px-4 font-semibold">Source</th>
-                <th className="py-3 px-4 font-semibold">Assigned Telecaller</th>
+                <th className="py-3 px-4 font-semibold">Assigned Employee</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">

@@ -113,7 +113,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPaymentForm, onToggleMobil
             className="md:hidden p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
             title="Open Sidebar Navigation"
           >
-            <Menu className="w-4 h-4 text-slate-655" />
+            <Menu className="w-4 h-4 text-slate-600" />
           </button>
         )}
 
@@ -129,12 +129,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPaymentForm, onToggleMobil
             mobileBadgeText = 'Admin';
             colorStyle = 'from-slate-900 to-slate-800 shadow-slate-900/10';
             textColor = 'text-slate-800 bg-slate-100 border-slate-250';
-          } else if (currentUser?.role === 'relationship_manager') {
+          } else if (false) {
             badgeText = 'Relations Desk';
             mobileBadgeText = 'RM';
             colorStyle = 'from-emerald-600 to-teal-600 shadow-emerald-500/10';
             textColor = 'text-emerald-700 bg-emerald-50 border-emerald-250';
-          } else if (currentUser?.role === 'telecaller') {
+          } else if (currentUser?.role === 'employee') {
             badgeText = 'Dialer Desk';
             mobileBadgeText = 'Dialer';
             colorStyle = 'from-amber-600 to-orange-500 shadow-amber-500/10';
@@ -226,7 +226,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPaymentForm, onToggleMobil
         {onOpenPaymentForm && (
           <button
             onClick={onOpenPaymentForm}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-550/10 text-emerald-700 border border-emerald-300 text-xs font-semibold hover:bg-emerald-50 transition-all cursor-pointer"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-700 border border-emerald-300 text-xs font-semibold hover:bg-emerald-50 transition-all cursor-pointer"
           >
             <CreditCard className="w-3.5 h-3.5 text-emerald-650" />
             <span>Submit Payment</span>
@@ -286,7 +286,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPaymentForm, onToggleMobil
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h5 className={`text-xs font-bold ${n.is_read ? 'text-slate-550' : 'text-[#091A2F]'}`}>
+                            <h5 className={`text-xs font-bold ${n.is_read ? 'text-slate-500' : 'text-[#091A2F]'}`}>
                               {n.title}
                             </h5>
                             <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">

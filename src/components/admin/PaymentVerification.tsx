@@ -57,9 +57,9 @@ export const PaymentVerification: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-300 font-sans">
       <div>
-        <h2 className="text-2xl font-black text-slate-800 tracking-tight">Payment Verification & Anti-Fraud Center</h2>
-        <p className="text-xs text-slate-500 mt-1 font-medium">
-          Inspect trader profit-sharing payments against bank UPI statement records
+        <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Payment Verification & Anti-Fraud Center</h2>
+        <p className="text-sm text-slate-500 mt-1 font-medium">
+          Verify and authenticate employee-submitted payment proofs before reflecting in the CRM.
         </p>
       </div>
 
@@ -76,34 +76,34 @@ export const PaymentVerification: React.FC = () => {
       {/* Mobile View: Payments Card Stack */}
       <div className="md:hidden block space-y-3 font-sans">
         {payments.length === 0 ? (
-          <div className="bg-white border border-slate-200 p-8 rounded-3xl text-center text-slate-500 shadow-sm">
+          <div className="bg-white border border-slate-200 p-6 rounded-2xl text-center text-slate-500 shadow-sm">
             No payments found.
           </div>
         ) : (
           payments.map((payment) => (
             <div
               key={payment.id}
-              className="bg-white border border-slate-200 rounded-3xl p-4 space-y-3 shadow-sm hover:border-[#C5A028]/45 transition-colors"
+              className="bg-white border border-slate-200 rounded-2xl p-6 space-y-3 shadow-sm hover:border-[#C5A028]/45 transition-colors"
             >
               <div className="flex justify-between items-start">
                 <div>
                   <h4 className="text-xs font-bold text-slate-800">{payment.trader_name}</h4>
-                  <span className="text-[10px] text-slate-550 block font-mono mt-0.5">Ref: {payment.utr}</span>
+                  <span className="text-[10px] text-slate-500 block font-mono mt-0.5">Ref: {payment.utr}</span>
                 </div>
                 <StatusBadge status={payment.status} />
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-655 bg-slate-50 p-2.5 rounded-2xl border border-slate-150">
+              <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
                 <div>
-                  <span className="text-slate-450 uppercase tracking-wider block text-[8.5px] font-bold">Amount</span>
+                  <span className="text-slate-400 uppercase tracking-wider block text-[8.5px] font-bold">Amount</span>
                   <span className="font-extrabold text-emerald-700 block mt-0.5">{formatINR(payment.amount)}</span>
                 </div>
                 <div>
-                  <span className="text-slate-450 uppercase tracking-wider block text-[8.5px] font-bold">Payment Mode</span>
+                  <span className="text-slate-400 uppercase tracking-wider block text-[8.5px] font-bold">Payment Mode</span>
                   <span className="font-bold text-slate-700 block mt-0.5">{payment.payment_mode}</span>
                 </div>
-                <div className="col-span-2 pt-1 border-t border-slate-150">
-                  <span className="text-slate-450 uppercase tracking-wider block text-[8.5px] font-bold">Submitted Time</span>
+                <div className="col-span-2 pt-1 border-t border-slate-200">
+                  <span className="text-slate-400 uppercase tracking-wider block text-[8.5px] font-bold">Submitted Time</span>
                   <span className="font-medium text-slate-700 block mt-0.5">{new Date(payment.transaction_time).toLocaleString()}</span>
                 </div>
               </div>
@@ -128,14 +128,14 @@ export const PaymentVerification: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-100 text-slate-655 uppercase text-[10px] tracking-wider bg-[#091A2F]/5">
-                <th className="py-3.5 px-4 text-slate-550">Trader Name</th>
-                <th className="py-3.5 px-4 text-slate-550">Amount</th>
-                <th className="py-3.5 px-4 text-slate-550">Mode</th>
-                <th className="py-3.5 px-4 text-slate-550">UTR Reference</th>
-                <th className="py-3.5 px-4 text-slate-550">Submitted Time</th>
-                <th className="py-3.5 px-4 text-slate-550">Verification Status</th>
-                <th className="py-3.5 px-4 text-right text-slate-550">Actions</th>
+              <tr className="border-b border-slate-100 text-slate-600 uppercase text-[10px] tracking-wider bg-[#091A2F]/5">
+                <th className="py-3.5 px-4 text-slate-500">Trader Name</th>
+                <th className="py-3.5 px-4 text-slate-500">Amount</th>
+                <th className="py-3.5 px-4 text-slate-500">Mode</th>
+                <th className="py-3.5 px-4 text-slate-500">UTR Reference</th>
+                <th className="py-3.5 px-4 text-slate-500">Submitted Time</th>
+                <th className="py-3.5 px-4 text-slate-500">Verification Status</th>
+                <th className="py-3.5 px-4 text-right text-slate-500">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80">
@@ -143,9 +143,9 @@ export const PaymentVerification: React.FC = () => {
                 <tr key={payment.id} className="hover:bg-slate-50/50 transition-all border-b border-slate-100/40">
                   <td className="py-3.5 px-4 font-bold text-slate-800">{payment.trader_name}</td>
                   <td className="py-3.5 px-4 font-bold text-emerald-700">{formatINR(payment.amount)}</td>
-                  <td className="py-3.5 px-4 text-slate-655">{payment.payment_mode}</td>
+                  <td className="py-3.5 px-4 text-slate-600">{payment.payment_mode}</td>
                   <td className="py-3.5 px-4 font-mono text-slate-800 font-semibold">{payment.utr}</td>
-                  <td className="py-3.5 px-4 text-slate-550">
+                  <td className="py-3.5 px-4 text-slate-500">
                     {new Date(payment.transaction_time).toLocaleString()}
                   </td>
                   <td className="py-3.5 px-4">
@@ -190,7 +190,7 @@ export const PaymentVerification: React.FC = () => {
                 <span className="text-xs font-bold text-slate-800">Submitted Payment Proof</span>
                 <button
                   onClick={() => setIsZoomed(!isZoomed)}
-                  className="text-xs text-blue-600 hover:text-blue-750 flex items-center gap-1 font-bold cursor-pointer"
+                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-bold cursor-pointer"
                 >
                   <ZoomIn className="w-3.5 h-3.5 text-blue-600" /> {isZoomed ? 'Zoom Out' : 'Zoom In'}
                 </button>
@@ -210,7 +210,7 @@ export const PaymentVerification: React.FC = () => {
             <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-700">
               <div>
                 <span className="text-slate-500 block">Claimed Amount</span>
-                <span className="font-extrabold text-emerald-750 text-base">{formatINR(selectedPayment.amount)}</span>
+                <span className="font-extrabold text-emerald-700 text-base">{formatINR(selectedPayment.amount)}</span>
               </div>
               <div>
                 <span className="text-slate-500 block">UTR / Ref Number</span>
@@ -218,7 +218,7 @@ export const PaymentVerification: React.FC = () => {
               </div>
               <div>
                 <span className="text-slate-500 block">Payment Mode</span>
-                <span className="font-bold text-slate-750">{selectedPayment.payment_mode}</span>
+                <span className="font-bold text-slate-700">{selectedPayment.payment_mode}</span>
               </div>
               <div>
                 <span className="text-slate-500 block">Timestamp</span>

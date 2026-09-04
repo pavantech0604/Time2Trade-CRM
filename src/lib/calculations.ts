@@ -75,7 +75,6 @@ export function calculateDashboardKPIs(
   const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
   const netProfit = totalProfitShared - totalExpenses;
 
-  const pendingHandoffsCount = leads.filter((l) => l.status === 'interested_rm_required').length;
   const pendingVerificationCount = payments.filter((p) => p.status === 'pending_verification').length;
 
   return {
@@ -83,7 +82,6 @@ export function calculateDashboardKPIs(
     activeTraders,
     totalProfitShared,
     netProfit,
-    pendingHandoffsCount,
     pendingVerificationCount,
     totalExpenses,
   };

@@ -35,7 +35,7 @@ export const PendingApprovalPage: React.FC<PendingApprovalPageProps> = ({ onBack
             <h2 className="text-xl font-bold text-[#312e81] font-heading">
               Application Under Review
             </h2>
-            <p className="text-xs text-slate-550 leading-relaxed">
+            <p className="text-xs text-slate-500 leading-relaxed">
               Your employee registration has been securely received. To maintain strict operational compliance, your account must be reviewed by an administrator before dashboard access is unlocked.
             </p>
           </div>
@@ -49,7 +49,7 @@ export const PendingApprovalPage: React.FC<PendingApprovalPageProps> = ({ onBack
             <div className="flex items-center gap-3">
               <div className="w-4 h-4 rounded-full border-2 border-amber-500 border-t-transparent animate-spin shrink-0" />
               <span className="text-xs text-amber-700 font-semibold">
-                Admin role assignment (Admin / Telecaller / RM)
+                Admin role assignment (Admin / Employee)
               </span>
             </div>
             <div className="flex items-center gap-3 opacity-50">
@@ -65,8 +65,8 @@ export const PendingApprovalPage: React.FC<PendingApprovalPageProps> = ({ onBack
               <p className="font-semibold text-slate-800">Need expedited onboarding?</p>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 Contact the compliance desk at{' '}
-                <a href="mailto:admin@time2trade.com" className="text-blue-650 hover:underline font-semibold">
-                  admin@time2trade.com
+                <a href="mailto:karthik@time2trade.com" className="text-blue-650 hover:underline font-semibold">
+                  karthik@time2trade.com
                 </a>
               </p>
             </div>

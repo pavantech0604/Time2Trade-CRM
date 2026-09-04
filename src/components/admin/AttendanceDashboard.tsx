@@ -136,7 +136,7 @@ export const AttendanceDashboard: React.FC = () => {
 
         <button
           onClick={handleExportCSV}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-850 hover:bg-slate-800 text-slate-200 text-xs font-bold transition-all shadow-md cursor-pointer self-start sm:self-auto active:scale-95"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-200 text-xs font-bold transition-all shadow-md cursor-pointer self-start sm:self-auto active:scale-95"
         >
           <Download className="w-4 h-4 text-emerald-400" />
           Export Attendance CSV
@@ -159,7 +159,7 @@ export const AttendanceDashboard: React.FC = () => {
             <span>Online</span>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
           </div>
-          <p className="text-xl font-black text-emerald-750">{onlineCount}</p>
+          <p className="text-xl font-black text-emerald-700">{onlineCount}</p>
           <p className="text-[10px] text-emerald-600 font-mono font-medium">Actively working</p>
         </div>
 
@@ -173,7 +173,7 @@ export const AttendanceDashboard: React.FC = () => {
         </div>
 
         <div className="bg-white border border-purple-250 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
-          <div className="flex items-center justify-between text-purple-750 text-xs font-bold">
+          <div className="flex items-center justify-between text-purple-700 text-xs font-bold">
             <span>On Lunch</span>
             <Utensils className="w-4 h-4 text-purple-500" />
           </div>
@@ -182,7 +182,7 @@ export const AttendanceDashboard: React.FC = () => {
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
-          <div className="flex items-center justify-between text-slate-550 text-xs font-bold">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
             <span>Offline</span>
             <Moon className="w-4 h-4 text-slate-400" />
           </div>
@@ -209,7 +209,7 @@ export const AttendanceDashboard: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search employee presence..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-800 placeholder:text-slate-450 focus:outline-none focus:border-blue-500 focus:bg-white transition-all shadow-inner"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all shadow-inner"
           />
         </div>
 
@@ -235,8 +235,7 @@ export const AttendanceDashboard: React.FC = () => {
           >
             <option value="all">All Roles</option>
             <option value="admin">Admin</option>
-            <option value="telecaller">Telecaller</option>
-            <option value="relationship_manager">Relationship Manager</option>
+            <option value="employee">Employee</option>
           </select>
         </div>
       </div>
@@ -266,7 +265,7 @@ export const AttendanceDashboard: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="font-bold text-slate-800 text-xs">{p.user_name}</h3>
-                      <p className="text-[10px] font-mono text-slate-550 capitalize mt-0.5">
+                      <p className="text-[10px] font-mono text-slate-500 capitalize mt-0.5">
                         {p.user_role.replace(/_/g, ' ')}
                       </p>
                     </div>
@@ -274,7 +273,7 @@ export const AttendanceDashboard: React.FC = () => {
 
                   {/* Status badge */}
                   <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-bold ${cfg.bg.replace(/\/10/g, '/20').replace(/bg-emerald-500/g, 'bg-emerald-50').replace(/bg-amber-500/g, 'bg-amber-50').replace(/bg-purple-500/g, 'bg-purple-50').replace(/bg-slate-700/g, 'bg-slate-50')} ${cfg.text.replace(/text-emerald-400/g, 'text-emerald-800').replace(/text-amber-400/g, 'text-amber-850').replace(/text-purple-400/g, 'text-purple-800').replace(/text-slate-400/g, 'text-slate-650')}`}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-bold ${cfg.bg.replace(/\/10/g, '/20').replace(/bg-emerald-500/g, 'bg-emerald-50').replace(/bg-amber-500/g, 'bg-amber-50').replace(/bg-purple-500/g, 'bg-purple-50').replace(/bg-slate-700/g, 'bg-slate-50')} ${cfg.text.replace(/text-emerald-400/g, 'text-emerald-800').replace(/text-amber-400/g, 'text-amber-800').replace(/text-purple-400/g, 'text-purple-800').replace(/text-slate-400/g, 'text-slate-650')}`}
                   >
                     <span className={`w-2 h-2 rounded-full ${cfg.dot.replace(/bg-emerald-400/g, 'bg-emerald-500').replace(/bg-amber-400/g, 'bg-amber-500').replace(/bg-purple-400/g, 'bg-purple-500')}`} />
                     {cfg.label}
@@ -363,9 +362,9 @@ export const AttendanceDashboard: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-50 p-2.5 rounded-2xl border border-slate-150">
+                <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
                   <div>
-                    <span className="text-slate-450 uppercase tracking-wider block text-[8px] font-bold">Event Type</span>
+                    <span className="text-slate-400 uppercase tracking-wider block text-[8px] font-bold">Event Type</span>
                     <span className="mt-0.5 block">
                       {log.event_type === 'login' && <span className="text-emerald-700 font-bold">● Login Recorded</span>}
                       {log.event_type === 'logout' && <span className="text-slate-500 font-bold">● Logout Recorded</span>}
@@ -376,10 +375,10 @@ export const AttendanceDashboard: React.FC = () => {
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-450 uppercase tracking-wider block text-[8px] font-bold">Transition</span>
+                    <span className="text-slate-400 uppercase tracking-wider block text-[8px] font-bold">Transition</span>
                     <span className="font-semibold text-slate-700 mt-0.5 block">
                       {log.status_before || 'offline'} →{' '}
-                      <strong className="text-slate-850 font-extrabold">{log.status_after || 'online'}</strong>
+                      <strong className="text-slate-800 font-extrabold">{log.status_after || 'online'}</strong>
                     </span>
                   </div>
                 </div>
@@ -392,13 +391,13 @@ export const AttendanceDashboard: React.FC = () => {
         <div className="hidden md:block bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#091A2F]/5 text-slate-655 uppercase font-mono text-[10px] tracking-wider border-b border-slate-100">
+              <thead className="bg-[#091A2F]/5 text-slate-600 uppercase font-mono text-[10px] tracking-wider border-b border-slate-100">
                 <tr>
-                  <th className="py-3 px-4 font-semibold text-slate-550">Staff Member</th>
-                  <th className="py-3 px-4 font-semibold text-slate-550">Role</th>
-                  <th className="py-3 px-4 font-semibold text-slate-550">Event Type</th>
-                  <th className="py-3 px-4 font-semibold text-slate-550">Transition</th>
-                  <th className="py-3 px-4 font-semibold text-slate-550">Timestamp</th>
+                  <th className="py-3 px-4 font-semibold text-slate-500">Staff Member</th>
+                  <th className="py-3 px-4 font-semibold text-slate-500">Role</th>
+                  <th className="py-3 px-4 font-semibold text-slate-500">Event Type</th>
+                  <th className="py-3 px-4 font-semibold text-slate-500">Transition</th>
+                  <th className="py-3 px-4 font-semibold text-slate-500">Timestamp</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100/80 font-mono text-[11px]">
@@ -430,11 +429,11 @@ export const AttendanceDashboard: React.FC = () => {
                         <span className="text-emerald-700 font-bold">✓ Lunch Ended</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-slate-550 font-semibold">
+                    <td className="py-3 px-4 text-slate-500 font-semibold">
                       {log.status_before || 'offline'} →{' '}
                       <strong className="text-slate-800">{log.status_after || 'online'}</strong>
                     </td>
-                    <td className="py-3 px-4 text-slate-550">
+                    <td className="py-3 px-4 text-slate-500">
                       {new Date(log.event_time).toLocaleTimeString('en-IN', {
                         hour: '2-digit',
                         minute: '2-digit',

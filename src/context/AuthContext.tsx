@@ -84,11 +84,15 @@ interface AuthContextType {
       investment_capacity: string;
       trading_experience: Lead['trading_experience'];
       preferred_market: string;
-      telecaller_notes: string;
-      rm_assigned_to?: string;
+      employee_notes?: string;
+      assigned_to?: string;
     }
   ) => void;
-  convertLeadToTrader: (leadId: string, rmId: string) => void;
+  convertLeadToTrader: (
+    leadId: string, 
+    rmId: string, 
+    details?: { initialCapital: number; selectedService: string; preferredMarket: string }
+  ) => void;
   addTradingDay: (traderId: string, tradeDate: string, totalProfit: number, tradesCount: number) => void;
   addPayment: (paymentInput: Omit<Payment, 'id' | 'created_at' | 'status'>) => void;
   verifyPayment: (paymentId: string, isApproved: boolean, remarks?: string) => void;
@@ -150,6 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         today_login_time: new Date().toISOString(),
         total_break_minutes: 0,
         total_lunch_minutes: 0,
+        is_late: false,
       }
     : null;
 
@@ -211,7 +216,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Check local persisted session
         const storedUser = localStorage.getItem('time2trade_auth_user');
         if (storedUser) {
-          const parsed: User = JSON.parse(storedUser);
+          let parsed: User = JSON.parse(storedUser);
+          
+          // Migrate old roles
+          if ((parsed.role as string) === 'telecaller' || (parsed.role as string) === 'relationship_manager') {
+            parsed.role = 'employee';
+            localStorage.setItem('time2trade_auth_user', JSON.stringify(parsed));
+          }
+
           if (parsed && parsed.id && parsed.is_active && parsed.approval_status === 'approved') {
             setCurrentUser(parsed);
             if (supabase && !useMocks) await loadSupabaseData();
@@ -493,13 +505,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // 4. Role keyword matching fallback for staff testing
       if (!matched) {
-        if (normalizedEmail.includes('telecaller') || normalizedEmail.includes('priya') || normalizedEmail.includes('ankit')) {
-          matched = users.find((u) => u.role === 'telecaller' && u.approval_status === 'approved') ||
-            INITIAL_USERS.find((u) => u.role === 'telecaller');
-        } else if (normalizedEmail.includes('rm') || normalizedEmail.includes('vikram') || normalizedEmail.includes('rahul')) {
-          matched = users.find((u) => u.role === 'relationship_manager' && u.approval_status === 'approved') ||
-            INITIAL_USERS.find((u) => u.role === 'relationship_manager');
-        } else if (normalizedEmail.includes('admin') || normalizedEmail.includes('rajesh')) {
+        if (normalizedEmail.includes('employee') || normalizedEmail.includes('priya') || normalizedEmail.includes('ankit') || normalizedEmail.includes('vikram') || normalizedEmail.includes('rahul')) {
+          matched = users.find((u) => u.role === 'employee' && u.approval_status === 'approved') ||
+            INITIAL_USERS.find((u) => u.role === 'employee');
+        } else if (normalizedEmail.includes('admin') || normalizedEmail.includes('karthik')) {
           matched = users.find((u) => u.role === 'admin' && u.approval_status === 'approved') ||
             INITIAL_USERS.find((u) => u.role === 'admin');
         }
@@ -835,21 +844,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLeads((prev) => [newLead, ...prev]);
 
     if (supabase && !useMocks) {
-      await supabase.from('leads').insert({
+      const { error } = await supabase.from('leads').insert({
         id: newId,
         name: leadInput.name,
         phone: leadInput.phone,
         source: leadInput.source,
         assigned_to: leadInput.assigned_to || null,
-        rm_assigned_to: leadInput.rm_assigned_to || null,
         status: leadInput.status,
-        telecaller_notes: leadInput.telecaller_notes,
-        rm_notes: leadInput.rm_notes,
         investment_capacity: leadInput.investment_capacity,
         trading_experience: leadInput.trading_experience,
         preferred_market: leadInput.preferred_market,
         next_follow_up_at: leadInput.next_follow_up_at || null,
+        notes: leadInput.notes || null,
       });
+
+      if (error) {
+        console.error('Supabase Insert Error Details:', JSON.stringify(error, null, 2));
+        // Revert optimistic update
+        setLeads((prev) => prev.filter((l) => l.id !== newId));
+        throw new Error(`DB Error: ${error.message} (Code: ${error.code})`);
+      }
     }
   };
 
@@ -862,7 +876,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Exclude UI-only derived fields from supabase update
       const dbUpdates = { ...updates };
       delete (dbUpdates as any).assigned_to_name;
-      delete (dbUpdates as any).rm_assigned_to_name;
       await supabase.from('leads').update({ ...dbUpdates, updated_at: new Date().toISOString() }).eq('id', leadId);
     }
   };
@@ -873,12 +886,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       investment_capacity: string;
       trading_experience: Lead['trading_experience'];
       preferred_market: string;
-      telecaller_notes: string;
-      rm_assigned_to?: string;
+      employee_notes?: string;
+      assigned_to?: string;
     }
   ) => {
-    const rms = users.filter((u) => u.role === 'relationship_manager' && u.is_active);
-    const selectedRMId = qualification.rm_assigned_to || rms[0]?.id;
+    const rms = users.filter((u) => u.role === 'employee' && u.is_active);
+    const selectedRMId = qualification.assigned_to || rms[0]?.id;
     const selectedRMObj = users.find((u) => u.id === selectedRMId);
     const now = new Date().toISOString();
 
@@ -887,13 +900,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         l.id === leadId
           ? {
               ...l,
-              status: 'interested_rm_required',
+              status: 'interested',
               investment_capacity: qualification.investment_capacity,
               trading_experience: qualification.trading_experience,
               preferred_market: qualification.preferred_market,
-              telecaller_notes: qualification.telecaller_notes,
-              rm_assigned_to: selectedRMId,
-              rm_assigned_to_name: selectedRMObj?.name,
+              employee_notes: qualification.employee_notes,
+              assigned_to: selectedRMId,
+              assigned_to_name: selectedRMObj?.name,
               updated_at: now,
             }
           : l
@@ -902,11 +915,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (supabase && !useMocks) {
       await supabase.from('leads').update({
-        status: 'interested_rm_required',
+        status: 'interested',
         investment_capacity: qualification.investment_capacity,
         trading_experience: qualification.trading_experience,
         preferred_market: qualification.preferred_market,
-        telecaller_notes: qualification.telecaller_notes,
+        
         rm_assigned_to: selectedRMId,
         updated_at: now,
       }).eq('id', leadId);
@@ -928,7 +941,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const convertLeadToTrader = async (leadId: string, rmId: string) => {
+  const convertLeadToTrader = async (
+    leadId: string, 
+    rmId: string,
+    details?: { initialCapital: number; selectedService: string; preferredMarket: string }
+  ) => {
     const targetLead = leads.find((l) => l.id === leadId);
     if (!targetLead) return;
 
@@ -941,10 +958,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lead_id: leadId,
       name: targetLead.name,
       phone: targetLead.phone,
-      rm_assigned_to: rmId,
-      rm_assigned_to_name: rmObj?.name || 'RM',
+      employee_id: rmId,
+      employee_name: rmObj?.name || 'RM',
       status: 'active',
       joined_at: now.split('T')[0],
+      initial_capital: details?.initialCapital,
+      selected_service: details?.selectedService,
+      preferred_market: details?.preferredMarket,
       current_streak: 0,
       longest_streak: 0,
       total_profit_gained: 0,
@@ -957,7 +977,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLeads((prev) =>
       prev.map((l) =>
         l.id === leadId
-          ? { ...l, status: 'active_trader', rm_assigned_to: rmId, rm_assigned_to_name: rmObj?.name, updated_at: now }
+          ? { ...l, status: 'active_trader', updated_at: now }
           : l
       )
     );
@@ -969,13 +989,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           lead_id: leadId,
           name: targetLead.name,
           phone: targetLead.phone,
-          rm_assigned_to: rmId,
+          
           status: 'active',
           joined_at: now.split('T')[0],
+          initial_capital: details?.initialCapital,
+          selected_service: details?.selectedService,
+          preferred_market: details?.preferredMarket,
         }),
         supabase.from('leads').update({ 
           status: 'active_trader', 
-          rm_assigned_to: rmId, 
+           
           updated_at: now 
         }).eq('id', leadId)
       ]);

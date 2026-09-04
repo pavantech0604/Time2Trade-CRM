@@ -26,7 +26,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
   const kpis = calculateDashboardKPIs(leads, traders, payments, expenses);
 
   const pendingVerificationList = payments.filter((p) => p.status === 'pending_verification');
-  const pendingHandoffsList = leads.filter((l) => l.status === 'interested_rm_required');
+  const pendingHandoffsList = leads.filter((l) => l.status === 'interested');
 
   // Chart data for daily approved payments
   const chartData = [
@@ -40,19 +40,19 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
   ];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300 font-sans">
+    <div className="space-y-6 animate-in fade-in duration-300 font-sans">
       {/* Page Title */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight">Executive Dashboard</h2>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
-            Real-time advisory metrics, active trader streaks, and profit-sharing verification
+          <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Executive Dashboard</h2>
+          <p className="text-sm text-slate-500 mt-1 font-medium">
+            Real-time pulse of your trading platform's ecosystem
           </p>
         </div>
       </div>
 
       {/* 4 Primary Top KPI Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <MetricCard
           title="Total Advisory Leads"
           value={kpis.totalLeads}
@@ -61,7 +61,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
           changeLabel="vs last week"
           icon={Users}
           variant="info"
-          onClick={() => onNavigate('leads-management')}
+          onClick={() => onNavigate('employee-scorecards')}
         />
 
         <MetricCard
@@ -95,47 +95,25 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
       </div>
 
       {/* Operational Alerts Banner */}
-      {(kpis.pendingHandoffsCount > 0 || kpis.pendingVerificationCount > 0) && (
+      {kpis.pendingVerificationCount > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {kpis.pendingVerificationCount > 0 && (
-            <div
-              onClick={() => onNavigate('payment-verification')}
-              className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-amber-100/50 transition-all shadow-sm"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-amber-100 text-amber-800">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-amber-900">
-                    {kpis.pendingVerificationCount} Payment Proofs Pending Verification
-                  </h4>
-                  <p className="text-[11px] text-amber-700/80 mt-0.5 font-medium">Requires UTR bank statement check before approval</p>
-                </div>
+          <div
+            onClick={() => onNavigate('payment-verification')}
+            className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-amber-100/50 transition-all shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-100 text-amber-800">
+                <ShieldCheck className="w-5 h-5" />
               </div>
-              <ArrowUpRight className="w-4 h-4 text-amber-700" />
-            </div>
-          )}
-
-          {kpis.pendingHandoffsCount > 0 && (
-            <div
-              onClick={() => onNavigate('leads-management')}
-              className="bg-purple-550/5 border border-purple-200 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-purple-550/10 transition-all shadow-sm"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-purple-50 text-purple-800">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-purple-900">
-                    {kpis.pendingHandoffsCount} Leads Pending RM Handoff
-                  </h4>
-                  <p className="text-[11px] text-purple-700/80 mt-0.5 font-medium">Telecallers marked interested — RM call required</p>
-                </div>
+              <div>
+                <h4 className="text-xs font-bold text-amber-900">
+                  {kpis.pendingVerificationCount} Payment Proofs Pending Verification
+                </h4>
+                <p className="text-[11px] text-amber-700/80 mt-0.5 font-medium">Requires UTR bank statement check before approval</p>
               </div>
-              <ArrowUpRight className="w-4 h-4 text-purple-750" />
             </div>
-          )}
+            <ArrowUpRight className="w-4 h-4 text-amber-700" />
+          </div>
         </div>
       )}
 
@@ -178,15 +156,15 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
 
             <div className="space-y-3">
               {[
-                { stage: 'New Leads', count: leads.filter((l) => l.status === 'new').length, color: 'bg-blue-500' },
-                { stage: 'Called', count: leads.filter((l) => l.status === 'called').length, color: 'bg-cyan-500' },
-                { stage: 'RM Required', count: leads.filter((l) => l.status === 'interested_rm_required').length, color: 'bg-purple-500' },
-                { stage: 'RM Contacted', count: leads.filter((l) => l.status === 'rm_contacted').length, color: 'bg-indigo-500' },
+                { stage: 'New Leads', count: leads.filter((l) => l.status === 'callback_requested').length, color: 'bg-blue-500' },
+                { stage: 'Called', count: leads.filter((l) => l.status === 'interested').length, color: 'bg-cyan-500' },
+                { stage: 'RM Required', count: leads.filter((l) => l.status === 'interested').length, color: 'bg-purple-500' },
+                { stage: 'RM Contacted', count: leads.filter((l) => l.status === 'follow_up_later').length, color: 'bg-indigo-500' },
                 { stage: 'Active Trader', count: leads.filter((l) => l.status === 'active_trader').length, color: 'bg-emerald-500' },
               ].map((item) => (
                 <div key={item.stage} className="space-y-1">
                   <div className="flex items-center justify-between text-xs font-semibold">
-                    <span className="text-slate-655">{item.stage}</span>
+                    <span className="text-slate-600">{item.stage}</span>
                     <span className="text-slate-800">{item.count}</span>
                   </div>
                   <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -208,7 +186,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
           <h3 className="text-sm font-bold text-slate-800">Top Performing Active Traders</h3>
           <button
             onClick={() => onNavigate('active-traders')}
-            className="text-xs font-semibold text-blue-600 hover:text-blue-750 flex items-center gap-1 cursor-pointer transition-colors"
+            className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer transition-colors"
           >
             View All Traders <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
@@ -227,17 +205,17 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                 <div className="flex justify-between items-start">
                   <div>
                     <h4 className="text-xs font-bold text-slate-800">{trader.name}</h4>
-                    <span className="text-[10px] text-slate-450 block font-mono mt-0.5">RM: {trader.rm_assigned_to_name || 'RM'}</span>
+                    <span className="text-[10px] text-slate-400 block font-mono mt-0.5">RM: {trader.employee_name || 'RM'}</span>
                   </div>
                   <StreakBadge streak={trader.current_streak} />
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-655 bg-slate-50 p-2.5 rounded-2xl border border-slate-150">
+                <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
                   <div>
-                    <span className="text-slate-450 block text-[8px] uppercase tracking-wider font-bold">Profit Gained</span>
+                    <span className="text-slate-400 block text-[8px] uppercase tracking-wider font-bold">Profit Gained</span>
                     <span className="font-extrabold text-emerald-700 block mt-0.5">{formatINR(trader.total_profit_gained)}</span>
                   </div>
                   <div>
-                    <span className="text-slate-450 block text-[8px] uppercase tracking-wider font-bold">Profit Shared</span>
+                    <span className="text-slate-400 block text-[8px] uppercase tracking-wider font-bold">Profit Shared</span>
                     <span className="font-extrabold text-blue-700 block mt-0.5">{formatINR(trader.total_profit_shared)}</span>
                   </div>
                 </div>
@@ -250,7 +228,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-150 text-slate-600 uppercase text-[10px] tracking-wider bg-[#091A2F]/5">
+              <tr className="border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider bg-slate-50">
                 <th className="py-3 px-4">Trader Name</th>
                 <th className="py-3 px-4">Assigned RM</th>
                 <th className="py-3 px-4">Total Profit Gained</th>
@@ -263,7 +241,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
               {traders.map((trader) => (
                 <tr key={trader.id} className="hover:bg-slate-50/50 transition-all border-b border-slate-100/40">
                   <td className="py-3 px-4 font-bold text-slate-800">{trader.name}</td>
-                  <td className="py-3 px-4 text-slate-550">{trader.rm_assigned_to_name || 'RM'}</td>
+                  <td className="py-3 px-4 text-slate-500">{trader.employee_name || 'RM'}</td>
                   <td className="py-3 px-4 font-bold text-emerald-700">{formatINR(trader.total_profit_gained)}</td>
                   <td className="py-3 px-4 font-bold text-blue-700">{formatINR(trader.total_profit_shared)}</td>
                   <td className="py-3 px-4">

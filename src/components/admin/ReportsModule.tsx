@@ -9,57 +9,37 @@ export const ReportsModule: React.FC = () => {
 
   const conversionRate = leads.length > 0 ? ((traders.length / leads.length) * 100).toFixed(1) : '0.0';
 
-  // Group performance metrics for all staff (Telecallers & RMs)
+  // Group performance metrics for all staff (Employees)
   const staffPerformance = users
-    .filter((u) => (u.role === 'telecaller' || u.role === 'relationship_manager') && u.is_active)
+    .filter((u) => u.role === 'employee' && u.is_active)
     .map((user) => {
-      const isTelecaller = user.role === 'telecaller';
+      const myLeads = leads.filter((l) => l.assigned_to === user.id);
+      const filteredLeads = myLeads.filter((l) => l.status !== 'callback_requested');
+      const convertedLeads = myLeads.filter((l) => l.status === 'active_trader');
+      const myTraders = traders.filter((t) => t.employee_id === user.id);
+      const totalProfit = myTraders.reduce((sum, t) => sum + (Number(t.total_profit_shared) || 0), 0);
       
-      if (isTelecaller) {
-        const myLeads = leads.filter((l) => l.assigned_to === user.id);
-        const filteredLeads = myLeads.filter((l) => l.status !== 'new');
-        const convertedLeads = myLeads.filter((l) => l.status === 'active_trader');
-        
-        return {
-          id: user.id,
-          name: user.name,
-          role: 'Telecaller',
-          assignedLeads: myLeads.length,
-          filteredLeads: filteredLeads.length,
-          tradersHandled: 0,
-          conversions: convertedLeads.length,
-          conversionRate: myLeads.length > 0 
-            ? ((convertedLeads.length / myLeads.length) * 100).toFixed(1) 
-            : '0.0',
-        };
-      } else {
-        // RM Role
-        const rmTraders = traders.filter((t) => t.rm_assigned_to === user.id);
-        const myRmLeads = leads.filter((l) => l.rm_assigned_to === user.id);
-        const filteredRmLeads = myRmLeads.filter((l) => l.status === 'active_trader' || l.status === 'lost' || l.status === 'rm_contacted');
-        const convertedLeads = myRmLeads.filter((l) => l.status === 'active_trader');
-
-        return {
-          id: user.id,
-          name: user.name,
-          role: 'Relationship Manager',
-          assignedLeads: myRmLeads.length,
-          filteredLeads: filteredRmLeads.length,
-          tradersHandled: rmTraders.length,
-          conversions: convertedLeads.length,
-          conversionRate: myRmLeads.length > 0 
-            ? ((convertedLeads.length / myRmLeads.length) * 100).toFixed(1) 
-            : '0.0',
-        };
-      }
+      return {
+        id: user.id,
+        name: user.name,
+        role: 'Employee',
+        assignedLeads: myLeads.length,
+        filteredLeads: filteredLeads.length,
+        tradersHandled: myTraders.length,
+        conversions: convertedLeads.length,
+        profitGenerated: totalProfit,
+        conversionRate: myLeads.length > 0 
+          ? ((convertedLeads.length / myLeads.length) * 100).toFixed(1) 
+          : '0.0',
+      };
     })
     .sort((a, b) => Number(b.conversionRate) - Number(a.conversionRate)); // Sort by conversion rate for rank
 
   // Group performance by RM for gross revenue
   const rmPerformance = users
-    .filter((u) => u.role === 'relationship_manager')
+    .filter((u) => u.role === 'employee')
     .map((rm) => {
-      const rmTraders = traders.filter((t) => t.rm_assigned_to === rm.id);
+      const rmTraders = traders.filter((t) => t.employee_id === rm.id);
       const totalShared = rmTraders.reduce((sum, t) => sum + Number(t.total_profit_shared), 0);
       return {
         id: rm.id,
@@ -72,24 +52,24 @@ export const ReportsModule: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-300 pb-10 font-sans">
       <div>
-        <h2 className="text-2xl font-black text-slate-800 tracking-tight">Reports & Business Analytics</h2>
-        <p className="text-xs text-slate-500 mt-1 font-medium">High-level financial scorecard, conversion funnels, and employee performance metrics</p>
+        <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Reports & Business Analytics</h2>
+        <p className="text-sm text-slate-500 mt-1 font-medium">High-level financial scorecard, conversion funnels, and employee performance metrics</p>
       </div>
 
       {/* Financial Scorecard Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold text-slate-550 uppercase font-mono">Gross Verified Revenue</span>
+          <span className="text-xs font-bold text-slate-500 uppercase font-mono">Gross Verified Revenue</span>
           <h3 className="text-2xl font-black text-emerald-700 mt-1">{formatINR(kpis.totalProfitShared)}</h3>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold text-slate-550 uppercase font-mono">Total Expenses</span>
+          <span className="text-xs font-bold text-slate-500 uppercase font-mono">Total Expenses</span>
           <h3 className="text-2xl font-black text-rose-700 mt-1">{formatINR(kpis.totalExpenses)}</h3>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold text-slate-550 uppercase font-mono">Net Advisory Business Profit</span>
+          <span className="text-xs font-bold text-slate-500 uppercase font-mono">Net Advisory Business Profit</span>
           <h3 className="text-2xl font-black text-blue-700 mt-1">{formatINR(kpis.netProfit)}</h3>
         </div>
       </div>
@@ -110,7 +90,7 @@ export const ReportsModule: React.FC = () => {
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex items-center gap-2">
           <Target className="w-5 h-5 text-[#C5A028]" />
-          <h3 className="text-sm font-bold text-slate-800">Employee Conversion & Pipeline Intelligence</h3>
+          <h3 className="text-sm font-bold text-slate-800">Staff Lead Conversion & Tracking Metrics</h3>
         </div>
         
         {/* Mobile View: Cards */}
@@ -118,13 +98,13 @@ export const ReportsModule: React.FC = () => {
           {staffPerformance.map((staff, idx) => (
             <div 
               key={staff.id} 
-              className="bg-white border border-slate-200 rounded-3xl p-4 space-y-3 shadow-sm"
+              className="bg-white border border-slate-200 rounded-2xl p-6 space-y-3 shadow-sm"
             >
               <div className="flex justify-between items-start">
                 <div>
                   <h4 className="text-xs font-bold text-slate-800">{staff.name}</h4>
                   <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${
-                    staff.role === 'Telecaller' 
+                    staff.role === 'Employee' 
                       ? 'bg-blue-50 text-blue-700 border-blue-200' 
                       : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                   }`}>
@@ -132,26 +112,26 @@ export const ReportsModule: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[9px] text-slate-450 uppercase block font-mono">Conversion Rate</span>
+                  <span className="text-[9px] text-slate-400 uppercase block font-mono">Conversion Rate</span>
                   <span className="text-xs font-black text-[#C5A028] font-mono">{staff.conversionRate}%</span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-655 bg-slate-50 p-2.5 rounded-2xl border border-slate-150 font-mono">
+              <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600 bg-slate-50 p-2.5 rounded-2xl border border-slate-200 font-mono">
                 <div>
-                  <span className="text-slate-450 uppercase tracking-wider block text-[8px] font-sans">Leads Handled</span>
+                  <span className="text-slate-400 uppercase tracking-wider block text-[8px] font-sans">Leads Added</span>
                   <span className="font-bold text-slate-700">{staff.assignedLeads}</span>
                 </div>
                 <div>
-                  <span className="text-slate-450 uppercase tracking-wider block text-[8px] font-sans">Leads Filtered</span>
+                  <span className="text-slate-400 uppercase tracking-wider block text-[8px] font-sans">Leads Processed</span>
                   <span className="font-bold text-slate-700">{staff.filteredLeads}</span>
                 </div>
                 <div>
-                  <span className="text-slate-450 uppercase tracking-wider block text-[8px] font-sans">Clients Managed</span>
+                  <span className="text-slate-400 uppercase tracking-wider block text-[8px] font-sans">Clients Managed</span>
                   <span className="font-bold text-slate-700">{staff.tradersHandled}</span>
                 </div>
                 <div>
-                  <span className="text-slate-450 uppercase tracking-wider block text-[8px] font-sans">Conversions</span>
+                  <span className="text-slate-400 uppercase tracking-wider block text-[8px] font-sans">Traders Converted</span>
                   <span className="font-bold text-emerald-700">{staff.conversions}</span>
                 </div>
               </div>
@@ -163,13 +143,13 @@ export const ReportsModule: React.FC = () => {
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-slate-150 text-slate-655 uppercase text-[10px] tracking-wider bg-[#091A2F]/5 font-mono">
+              <tr className="border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider bg-[#091A2F]/5 font-mono">
                 <th className="py-3 px-4">Employee</th>
                 <th className="py-3 px-4">Role</th>
-                <th className="py-3 px-4 text-center">Leads Handled</th>
-                <th className="py-3 px-4 text-center">Leads Filtered</th>
+                <th className="py-3 px-4 text-center">Leads Added</th>
+                <th className="py-3 px-4 text-center">Leads Processed</th>
                 <th className="py-3 px-4 text-center">Clients Managed</th>
-                <th className="py-3 px-4 text-center">Conversions</th>
+                <th className="py-3 px-4 text-center">Traders Converted</th>
                 <th className="py-3 px-4 text-right">Success Rate (%)</th>
               </tr>
             </thead>
@@ -179,16 +159,16 @@ export const ReportsModule: React.FC = () => {
                   <td className="py-3.5 px-4 font-bold text-slate-800">{staff.name}</td>
                   <td className="py-3.5 px-4">
                     <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${
-                      staff.role === 'Telecaller' 
+                      staff.role === 'Employee' 
                         ? 'bg-blue-50 text-blue-700 border-blue-200' 
                         : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     }`}>
                       {staff.role}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-center text-slate-550 font-mono">{staff.assignedLeads} leads</td>
-                  <td className="py-3.5 px-4 text-center text-slate-750 font-mono font-semibold">{staff.filteredLeads} called</td>
-                  <td className="py-3.5 px-4 text-center text-slate-655 font-mono">
+                  <td className="py-3.5 px-4 text-center text-slate-500 font-mono">{staff.assignedLeads} added</td>
+                  <td className="py-3.5 px-4 text-center text-slate-700 font-mono font-semibold">{staff.filteredLeads} processed</td>
+                  <td className="py-3.5 px-4 text-center text-slate-600 font-mono">
                     {staff.tradersHandled > 0 ? `${staff.tradersHandled} active` : '—'}
                   </td>
                   <td className="py-3.5 px-4 text-center font-bold text-emerald-700 font-mono">{staff.conversions} converted</td>
@@ -214,12 +194,12 @@ export const ReportsModule: React.FC = () => {
           {rmPerformance.map((rm, idx) => (
             <div 
               key={rm.id} 
-              className="bg-white border border-slate-200 rounded-3xl p-4 space-y-3 shadow-sm"
+              className="bg-white border border-slate-200 rounded-2xl p-6 space-y-3 shadow-sm"
             >
               <div className="flex justify-between items-start">
                 <div>
                   <h4 className="text-xs font-bold text-slate-800">{rm.name}</h4>
-                  <span className="text-[10px] text-slate-550 block font-mono mt-0.5">{rm.tradersCount} Active Traders</span>
+                  <span className="text-[10px] text-slate-500 block font-mono mt-0.5">{rm.tradersCount} Active Traders</span>
                 </div>
                 <span className="px-2.5 py-1 rounded-full text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-sm">
                   Rank #{idx + 1}
@@ -237,7 +217,7 @@ export const ReportsModule: React.FC = () => {
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-150 text-slate-655 uppercase text-[10px] tracking-wider bg-[#091A2F]/5">
+              <tr className="border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider bg-[#091A2F]/5">
                 <th className="py-3 px-4">RM Name</th>
                 <th className="py-3 px-4">Managed Active Traders</th>
                 <th className="py-3 px-4">Total Profit Shared via RM</th>

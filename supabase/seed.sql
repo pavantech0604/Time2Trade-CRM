@@ -4,17 +4,17 @@
 
 -- 1. Insert Users (Admin, Telecallers, Relationship Managers)
 INSERT INTO public.users (id, name, email, phone, role) VALUES
-('10000000-0000-0000-0000-000000000001', 'Rajesh Sharma', 'admin@time2trade.com', '+91 98765 43210', 'admin'),
-('10000000-0000-0000-0000-000000000002', 'Priya Verma', 'priya.v@time2trade.com', '+91 98765 43211', 'telecaller'),
-('10000000-0000-0000-0000-000000000003', 'Ankit Kumar', 'ankit.k@time2trade.com', '+91 98765 43212', 'telecaller'),
-('10000000-0000-0000-0000-000000000004', 'Vikram Malhotra', 'vikram.m@time2trade.com', '+91 98765 43213', 'relationship_manager'),
-('10000000-0000-0000-0000-000000000005', 'Rahul Saxena', 'rahul.s@time2trade.com', '+91 98765 43214', 'relationship_manager')
+('10000000-0000-0000-0000-000000000001', 'Karthik Muni', 'karthik@time2trade.com', '+91 98765 43210', 'admin'),
+('10000000-0000-0000-0000-000000000002', 'Priya Verma', 'priya.v@time2trade.com', '+91 98765 43211', 'employee'),
+('10000000-0000-0000-0000-000000000003', 'Ankit Kumar', 'ankit.k@time2trade.com', '+91 98765 43212', 'employee'),
+('10000000-0000-0000-0000-000000000004', 'Vikram Malhotra', 'vikram.m@time2trade.com', '+91 98765 43213', 'employee'),
+('10000000-0000-0000-0000-000000000005', 'Rahul Saxena', 'rahul.s@time2trade.com', '+91 98765 43214', 'employee')
 ON CONFLICT (email) DO NOTHING;
 
 -- 2. Insert Leads
 INSERT INTO public.leads (
     id, name, phone, source, assigned_to, rm_assigned_to, status,
-    telecaller_notes, rm_notes, investment_capacity, trading_experience, preferred_market, next_follow_up_at
+    notes, rm_notes, investment_capacity, trading_experience, preferred_market, next_follow_up_at
 ) VALUES
 (
     '20000000-0000-0000-0000-000000000001',
@@ -23,7 +23,7 @@ INSERT INTO public.leads (
     'Meta Ads',
     '10000000-0000-0000-0000-000000000002',
     '10000000-0000-0000-0000-000000000004',
-    'interested_rm_required',
+    'interested',
     'Interested in Nifty F&O options. High capital.',
     'Scheduled onboarding call.',
     '₹5,000,000',
@@ -53,7 +53,7 @@ INSERT INTO public.leads (
     'Referral',
     '10000000-0000-0000-0000-000000000003',
     '10000000-0000-0000-0000-000000000005',
-    'rm_contacted',
+    'interested',
     'Discussed profit sharing terms (20%).',
     'Needs follow up tomorrow regarding bank mandate.',
     '₹2,500,000',

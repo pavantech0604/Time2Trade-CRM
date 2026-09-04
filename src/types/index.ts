@@ -1,4 +1,4 @@
-export type UserRole = 'pending' | 'admin' | 'telecaller' | 'relationship_manager';
+export type UserRole = 'pending' | 'admin' | 'employee';
 
 export type ApprovalStatus = 'pending_admin_review' | 'approved' | 'rejected';
 
@@ -13,21 +13,11 @@ export type AttendanceEventType =
   | 'lunch_end';
 
 export type LeadStatus =
-  | 'new'
-  | 'called'
-  | 'not_answered'
   | 'callback_requested'
   | 'interested'
-  | 'not_interested'
-  | 'wrong_number'
-  | 'invalid_data'
-  | 'converted'
-  | 'archived'
-  | 'lost'
   | 'follow_up_later'
-  | 'interested_rm_required'
-  | 'rm_contacted'
-  | 'active_trader';
+  | 'active_trader'
+  | 'lost';
 
 export type TraderStatus = 'active' | 'inactive';
 
@@ -89,7 +79,7 @@ export interface LeadUploadBatch {
   valid_rows: number;
   invalid_rows: number;
   distribution_date: string;
-  telecallers_distributed: number;
+  employees_distributed: number;
   created_at: string;
 }
 
@@ -100,13 +90,10 @@ export interface Lead {
   email?: string;
   language?: string;
   source: string;
-  assigned_to?: string; // telecaller user_id
+  assigned_to?: string; // employee user_id
   assigned_to_name?: string;
-  rm_assigned_to?: string; // relationship_manager user_id
-  rm_assigned_to_name?: string;
   status: LeadStatus;
-  telecaller_notes?: string;
-  rm_notes?: string;
+  notes?: string;
   investment_capacity?: string;
   trading_experience?: TradingExperience;
   preferred_market?: string;
@@ -126,12 +113,12 @@ export interface ActiveTrader {
   phone: string;
   email?: string;
   language?: string;
-  rm_assigned_to: string; // relationship_manager user_id
-  rm_assigned_to_name?: string;
+  employee_id: string; // employee user_id
+  employee_name?: string;
   status: TraderStatus;
   joined_at: string;
   initial_capital?: number;
-  trading_experience?: TradingExperience;
+  selected_service?: string;
   preferred_market?: string;
   notes?: string;
   current_streak: number;
@@ -221,7 +208,6 @@ export interface DashboardKPIs {
   activeTraders: number;
   totalProfitShared: number;
   netProfit: number;
-  pendingHandoffsCount: number;
   pendingVerificationCount: number;
   totalExpenses: number;
 }

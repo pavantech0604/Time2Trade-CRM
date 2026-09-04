@@ -44,15 +44,9 @@ export const Layout: React.FC<LayoutProps> = ({
   // Bottom navigation items for mobile screens
   const getMobileNavItems = () => {
     let items = [];
-    if (role === 'telecaller') {
+    if (role === 'employee') {
       items = [
-        { id: 'telecaller-leads', label: 'Leads', icon: PhoneCall },
-        { id: 'public-payment-form', label: 'Pay Proof', icon: CreditCard },
-      ];
-    } else if (role === 'relationship_manager') {
-      items = [
-        { id: 'rm-leads', label: 'Handoffs', icon: UserCheck },
-        { id: 'rm-traders', label: 'Traders', icon: TrendingUp },
+        { id: 'employee-dashboard', label: 'My Desk', icon: LayoutDashboard },
         { id: 'public-payment-form', label: 'Submit Pay', icon: CreditCard },
       ];
     } else {
@@ -92,7 +86,7 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="absolute top-4 right-4 z-50">
               <button
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-550 hover:bg-slate-100 transition-all cursor-pointer"
+                className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 transition-all cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>

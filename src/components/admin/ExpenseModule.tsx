@@ -41,8 +41,8 @@ export const ExpenseModule: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-300 font-sans">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight">Expenses Management</h2>
-          <p className="text-xs text-slate-500 mt-1 font-medium">Track software, advertising, salaries, and operational costs</p>
+          <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Expenses Management</h2>
+          <p className="text-sm text-slate-500 mt-1 font-medium">Track software, advertising, salaries, and operational costs</p>
         </div>
 
         <button
@@ -56,13 +56,13 @@ export const ExpenseModule: React.FC = () => {
       {/* Summary KPI + Category Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold text-slate-550 uppercase font-mono">Total Monthly Expenses</span>
+          <span className="text-xs font-bold text-slate-500 uppercase font-mono">Total Monthly Expenses</span>
           <h3 className="text-2xl font-black text-rose-700 mt-1">{formatINR(totalExpenses)}</h3>
         </div>
 
         {Object.entries(categoriesMap).map(([cat, amt]) => (
           <div key={cat} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <span className="text-xs font-bold text-slate-550 uppercase font-mono">{cat} Costs</span>
+            <span className="text-xs font-bold text-slate-500 uppercase font-mono">{cat} Costs</span>
             <h3 className="text-xl font-bold text-slate-800 mt-1">{formatINR(amt)}</h3>
           </div>
         ))}
@@ -82,7 +82,7 @@ export const ExpenseModule: React.FC = () => {
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-655 uppercase tracking-wide">
+                  <span className="px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-600 uppercase tracking-wide">
                     {expense.category}
                   </span>
                   <h4 className="text-xs font-bold text-slate-800 mt-1.5">{expense.description}</h4>
@@ -104,12 +104,12 @@ export const ExpenseModule: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-100 text-slate-655 uppercase text-[10px] tracking-wider bg-[#091A2F]/5">
-                <th className="py-3.5 px-4 text-slate-550">Date</th>
-                <th className="py-3.5 px-4 text-slate-550">Category</th>
-                <th className="py-3.5 px-4 text-slate-550">Description</th>
-                <th className="py-3.5 px-4 text-slate-550">Added By</th>
-                <th className="py-3.5 px-4 text-right text-slate-550">Amount</th>
+              <tr className="border-b border-slate-100 text-slate-600 uppercase text-[10px] tracking-wider bg-[#091A2F]/5">
+                <th className="py-3.5 px-4 text-slate-500">Date</th>
+                <th className="py-3.5 px-4 text-slate-500">Category</th>
+                <th className="py-3.5 px-4 text-slate-500">Description</th>
+                <th className="py-3.5 px-4 text-slate-500">Added By</th>
+                <th className="py-3.5 px-4 text-right text-slate-500">Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80">
@@ -117,12 +117,12 @@ export const ExpenseModule: React.FC = () => {
                 <tr key={expense.id} className="hover:bg-slate-50/50 transition-all border-b border-slate-100/40">
                   <td className="py-3.5 px-4 text-slate-700 font-medium font-mono">{expense.date}</td>
                   <td className="py-3.5 px-4">
-                    <span className="px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-[10px] font-bold text-slate-655">
+                    <span className="px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-[10px] font-bold text-slate-600">
                       {expense.category}
                     </span>
                   </td>
                   <td className="py-3.5 px-4 text-slate-855 font-medium">{expense.description}</td>
-                  <td className="py-3.5 px-4 text-slate-550">{expense.added_by_name || 'Admin'}</td>
+                  <td className="py-3.5 px-4 text-slate-500">{expense.added_by_name || 'Admin'}</td>
                   <td className="py-3.5 px-4 text-right font-bold text-rose-700 font-mono">{formatINR(expense.amount)}</td>
                 </tr>
               ))}
@@ -137,7 +137,7 @@ export const ExpenseModule: React.FC = () => {
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 space-y-4 shadow-2xl animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-sm font-bold text-[#091A2F]">Log Business Expense</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-655 hover:bg-slate-50 p-1.5 rounded-lg transition-colors">
+              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-50 p-1.5 rounded-lg transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>

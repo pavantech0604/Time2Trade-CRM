@@ -8,8 +8,8 @@ export const AuditLogsView: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div>
-        <h2 className="text-2xl font-black text-white tracking-tight">System Audit Trail</h2>
-        <p className="text-xs text-slate-400 mt-1">Immutable security log of all admin, telecaller, and RM actions</p>
+        <h2 className="text-xl font-black text-slate-800 tracking-tight">System Audit & Security Logs</h2>
+        <p className="text-xs text-slate-400 mt-1">Immutable security log of all admin and employee actions</p>
       </div>
 
       <div className="bg-slate-900/80 rounded-2xl border border-slate-800/80 overflow-hidden shadow-lg">

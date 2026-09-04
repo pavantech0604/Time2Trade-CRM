@@ -148,7 +148,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
   if (submittedRefId) {
     return (
-      <div className="max-w-xl mx-auto my-8 bg-white border border-[#C5A028]/25 p-8 rounded-3xl space-y-6 text-center shadow-2xl animate-in zoom-in-95 font-sans">
+      <div className="max-w-xl mx-auto my-8 bg-white border border-brand-primary/25 p-8 rounded-3xl space-y-6 text-center shadow-2xl animate-in zoom-in-95 font-sans">
         <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center mx-auto">
           <CheckCircle2 className="w-10 h-10" />
         </div>
@@ -163,14 +163,14 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
         <div className="bg-[#FAF8F5] p-4 rounded-2xl border border-slate-200 space-y-2.5 text-xs text-left">
           <div className="flex justify-between">
             <span className="text-slate-500 font-semibold">Reference Tracking ID:</span>
-            <span className="font-mono font-bold text-[#C5A028]">{submittedRefId}</span>
+            <span className="font-mono font-bold text-brand-primary">{submittedRefId}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500 font-semibold">Submitted UTR:</span>
             <span className="font-mono font-bold text-slate-700">{utr}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500 font-semibold">Receiver Bank:</span>
+            <span className="text-slate-500 font-semibold">Receiver Bank Holder:</span>
             <span className="font-semibold text-slate-700">{receiverBank}</span>
           </div>
           <div className="flex justify-between">
@@ -202,7 +202,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
             setRemarks('');
             setScreenshotUrl('');
           }}
-          className="w-full py-3 rounded-xl bg-[#091A2F] border border-[#C5A028]/35 hover:bg-[#122842] hover:border-[#C5A028] text-white font-bold text-xs transition-all shadow-md cursor-pointer"
+          className="w-full py-3 rounded-xl bg-gradient-to-r from-brand-primary to-brand-primaryLight hover:from-brand-primaryLight hover:to-brand-primary text-white font-bold text-xs transition-all shadow-lg shadow-brand-primary/30 hover:shadow-brand-primary/50 hover:-translate-y-0.5 cursor-pointer uppercase tracking-widest"
         >
           Submit Another Payment Proof
         </button>
@@ -221,9 +221,9 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
         </button>
       )}
 
-      <div className="bg-white border border-[#C5A028]/25 p-6 md:p-8 rounded-3xl shadow-2xl space-y-6">
+      <div className="bg-white border border-brand-primary/25 p-6 md:p-8 rounded-3xl shadow-2xl space-y-6">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-2xl bg-blue-500/10 text-[#C5A028] border border-blue-500/20">
+          <div className="p-3 rounded-2xl bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
             <CreditCard className="w-6 h-6" />
           </div>
           <div>
@@ -290,10 +290,10 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
             >
               <option value="">-- Direct / Head Office --</option>
               {users
-                .filter((u) => u.is_active && (u.role === 'telecaller' || u.role === 'relationship_manager' || u.role === 'admin'))
+                .filter((u) => u.is_active && (u.role === 'employee' || u.role === 'admin'))
                 .map((user) => (
                   <option key={user.id} value={user.id}>
-                    {user.name} ({user.role === 'relationship_manager' ? 'RM' : user.role === 'admin' ? 'Admin' : 'Telecaller'})
+                    {user.name} ({user.role === 'employee' ? 'RM' : user.role === 'admin' ? 'Admin' : 'Telecaller'})
                   </option>
                 ))}
             </select>
@@ -309,7 +309,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                 value={amount}
                 placeholder="e.g. 25000"
                 onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-850 focus:outline-none"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none"
               />
             </div>
 
@@ -336,19 +336,19 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                 value={utr}
                 onChange={(e) => setUtr(e.target.value)}
                 placeholder="e.g. UTR994820194821"
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-850 font-mono focus:outline-none"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 font-mono focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="font-semibold text-slate-650 block mb-1">Receiver Bank Name *</label>
+              <label className="font-semibold text-slate-650 block mb-1">Receiver Bank Holder Name *</label>
               <input
                 type="text"
                 required
                 value={receiverBank}
                 onChange={(e) => setReceiverBank(e.target.value)}
-                placeholder="e.g. HDFC Bank, ICICI Bank, SBI"
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-850 focus:outline-none"
+                placeholder="e.g. Time2Trade Solutions, Karthik Muni"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all hover:border-brand-primary/50"
               />
             </div>
           </div>
@@ -360,7 +360,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
               required
               value={transactionTime}
               onChange={(e) => setTransactionTime(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-850 focus:outline-none"
+              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none"
             />
           </div>
 
@@ -404,14 +404,14 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
               onChange={(e) => setRemarks(e.target.value)}
               placeholder="Add any optional comments or verification details..."
               rows={2}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-850 focus:outline-none"
+              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none"
             />
           </div>
 
           <button
             type="submit"
             disabled={isUploading || isSubmitting || !screenshotUrl}
-            className="w-full py-3 rounded-xl bg-[#091A2F] border border-[#C5A028]/35 hover:bg-[#122842] hover:border-[#C5A028] text-white font-bold text-xs transition-all shadow-lg shadow-[#091A2F]/10 mt-2 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-brand-primary to-brand-primaryLight hover:from-brand-primaryLight hover:to-brand-primary text-white font-bold text-xs transition-all shadow-lg shadow-brand-primary/30 hover:shadow-brand-primary/50 hover:-translate-y-0.5 mt-2 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0 uppercase tracking-widest"
           >
             {isSubmitting ? (
               <>

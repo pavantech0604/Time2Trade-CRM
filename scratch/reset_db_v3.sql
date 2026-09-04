@@ -1,6 +1,12 @@
 -- ====================================================================
--- STOCK ADVISORY & TRADING SUPPORT PLATFORM - SUPABASE SCHEMA & RLS
+-- MASTER DATABASE RESET SCRIPT
+-- Completely wipes the public schema and rebuilds it from scratch,
+-- ensuring your logged-in user account is correctly synced.
 -- ====================================================================
+
+-- 0. Wipe existing schema
+DROP SCHEMA IF EXISTS public CASCADE;
+CREATE SCHEMA public;
 
 -- 1. Enable UUID Extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -54,9 +60,6 @@ CREATE TABLE IF NOT EXISTS public.active_traders (
     assigned_to UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
     joined_at DATE NOT NULL DEFAULT CURRENT_DATE,
-    initial_capital NUMERIC(15,2),
-    selected_service TEXT,
-    preferred_market TEXT,
     current_streak INT NOT NULL DEFAULT 0,
     longest_streak INT NOT NULL DEFAULT 0,
     last_trade_date DATE,
@@ -284,3 +287,16 @@ CREATE POLICY "Admin expenses access" ON public.expenses FOR ALL USING (public.g
 -- Storage Buckets for Proof Screenshots
 INSERT INTO storage.buckets (id, name, public) VALUES ('payment-proofs', 'payment-proofs', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('receipts', 'receipts', true) ON CONFLICT (id) DO NOTHING;
+
+-- ====================================================================
+-- FINAL SYNC: COPY YOUR AUTH SESSION INTO THE DATABASE
+-- ====================================================================
+INSERT INTO public.users (id, name, email, role, is_active)
+SELECT 
+  id, 
+  COALESCE(raw_user_meta_data->>'name', split_part(email, '@', 1)), 
+  email, 
+  CASE WHEN email = 'karthik@time2trade.com' THEN 'admin' ELSE 'employee' END,
+  true
+FROM auth.users
+ON CONFLICT (id) DO NOTHING;
