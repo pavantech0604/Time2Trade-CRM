@@ -30,9 +30,13 @@ CREATE TABLE IF NOT EXISTS public.users (
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     phone TEXT,
-    role TEXT NOT NULL CHECK (role IN ('admin', 'employee')),
+    role TEXT NOT NULL DEFAULT 'employee' CHECK (role IN ('admin', 'employee', 'pending')),
     is_active BOOLEAN NOT NULL DEFAULT true,
     avatar_url TEXT,
+    approval_status TEXT NOT NULL DEFAULT 'pending_admin_review' CHECK (approval_status IN ('pending_admin_review', 'approved', 'rejected')),
+    rejection_reason TEXT,
+    approved_by TEXT,
+    approved_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -303,12 +307,8 @@ END
 $$;
 
 
--- 6. MOCK USERS (SEED DATA)
-INSERT INTO public.users (id, name, email, role, is_active) 
+-- 6. ADMIN SEED DATA
+INSERT INTO public.users (id, name, email, role, is_active, approval_status) 
 VALUES
-('10000000-0000-0000-0000-000000000001', 'Karthik Muni', 'karthik@time2trade.com', 'admin', true),
-('10000000-0000-0000-0000-000000000002', 'Priya Verma', 'priya.v@time2trade.com', 'employee', true),
-('10000000-0000-0000-0000-000000000003', 'Ankit Kumar', 'ankit.k@time2trade.com', 'employee', true),
-('10000000-0000-0000-0000-000000000004', 'Vikram Malhotra', 'vikram.m@time2trade.com', 'employee', true),
-('10000000-0000-0000-0000-000000000005', 'Rahul Dev', 'rahul.d@time2trade.com', 'employee', true)
+('10000000-0000-0000-0000-000000000001', 'Karthik Muni', 'karthik@time2trade.com', 'admin', true, 'approved')
 ON CONFLICT (id) DO NOTHING;

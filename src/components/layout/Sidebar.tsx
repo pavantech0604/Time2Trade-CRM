@@ -1,21 +1,15 @@
 import React from 'react';
 import {
   LayoutDashboard,
-  Users,
   TrendingUp,
   ShieldCheck,
   Receipt,
   BarChart3,
-  PhoneCall,
-  UserCheck,
   CreditCard,
-  Building2,
-  Lock,
   LogOut,
   Clock,
   UserCog,
   FileSpreadsheet,
-  Database,
   Camera,
   Target,
 } from 'lucide-react';
@@ -28,12 +22,11 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
-  const { currentUser, leads, payments, users, logout } = useAuth();
+  const { currentUser, payments, users, logout } = useAuth();
   const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false);
 
   if (!currentUser) return null;
 
-  const pendingHandoffs = leads.filter((l) => l.status === 'interested').length;
   const pendingVerifications = payments.filter((p) => p.status === 'pending_verification').length;
   const pendingReviews = users.filter(
     (u) => u.approval_status === 'pending_admin_review' || u.role === 'pending'
@@ -129,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
           </div>
           <div className="overflow-hidden flex-1">
             <h4 className="text-xs font-bold text-slate-800 truncate group-hover:text-blue-600 transition-colors">{currentUser.name}</h4>
-            <p className="text-[10px] font-semibold text-slate-455 capitalize font-mono">
+            <p className="text-[10px] font-semibold text-slate-500 capitalize font-mono">
               {currentUser.role.replace(/_/g, ' ')}
             </p>
           </div>

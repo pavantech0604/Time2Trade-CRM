@@ -13,13 +13,10 @@ import {
   User as UserIcon
 } from 'lucide-react';
 import { StatusBadge } from '../common/StatusBadge';
-import { INITIAL_PAYMENTS } from '../../lib/mockData';
 
 export const EmployeeSalesDashboard: React.FC = () => {
   const { payments: contextPayments, users } = useAuth();
-  
-  // Use context payments if available, otherwise fallback to mock data for demo purposes
-  const payments = contextPayments.length > 0 ? contextPayments : INITIAL_PAYMENTS;
+  const payments = contextPayments;
 
   
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
@@ -194,22 +191,22 @@ export const EmployeeSalesDashboard: React.FC = () => {
                   {/* Card Header & High-Level Stats (Always Visible) */}
                   <div 
                     onClick={() => toggleCard(stat.id)}
-                    className="relative p-6 md:p-8 cursor-pointer flex flex-col xl:flex-row xl:items-center justify-between gap-8 z-10"
+                    className="relative p-4 sm:p-6 md:p-8 cursor-pointer flex flex-col xl:flex-row xl:items-center justify-between gap-6 sm:gap-8 z-10"
                   >
                     {/* Profile Section */}
-                    <div className="flex items-center gap-5 xl:w-1/4 shrink-0 group/profile">
+                    <div className="flex items-center gap-4 sm:gap-5 xl:w-1/4 shrink-0 group/profile">
                       <div className="relative">
-                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-white shadow-lg overflow-hidden transition-transform duration-500 group-hover/profile:scale-105 group-hover/profile:rotate-3 group-hover/profile:shadow-blue-500/20">
-                          <UserIcon className="w-7 h-7 opacity-90 transition-transform duration-500 group-hover/profile:scale-110" />
+                        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-white shadow-lg overflow-hidden transition-transform duration-500 group-hover/profile:scale-105 group-hover/profile:rotate-3 group-hover/profile:shadow-blue-500/20">
+                          <UserIcon className="w-5 h-5 sm:w-7 sm:h-7 opacity-90 transition-transform duration-500 group-hover/profile:scale-110" />
                         </div>
-                        <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1 shadow-sm">
-                          <span className="flex w-4 h-4 bg-emerald-500 rounded-full border-2 border-white items-center justify-center animate-pulse">
+                        <div className="absolute -bottom-1 -right-1 sm:-bottom-2 sm:-right-2 bg-white rounded-full p-1 shadow-sm">
+                          <span className="flex w-3 h-3 sm:w-4 sm:h-4 bg-emerald-500 rounded-full border-2 border-white items-center justify-center animate-pulse">
                              <span className="sr-only">Active</span>
                           </span>
                         </div>
                       </div>
                       <div>
-                        <h3 className="text-xl font-black text-slate-800 tracking-tight group-hover/profile:text-blue-700 transition-colors">{stat.name}</h3>
+                        <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight group-hover/profile:text-blue-700 transition-colors">{stat.name}</h3>
                         <span className="inline-flex items-center mt-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-slate-100/80 text-slate-600 border border-slate-200/50 backdrop-blur-sm">
                           {stat.role}
                         </span>
@@ -217,20 +214,20 @@ export const EmployeeSalesDashboard: React.FC = () => {
                     </div>
 
                     {/* Big Number Stats Section */}
-                    <div className="flex-1 grid grid-cols-2 gap-4 md:gap-8 border-t border-slate-100/50 xl:border-t-0 pt-6 xl:pt-0">
-                      <div className="space-y-2 group/stat">
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-8 border-t border-slate-100/50 xl:border-t-0 pt-4 sm:pt-6 xl:pt-0">
+                      <div className="space-y-1.5 sm:space-y-2 group/stat">
                         <div className="flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
                           <Calendar className="w-3.5 h-3.5 text-slate-400 group-hover/stat:text-blue-500 transition-colors" /> Today's Verified
                         </div>
-                        <div className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight transition-transform duration-300 origin-left group-hover/stat:scale-105">
+                        <div className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-800 tracking-tight transition-transform duration-300 origin-left group-hover/stat:scale-105">
                           {formatINR(stat.daily).replace('.00', '')}
                         </div>
                       </div>
-                      <div className="space-y-2 group/stat">
+                      <div className="space-y-1.5 sm:space-y-2 group/stat">
                         <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[10px] uppercase tracking-widest">
                           <CalendarRange className="w-3.5 h-3.5 text-blue-500 group-hover/stat:text-indigo-600 transition-colors" /> Monthly Revenue
                         </div>
-                        <div className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-600 tracking-tighter drop-shadow-sm transition-transform duration-300 origin-left group-hover/stat:scale-105">
+                        <div className="text-3xl sm:text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-600 tracking-tighter drop-shadow-sm transition-transform duration-300 origin-left group-hover/stat:scale-105">
                           {formatINR(stat.monthly).replace('.00', '')}
                         </div>
                       </div>

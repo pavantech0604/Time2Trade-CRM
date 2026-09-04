@@ -116,6 +116,31 @@ const generateUUID = () => {
   );
 };
 
+const MOCK_USER_NAMES = ['Priya Verma', 'Ankit Kumar', 'Vikram Malhotra', 'Rahul Saxena', 'Rajesh Sharma'];
+
+const isMockId = (id?: string | null) => {
+  if (!id) return false;
+  return (
+    id === '10000000-0000-0000-0000-000000000002' ||
+    id === '10000000-0000-0000-0000-000000000003' ||
+    id === '10000000-0000-0000-0000-000000000004' ||
+    id === '10000000-0000-0000-0000-000000000005' ||
+    id.startsWith('20000000-') ||
+    id.startsWith('30000000-') ||
+    id.startsWith('40000000-') ||
+    id.startsWith('50000000-')
+  );
+};
+
+const isMockUser = (u: any) => {
+  if (!u) return false;
+  if (u.email === 'karthik@time2trade.com') return false;
+  if (u.email?.includes('capitalgrow.com')) return true;
+  if (isMockId(u.id)) return true;
+  if (MOCK_USER_NAMES.includes(u.name)) return true;
+  return false;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const useMocks = !isSupabaseConfigured || import.meta.env.VITE_ENABLE_MOCK_FALLBACK === 'true';
 
@@ -139,7 +164,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
 
   const [filters, setFilters] = useState<FilterState>({
-    dateFilter: 'this_month',
+    dateFilter: 'all',
+    statusFilter: 'all',
   });
 
   // Current user's live presence
@@ -161,16 +187,66 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadSupabaseData = async () => {
     if (!supabase) return;
     try {
-      const [uRes, lRes, tRes, pRes] = await Promise.all([
+      // Proactively clean legacy mock seed data from Supabase
+      try {
+        await Promise.allSettled([
+          supabase.from('users').delete().in('id', [
+            '10000000-0000-0000-0000-000000000002',
+            '10000000-0000-0000-0000-000000000003',
+            '10000000-0000-0000-0000-000000000004',
+            '10000000-0000-0000-0000-000000000005',
+          ]),
+          supabase.from('users').delete().ilike('email', '%@capitalgrow.com'),
+          supabase.from('leads').delete().like('id', '20000000%'),
+          supabase.from('active_traders').delete().like('id', '30000000%'),
+          supabase.from('payments').delete().like('id', '40000000%'),
+          supabase.from('trading_days').delete().like('id', '30000000%'),
+          supabase.from('expenses').delete().like('id', '50000000%'),
+        ]);
+      } catch {
+        // Ignore RLS delete restrictions
+      }
+
+      const [uRes, lRes, tRes, pRes, tdRes, expRes] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('leads').select('*').order('created_at', { ascending: false }),
         supabase.from('active_traders').select('*').order('joined_at', { ascending: false }),
-        supabase.from('payments').select('*').order('created_at', { ascending: false })
+        supabase.from('payments').select('*').order('created_at', { ascending: false }),
+        supabase.from('trading_days').select('*').order('trade_date', { ascending: false }),
+        supabase.from('expenses').select('*').order('date', { ascending: false }),
       ]);
-      if (uRes.data) setUsers(uRes.data as User[]);
-      if (lRes.data) setLeads(lRes.data as Lead[]);
-      if (tRes.data) setTraders(tRes.data as ActiveTrader[]);
-      if (pRes.data) setPayments(pRes.data as Payment[]);
+
+      if (uRes.data) {
+        setUsers((uRes.data as User[]).filter((u) => !isMockUser(u)));
+      }
+      if (lRes.data) {
+        setLeads((lRes.data as Lead[]).filter((l) => !isMockId(l.id) && !isMockId(l.assigned_to)));
+      }
+      if (tRes.data) {
+        setTraders(
+          (tRes.data as any[])
+            .filter((t) => !isMockId(t.id) && !isMockId(t.assigned_to) && !isMockId(t.lead_id))
+            .map((t: any) => ({
+              ...t,
+              employee_id: t.assigned_to || t.employee_id,
+            })) as ActiveTrader[]
+        );
+      }
+      if (pRes.data) {
+        setPayments(
+          (pRes.data as Payment[]).filter((p) => !isMockId(p.id) && !isMockId(p.trader_id) && !isMockId(p.employee_id))
+        );
+      }
+      if (tdRes.data) {
+        setTradingDays(
+          (tdRes.data as TradingDay[]).filter((td) => !isMockId(td.id) && !isMockId(td.trader_id))
+        );
+      }
+      if (expRes.data) {
+        setExpenses(
+          (expRes.data as Expense[]).filter((exp) => !isMockId(exp.id))
+        );
+      }
     } catch {
       // Silently handle offline/mock mode
     }
@@ -193,7 +269,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (profile) {
               const userObj: User = {
                 id: profile.id,
-                name: profile.full_name || session.user.email?.split('@')[0] || 'Staff',
+                name: profile.name || profile.full_name || session.user.email?.split('@')[0] || 'Staff',
                 email: profile.email || session.user.email || '',
                 role: profile.role as UserRole,
                 is_active: profile.is_active,
@@ -361,12 +437,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      let newUserId = `usr-${Date.now()}`;
+      let newUserId = generateUUID();
 
       // Supabase Signup
       if (supabase) {
         try {
-          const { data, error: sbError } = await supabase.auth.signUp({
+          const { data: authData, error: sbError } = await supabase.auth.signUp({
             email: normalizedEmail,
             password: passwordInput,
             options: {
@@ -377,11 +453,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             },
           });
 
-          if (data?.user) {
-            newUserId = data.user.id;
+          if (authData?.user) {
+            newUserId = authData.user.id;
           }
-        } catch {
-          // Silent fallback
+
+          // Persist user record to public.users table so administrator can review and approve
+          await supabase.from('users').upsert({
+            id: newUserId,
+            name: fullName.trim(),
+            email: normalizedEmail,
+            phone: phoneInput?.trim() || null,
+            role: 'pending',
+            is_active: false,
+            approval_status: 'pending_admin_review',
+          });
+        } catch (sbErr) {
+          console.error('Supabase signup/profile sync error:', sbErr);
         }
       }
 
@@ -449,72 +536,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const normalizedEmail = emailInput.trim().toLowerCase();
+      let authenticatedUser: User | null = null;
 
-      // 1. Find user in current state
-      let matched = users.find(
-        (u) =>
-          u.email.toLowerCase() === normalizedEmail ||
-          u.email.toLowerCase().replace('.com', '.in') === normalizedEmail ||
-          u.email.toLowerCase().replace('.in', '.com') === normalizedEmail ||
-          u.email.toLowerCase().replace('time2trade.com', 'capitalgrow.com') === normalizedEmail ||
-          u.email.toLowerCase().replace('capitalgrow.com', 'time2trade.com') === normalizedEmail
-      );
-
-      // 2. Query Supabase directly if connected
-      if (!matched && supabase && !useMocks) {
+      // 1. Try Supabase Auth first (for real users with registered passwords)
+      if (supabase) {
         try {
-          const alternateEmail = normalizedEmail.includes('time2trade.com')
-            ? normalizedEmail.replace('time2trade.com', 'capitalgrow.com')
-            : normalizedEmail.replace('capitalgrow.com', 'time2trade.com');
+          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password: passwordInput,
+          });
 
-          const { data: dbUsers } = await supabase
-            .from('users')
-            .select('*')
-            .or(`email.ilike.${normalizedEmail},email.ilike.${alternateEmail}`);
+          if (!authError && authData?.user) {
+            // Fetch profile from public.users table
+            const { data: profile } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', authData.user.id)
+              .single();
 
-          if (dbUsers && dbUsers.length > 0) {
-            const u = dbUsers[0];
-            matched = {
-              id: u.id,
-              name: u.name,
-              email: u.email,
-              phone: u.phone,
-              role: u.role as UserRole,
-              is_active: u.is_active !== false,
-              approval_status: (u.approval_status || 'approved') as ApprovalStatus,
-              avatar_url: u.avatar_url,
-              created_at: u.created_at || new Date().toISOString(),
-            };
-            // Add to local state
-            setUsers((prev) => [...prev.filter((x) => x.id !== u.id), matched!]);
+            if (profile) {
+              authenticatedUser = {
+                id: profile.id,
+                name: profile.name || profile.full_name || authData.user.email?.split('@')[0] || 'Staff',
+                email: profile.email || authData.user.email || '',
+                phone: profile.phone,
+                role: profile.role as UserRole,
+                is_active: profile.is_active !== false,
+                approval_status: (profile.approval_status || 'approved') as ApprovalStatus,
+                avatar_url: profile.avatar_url,
+                created_at: profile.created_at || new Date().toISOString(),
+              };
+            }
           }
         } catch {
-          // Silent fallback
+          // Fall through to admin credentials check
         }
       }
 
-      // 3. Fallback to INITIAL_USERS template data
-      if (!matched) {
-        matched = INITIAL_USERS.find(
-          (u) =>
-            u.email.toLowerCase() === normalizedEmail ||
-            u.email.toLowerCase().replace('time2trade.com', 'capitalgrow.com') === normalizedEmail ||
-            u.email.toLowerCase().replace('capitalgrow.com', 'time2trade.com') === normalizedEmail
-        );
+      // 2. Check Admin Credentials (karthik@time2trade.com / Time2trade@2026)
+      if (!authenticatedUser && normalizedEmail === 'karthik@time2trade.com' && passwordInput === 'Time2trade@2026') {
+        const foundAdmin = users.find((u) => u.email.toLowerCase() === 'karthik@time2trade.com') || INITIAL_USERS[0];
+        authenticatedUser = {
+          ...foundAdmin,
+          role: 'admin',
+          is_active: true,
+          approval_status: 'approved',
+        };
       }
 
-      // 4. Role keyword matching fallback for staff testing
-      if (!matched) {
-        if (normalizedEmail.includes('employee') || normalizedEmail.includes('priya') || normalizedEmail.includes('ankit') || normalizedEmail.includes('vikram') || normalizedEmail.includes('rahul')) {
-          matched = users.find((u) => u.role === 'employee' && u.approval_status === 'approved') ||
-            INITIAL_USERS.find((u) => u.role === 'employee');
-        } else if (normalizedEmail.includes('admin') || normalizedEmail.includes('karthik')) {
-          matched = users.find((u) => u.role === 'admin' && u.approval_status === 'approved') ||
-            INITIAL_USERS.find((u) => u.role === 'admin');
-        }
-      }
-
-      if (!matched) {
+      if (!authenticatedUser) {
         setLoading(false);
         return {
           success: false,
@@ -523,8 +593,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      // Check approval status
-      if (matched.approval_status === 'pending_admin_review' || matched.role === 'pending') {
+      // 3. Verify Account Status & Approvals
+      if (authenticatedUser.is_active === false) {
+        if (supabase) await supabase.auth.signOut().catch(() => {});
+        setLoading(false);
+        return {
+          success: false,
+          status: 'disabled',
+          message: 'Your account has been deactivated. Please contact an administrator.',
+        };
+      }
+
+      if (authenticatedUser.approval_status === 'pending_admin_review' || authenticatedUser.role === 'pending') {
+        if (supabase) await supabase.auth.signOut().catch(() => {});
         setLoading(false);
         return {
           success: false,
@@ -533,38 +614,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      if (matched.approval_status === 'rejected') {
+      if (authenticatedUser.approval_status === 'rejected') {
+        if (supabase) await supabase.auth.signOut().catch(() => {});
         setLoading(false);
         return {
           success: false,
           status: 'rejected',
-          message: `Your account application was rejected. Reason: ${matched.rejection_reason || 'Compliance check failure.'}`,
+          message: `Your account application was rejected. Reason: ${authenticatedUser.rejection_reason || 'Compliance check failure.'}`,
         };
       }
 
-      if (matched.is_active === false) {
-        setLoading(false);
-        return {
-          success: false,
-          status: 'disabled',
-          message: 'Your employee account has been deactivated. Please contact the administrator.',
-        };
-      }
-
-      // Verified active user -> Login success
-      setCurrentUser(matched);
-      localStorage.setItem('time2trade_auth_user', JSON.stringify(matched));
+      // 4. Successful Authentication
+      setCurrentUser(authenticatedUser);
+      localStorage.setItem('time2trade_auth_user', JSON.stringify(authenticatedUser));
       if (supabase && !useMocks) {
         await loadSupabaseData();
       }
 
-      // Record Login Event & Set Presence Online
+      // 5. Record Login Event & Update Presence
       const nowIso = new Date().toISOString();
       const loginLog: AttendanceLog = {
         id: `att-${Date.now()}`,
-        user_id: matched.id,
-        user_name: matched.name,
-        user_role: matched.role,
+        user_id: authenticatedUser.id,
+        user_name: authenticatedUser.name,
+        user_role: authenticatedUser.role,
         event_type: 'login',
         event_time: nowIso,
         status_before: 'offline',
@@ -572,15 +645,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       setAttendanceLogs((prev) => [loginLog, ...prev]);
 
-      const prevP = presenceList.find((p) => p.user_id === matched.id);
-      const isLate = new Date().getHours() >= 10; // Late if logged in after 10:00 AM
+      const prevP = presenceList.find((p) => p.user_id === authenticatedUser!.id);
+      const isLate = new Date().getHours() >= 10;
 
       setPresenceList((prev) => [
         {
-          user_id: matched.id,
-          user_name: matched.name,
-          user_email: matched.email,
-          user_role: matched.role,
+          user_id: authenticatedUser!.id,
+          user_name: authenticatedUser!.name,
+          user_email: authenticatedUser!.email,
+          user_role: authenticatedUser!.role,
           current_status: 'online',
           last_status_change: nowIso,
           today_login_time: prevP?.today_login_time || nowIso,
@@ -589,7 +662,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           total_lunch_minutes: prevP?.total_lunch_minutes || 0,
           is_late: isLate,
         },
-        ...prev.filter((p) => p.user_id !== matched.id),
+        ...prev.filter((p) => p.user_id !== authenticatedUser!.id),
       ]);
 
       setLoading(false);
@@ -799,12 +872,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const toggleDarkMode = () => {
-    setIsDarkMode((prev) => !prev);
-    if (!isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    setIsDarkMode((prev) => {
+      const next = !prev;
+      if (next) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      return next;
+    });
   };
 
   const setDateFilter = (df: DateFilter) => {
@@ -920,7 +996,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         trading_experience: qualification.trading_experience,
         preferred_market: qualification.preferred_market,
         
-        rm_assigned_to: selectedRMId,
+        assigned_to: selectedRMId,
         updated_at: now,
       }).eq('id', leadId);
     }
@@ -989,7 +1065,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           lead_id: leadId,
           name: targetLead.name,
           phone: targetLead.phone,
-          
+          assigned_to: rmId,
           status: 'active',
           joined_at: now.split('T')[0],
           initial_capital: details?.initialCapital,
@@ -998,23 +1074,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }),
         supabase.from('leads').update({ 
           status: 'active_trader', 
-           
           updated_at: now 
         }).eq('id', leadId)
       ]);
     }
   };
 
-  const addTradingDay = (traderId: string, tradeDate: string, totalProfit: number, tradesCount: number) => {
-    const newTdId = `td-${Date.now()}`;
+  const addTradingDay = async (traderId: string, tradeDate: string, totalProfit: number, tradesCount: number) => {
+    const newTdId = generateUUID();
+    const isWinning = totalProfit > 0;
+    const now = new Date().toISOString();
     const newTd: TradingDay = {
       id: newTdId,
       trader_id: traderId,
       trade_date: tradeDate,
       total_profit: totalProfit,
       trades_count: tradesCount,
-      is_winning_day: totalProfit > 0,
-      created_at: new Date().toISOString(),
+      is_winning_day: isWinning,
+      created_at: now,
     };
 
     const updatedTradingDays = [newTd, ...tradingDays.filter((d) => !(d.trader_id === traderId && d.trade_date === tradeDate))];
@@ -1033,11 +1110,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               longest_streak: Math.max(t.longest_streak, longestStreak),
               total_profit_gained: totalGained,
               last_trade_date: tradeDate,
-              updated_at: new Date().toISOString(),
+              updated_at: now,
             }
           : t
       )
     );
+
+    if (supabase && !useMocks) {
+      try {
+        await supabase.from('trading_days').upsert({
+          id: newTdId,
+          trader_id: traderId,
+          trade_date: tradeDate,
+          total_profit: totalProfit,
+          trades_count: tradesCount,
+          is_winning_day: isWinning,
+        }, { onConflict: 'trader_id,trade_date' });
+
+        await supabase.from('active_traders').update({
+          current_streak: currentStreak,
+          longest_streak: Math.max(longestStreak),
+          total_profit_gained: totalGained,
+          last_trade_date: tradeDate,
+          updated_at: now,
+        }).eq('id', traderId);
+      } catch (err) {
+        console.error('Error syncing trading day to Supabase:', err);
+      }
+    }
   };
 
   const addPayment = async (paymentInput: Omit<Payment, 'id' | 'created_at' | 'status'>) => {
@@ -1132,16 +1232,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const addExpense = (expenseInput: Omit<Expense, 'id' | 'created_at'>) => {
-    const newExpId = `exp-${Date.now()}`;
+  const addExpense = async (expenseInput: Omit<Expense, 'id' | 'created_at'>) => {
+    const newExpId = generateUUID();
+    const now = new Date().toISOString();
     const newExpense: Expense = {
       ...expenseInput,
       id: newExpId,
-      added_by: currentUser?.id || 'sys',
+      added_by: currentUser?.id,
       added_by_name: currentUser?.name || 'Staff',
-      created_at: new Date().toISOString(),
+      created_at: now,
     };
     setExpenses((prev) => [newExpense, ...prev]);
+
+    if (supabase && !useMocks) {
+      try {
+        await supabase.from('expenses').insert({
+          id: newExpId,
+          date: expenseInput.date,
+          category: expenseInput.category,
+          amount: expenseInput.amount,
+          description: expenseInput.description,
+          added_by: currentUser?.id || null,
+          receipt_url: expenseInput.receipt_url || null,
+        });
+      } catch (err) {
+        console.error('Error syncing expense to Supabase:', err);
+      }
+    }
   };
 
   const markNotificationRead = (id: string) => {

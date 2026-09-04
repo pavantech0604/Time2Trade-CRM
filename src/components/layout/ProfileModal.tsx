@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, UploadCloud, CheckCircle2 } from 'lucide-react';
+import { X, UploadCloud, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { uploadFileToBucket, supabase } from '../../lib/supabase';
 
@@ -13,6 +13,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   const { currentUser, updateUserAvatar } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen || !currentUser) return null;
 
@@ -22,11 +23,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
 
     setIsUploading(true);
     setSuccess(false);
+    setErrorMessage(null);
 
     const res = await uploadFileToBucket('avatars', file, `user_${currentUser.id}`);
 
     if (res.error) {
-      alert(`Error uploading file: ${res.error.message}`);
+      setErrorMessage(`Upload failed: ${res.error.message || 'Please check network connection'}`);
       setIsUploading(false);
       return;
     }
@@ -46,7 +48,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
       setTimeout(() => {
         setSuccess(false);
         onClose();
-      }, 2000);
+      }, 1500);
     }
     
     setIsUploading(false);
@@ -127,8 +129,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
               </div>
             </div>
             
+            {errorMessage && (
+              <div className="mt-4 flex items-center gap-2 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-4 py-2.5 rounded-xl w-full justify-center">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
             {success && (
-              <div className="mt-5 flex items-center gap-2 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-2.5 rounded-xl w-full justify-center">
+              <div className="mt-4 flex items-center gap-2 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-2.5 rounded-xl w-full justify-center">
                 <CheckCircle2 className="w-4 h-4" />
                 Profile picture updated!
               </div>

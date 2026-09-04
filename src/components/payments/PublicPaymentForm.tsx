@@ -232,27 +232,27 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="font-semibold text-slate-650">Client Name & Phone *</label>
+              <label className="font-semibold text-slate-700">Client Name & Phone *</label>
               <button
                 type="button"
                 onClick={() => setIsManualClient(!isManualClient)}
-                className="text-[11px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                className="text-xs text-blue-600 hover:underline font-semibold cursor-pointer"
               >
                 {isManualClient ? 'Select from Active Traders' : 'Enter Manually'}
               </button>
             </div>
             {isManualClient ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <input
                   type="text"
                   required
                   value={manualClientName}
                   onChange={(e) => setManualClientName(e.target.value)}
                   placeholder="Client Full Name (e.g. Rahul Sharma)"
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 />
                 <input
                   type="text"
@@ -260,7 +260,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                   value={manualClientPhone}
                   onChange={(e) => setManualClientPhone(e.target.value)}
                   placeholder="Phone (+91 98333 44556)"
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none font-mono"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-none font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
             ) : (
@@ -268,7 +268,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                 value={traderId}
                 required
                 onChange={(e) => setTraderId(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               >
                 <option value="" disabled>-- Select Active Trader --</option>
                 {traders.map((trader) => (
@@ -281,27 +281,27 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
           </div>
 
           <div>
-            <label className="font-semibold text-slate-650 block mb-1">Employee Name *</label>
+            <label className="font-semibold text-slate-700 block mb-1">Credited Staff / Employee *</label>
             <select
               value={employeeId}
               required
               onChange={(e) => setEmployeeId(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none"
+              className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             >
               <option value="">-- Direct / Head Office --</option>
               {users
                 .filter((u) => u.is_active && (u.role === 'employee' || u.role === 'admin'))
                 .map((user) => (
                   <option key={user.id} value={user.id}>
-                    {user.name} ({user.role === 'employee' ? 'RM' : user.role === 'admin' ? 'Admin' : 'Telecaller'})
+                    {user.name} ({user.role === 'employee' ? 'Employee' : 'Admin'})
                   </option>
                 ))}
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="font-semibold text-slate-650 block mb-1">Payment Amount (₹) *</label>
+              <label className="font-semibold text-slate-700 block mb-1">Payment Amount (₹) *</label>
               <input
                 type="number"
                 required
@@ -309,16 +309,16 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                 value={amount}
                 placeholder="e.g. 25000"
                 onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
 
             <div>
-              <label className="font-semibold text-slate-650 block mb-1">Payment Mode *</label>
+              <label className="font-semibold text-slate-700 block mb-1">Payment Mode *</label>
               <select
                 value={paymentMode}
                 onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               >
                 <option value="UPI">UPI Transfer</option>
                 <option value="Bank Transfer">Bank Transfer / IMPS</option>
@@ -329,48 +329,48 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="font-semibold text-slate-650 block mb-1">UTR / Reference Number *</label>
+              <label className="font-semibold text-slate-700 block mb-1">UTR / Reference Number *</label>
               <input
                 type="text"
                 required
                 value={utr}
                 onChange={(e) => setUtr(e.target.value)}
                 placeholder="e.g. UTR994820194821"
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 font-mono focus:outline-none"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
 
             <div>
-              <label className="font-semibold text-slate-650 block mb-1">Receiver Bank Holder Name *</label>
+              <label className="font-semibold text-slate-700 block mb-1">Receiver Bank Holder Name *</label>
               <input
                 type="text"
                 required
                 value={receiverBank}
                 onChange={(e) => setReceiverBank(e.target.value)}
                 placeholder="e.g. Time2Trade Solutions, Karthik Muni"
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all hover:border-brand-primary/50"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
           </div>
 
           <div>
-            <label className="font-semibold text-slate-650 block mb-1">Transaction Date & Time *</label>
+            <label className="font-semibold text-slate-700 block mb-1">Transaction Date & Time *</label>
             <input
               type="datetime-local"
               required
               value={transactionTime}
               onChange={(e) => setTransactionTime(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none"
+              className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
 
           {/* Screenshot Upload Dropzone */}
           <div>
-            <label className="font-semibold text-slate-650 block mb-1">Upload Payment Screenshot Proof *</label>
-            <div className={`border-2 border-dashed rounded-2xl p-4 text-center space-y-2 cursor-pointer relative transition-all ${
+            <label className="font-semibold text-slate-700 block mb-1">Upload Payment Screenshot Proof *</label>
+            <div className={`border-2 border-dashed rounded-2xl p-5 text-center space-y-2 cursor-pointer relative transition-all min-h-[100px] flex flex-col items-center justify-center ${
               screenshotUrl 
                 ? 'border-emerald-500/50 bg-emerald-500/5' 
-                : 'border-slate-200 hover:border-[#16A34A]/50 bg-[#FAF8F5]'
+                : 'border-slate-300 hover:border-blue-500/50 bg-[#FAF8F5]'
             }`}>
               <input
                 type="file"
@@ -378,8 +378,8 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                 onChange={handleFileUpload}
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
-              <Upload className={`w-6 h-6 mx-auto ${screenshotUrl ? 'text-emerald-500' : 'text-slate-400'}`} />
-              <p className="text-xs text-slate-500 font-medium">
+              <Upload className={`w-7 h-7 mx-auto ${screenshotUrl ? 'text-emerald-500' : 'text-slate-400'}`} />
+              <p className="text-xs text-slate-600 font-medium">
                 {isUploading 
                   ? 'Uploading proof image...' 
                   : screenshotUrl 
@@ -398,13 +398,13 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
           {/* Remarks Optional field matching Google Form */}
           <div>
-            <label className="font-semibold text-slate-650 block mb-1">Remarks (Optional)</label>
+            <label className="font-semibold text-slate-700 block mb-1">Remarks (Optional)</label>
             <textarea
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               placeholder="Add any optional comments or verification details..."
               rows={2}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none"
+              className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
 

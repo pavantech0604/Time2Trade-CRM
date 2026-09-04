@@ -13,6 +13,9 @@ export type AttendanceEventType =
   | 'lunch_end';
 
 export type LeadStatus =
+  | 'new'
+  | 'called'
+  | 'not_interested'
   | 'callback_requested'
   | 'interested'
   | 'follow_up_later'

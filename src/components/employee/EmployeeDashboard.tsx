@@ -121,15 +121,15 @@ export const EmployeeDashboard: React.FC = () => {
   };
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="p-3.5 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500">
       {/* Header section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 bg-white p-6 rounded-3xl border border-slate-200/60 shadow-sm relative overflow-hidden">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6 bg-white p-4 sm:p-6 rounded-3xl border border-slate-200/60 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
         <div className="space-y-1 relative z-10">
-          <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-800">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-slate-800">
             Welcome back, {currentUser.name.split(' ')[0]} 👋
           </h1>
-          <p className="text-sm font-medium text-slate-500">
+          <p className="text-xs sm:text-sm font-medium text-slate-500">
             Here's what's happening with your pipeline today.
           </p>
         </div>
@@ -137,7 +137,7 @@ export const EmployeeDashboard: React.FC = () => {
         <div className="flex items-center gap-3 relative z-10">
           <button 
             onClick={() => setIsAddLeadModalOpen(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-blue-500/20 active:scale-95"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             Add Warm Lead
@@ -146,7 +146,7 @@ export const EmployeeDashboard: React.FC = () => {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 sm:gap-4">
         <MetricCard
           title="Active Leads"
           value={myLeads.length.toString()}
@@ -163,24 +163,26 @@ export const EmployeeDashboard: React.FC = () => {
           isCurrency={false}
           onClick={() => setActiveTab('traders')}
         />
-        <MetricCard
-          title="Total Sales"
-          value={totalSales}
-          icon={Wallet}
-          variant="positive"
-          isCurrency={true}
-          onClick={() => setActiveTab('payments')}
-        />
+        <div className="sm:col-span-2 md:col-span-1">
+          <MetricCard
+            title="Total Sales"
+            value={totalSales}
+            icon={Wallet}
+            variant="positive"
+            isCurrency={true}
+            onClick={() => setActiveTab('payments')}
+          />
+        </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="bg-white border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden flex flex-col h-[600px]">
+      <div className="bg-white border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden flex flex-col min-h-[520px]">
         
         {/* Tabs */}
-        <div className="flex items-center gap-6 px-6 pt-6 border-b border-slate-100">
+        <div className="flex items-center gap-4 sm:gap-6 px-4 sm:px-6 pt-4 sm:pt-6 border-b border-slate-100 overflow-x-auto touch-scroll">
           <button
             onClick={() => setActiveTab('leads')}
-            className={`pb-4 text-sm font-bold transition-all relative ${
+            className={`pb-4 text-xs sm:text-sm font-bold transition-all relative shrink-0 cursor-pointer ${
               activeTab === 'leads' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
@@ -191,7 +193,7 @@ export const EmployeeDashboard: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('traders')}
-            className={`pb-4 text-sm font-bold transition-all relative ${
+            className={`pb-4 text-xs sm:text-sm font-bold transition-all relative shrink-0 cursor-pointer ${
               activeTab === 'traders' ? 'text-teal-600' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
@@ -202,7 +204,7 @@ export const EmployeeDashboard: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('payments')}
-            className={`pb-4 text-sm font-bold transition-all relative ${
+            className={`pb-4 text-xs sm:text-sm font-bold transition-all relative shrink-0 cursor-pointer ${
               activeTab === 'payments' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
@@ -404,8 +406,9 @@ export const EmployeeDashboard: React.FC = () => {
 
       {/* Convert Lead to Trader Modal */}
       {isConvertModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setIsConvertModalOpen(false)} />
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative z-10 animate-in zoom-in-95 duration-200">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="font-black text-slate-800 text-lg">Convert to Active Trader</h3>

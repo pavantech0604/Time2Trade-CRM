@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
 import {
-  Building2,
   Lock,
   Mail,
   Eye,
   EyeOff,
   ArrowRight,
-  ShieldCheck,
   AlertTriangle,
   Loader2,
   Clock,
-  UserCheck,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BackgroundEffects } from '../common/BackgroundEffects';

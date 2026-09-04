@@ -10,9 +10,12 @@ export const EmployeeScorecards: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
+  const MOCK_USER_NAMES = ['Priya Verma', 'Ankit Kumar', 'Vikram Malhotra', 'Rahul Saxena', 'Rajesh Sharma'];
+
   // Table ONLY displays leads successfully converted to active traders
   const filteredLeads = leads.filter((l) => {
     if (l.status !== 'active_trader') return false;
+    if (l.id?.startsWith('20000000-')) return false;
     
     if (selectedEmployeeId && l.assigned_to !== selectedEmployeeId) return false;
 
@@ -24,18 +27,24 @@ export const EmployeeScorecards: React.FC = () => {
     return matchesSearch;
   });
 
-  // Calculate detailed performance scorecard metrics for ALL active employees
+  // Calculate detailed performance scorecard metrics for REAL active employees only
   const staffMetrics = users
-    .filter((u) => (u.role === 'employee') && u.is_active)
+    .filter(
+      (u) =>
+        u.role === 'employee' &&
+        u.is_active &&
+        !MOCK_USER_NAMES.includes(u.name) &&
+        !u.email.includes('capitalgrow.com') &&
+        !u.id.startsWith('10000000-0000-0000-0000-')
+    )
     .map((user) => {
-      const handledLeads = leads.filter((l) => l.assigned_to === user.id);
+      const handledLeads = leads.filter((l) => l.assigned_to === user.id && !l.id?.startsWith('20000000-'));
 
       // Filtered count (leads called/actioned from fresh state)
       const filteredCount = handledLeads.length;
 
       // Conversions count (leads successfully converted to active traders)
       const conversionsCount = handledLeads.filter((l) => l.status === 'active_trader').length;
-
 
       return {
         id: user.id,
@@ -73,20 +82,27 @@ export const EmployeeScorecards: React.FC = () => {
         </div>
         
         <div className="flex flex-col gap-3">
-          {staffMetrics.map((metric) => {
-            const completionRate = metric.handled > 0
-              ? ((metric.filtered / metric.handled) * 100).toFixed(1)
-              : '0.0';
-            return (
-              <div 
-                key={metric.id} 
-                onClick={() => setSelectedEmployeeId(selectedEmployeeId === metric.id ? null : metric.id)}
-                className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-6 rounded-2xl border transition-all duration-200 cursor-pointer ${
-                  selectedEmployeeId === metric.id 
-                    ? 'bg-blue-50/50 border-blue-400 shadow-md ring-2 ring-blue-500/20' 
-                    : 'bg-white border-slate-200 shadow-sm hover:shadow-md hover:border-[#C5A028]/30'
-                }`}
-              >
+          {staffMetrics.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-2">
+              <Target className="w-8 h-8 text-slate-300 mx-auto" />
+              <p className="text-sm font-bold text-slate-700">No active employees registered yet</p>
+              <p className="text-xs text-slate-500">When employees sign up and are approved by the administrator, their scorecards will appear here.</p>
+            </div>
+          ) : (
+            staffMetrics.map((metric) => {
+              const completionRate = metric.handled > 0
+                ? ((metric.filtered / metric.handled) * 100).toFixed(1)
+                : '0.0';
+              return (
+                <div 
+                  key={metric.id} 
+                  onClick={() => setSelectedEmployeeId(selectedEmployeeId === metric.id ? null : metric.id)}
+                  className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-6 rounded-2xl border transition-all duration-200 cursor-pointer ${
+                    selectedEmployeeId === metric.id 
+                      ? 'bg-blue-50/50 border-blue-400 shadow-md ring-2 ring-blue-500/20' 
+                      : 'bg-white border-slate-200 shadow-sm hover:shadow-md hover:border-[#C5A028]/30'
+                  }`}
+                >
                 {/* Employee Info */}
                 <div className="flex items-center gap-4 min-w-0 lg:min-w-[240px] w-full lg:w-auto">
                   <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center font-black text-slate-800 text-sm shrink-0">
@@ -146,7 +162,7 @@ export const EmployeeScorecards: React.FC = () => {
                 </div>
               </div>
             );
-          })}
+          }))}
         </div>
       </div>
 

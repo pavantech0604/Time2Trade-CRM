@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Search,
   Bell,
   CreditCard,
   ChevronDown,
@@ -42,21 +41,21 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPaymentForm, onToggleMobil
   > = {
     online: {
       label: 'Online',
-      bg: 'bg-emerald-50 border-emerald-250',
+      bg: 'bg-emerald-50 border-emerald-200',
       text: 'text-emerald-800',
       dot: 'bg-emerald-500',
       icon: CheckCircle2,
     },
     on_break: {
       label: 'On Break',
-      bg: 'bg-amber-50 border-amber-250',
+      bg: 'bg-amber-50 border-amber-200',
       text: 'text-amber-800',
       dot: 'bg-amber-500',
       icon: Coffee,
     },
     on_lunch: {
       label: 'On Lunch',
-      bg: 'bg-purple-50 border-purple-250',
+      bg: 'bg-purple-50 border-purple-200',
       text: 'text-purple-800',
       dot: 'bg-purple-500',
       icon: Utensils,
@@ -128,17 +127,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPaymentForm, onToggleMobil
             badgeText = 'Command Centre';
             mobileBadgeText = 'Admin';
             colorStyle = 'from-slate-900 to-slate-800 shadow-slate-900/10';
-            textColor = 'text-slate-800 bg-slate-100 border-slate-250';
-          } else if (false) {
-            badgeText = 'Relations Desk';
-            mobileBadgeText = 'RM';
-            colorStyle = 'from-emerald-600 to-teal-600 shadow-emerald-500/10';
-            textColor = 'text-emerald-700 bg-emerald-50 border-emerald-250';
+            textColor = 'text-slate-800 bg-slate-100 border-slate-200';
           } else if (currentUser?.role === 'employee') {
-            badgeText = 'Dialer Desk';
-            mobileBadgeText = 'Dialer';
-            colorStyle = 'from-amber-600 to-orange-500 shadow-amber-500/10';
-            textColor = 'text-amber-700 bg-amber-50 border-amber-250';
+            badgeText = 'Trading Operations';
+            mobileBadgeText = 'Employee';
+            colorStyle = 'from-blue-600 to-indigo-600 shadow-blue-500/10';
+            textColor = 'text-blue-700 bg-blue-50 border-blue-200';
           }
 
           return (

@@ -3,18 +3,10 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import {
   LayoutDashboard,
-  Users,
-  TrendingUp,
-  ShieldCheck,
-  Receipt,
-  PhoneCall,
-  UserCheck,
   CreditCard,
   Clock,
   UserCog,
   FileSpreadsheet,
-  Database,
-  Camera,
   Menu,
   X,
 } from 'lucide-react';

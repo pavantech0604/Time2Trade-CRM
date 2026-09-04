@@ -49,30 +49,35 @@ export const EmployeeManagement: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  const MOCK_USER_NAMES = ['Priya Verma', 'Ankit Kumar', 'Vikram Malhotra', 'Rahul Saxena', 'Rajesh Sharma'];
+
   // Filter users
-  const filteredUsers = users.filter((u) => {
-    const matchesSearch =
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (u.phone && u.phone.includes(searchQuery));
+  const filteredUsers = users
+    .filter((u) => !MOCK_USER_NAMES.includes(u.name) && !u.email.includes('capitalgrow.com'))
+    .filter((u) => {
+      const matchesSearch =
+        u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.phone && u.phone.includes(searchQuery));
 
-    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
-    const matchesApproval =
-      approvalFilter === 'all' || (u.approval_status || 'approved') === approvalFilter;
-    const matchesStatus =
-      statusFilter === 'all' ||
-      (statusFilter === 'active' && u.is_active !== false) ||
-      (statusFilter === 'inactive' && u.is_active === false);
+      const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+      const matchesApproval =
+        approvalFilter === 'all' || (u.approval_status || 'approved') === approvalFilter;
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' && u.is_active !== false) ||
+        (statusFilter === 'inactive' && u.is_active === false);
 
-    return matchesSearch && matchesRole && matchesApproval && matchesStatus;
-  });
+      return matchesSearch && matchesRole && matchesApproval && matchesStatus;
+    });
 
   // KPIs
-  const totalEmployees = users.length;
-  const pendingReviews = users.filter(
+  const realUsers = users.filter((u) => !MOCK_USER_NAMES.includes(u.name) && !u.email.includes('capitalgrow.com'));
+  const totalEmployees = realUsers.length;
+  const pendingReviews = realUsers.filter(
     (u) => u.approval_status === 'pending_admin_review' || u.role === 'pending'
   ).length;
-  const approvedStaff = users.filter((u) => u.approval_status === 'approved').length;
+  const approvedStaff = realUsers.filter((u) => u.approval_status === 'approved').length;
   const activeStaff = users.filter((u) => u.is_active !== false && u.approval_status === 'approved').length;
 
   const handleOpenAssignModal = (user: User) => {

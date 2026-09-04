@@ -28,16 +28,33 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
   const pendingVerificationList = payments.filter((p) => p.status === 'pending_verification');
   const pendingHandoffsList = leads.filter((l) => l.status === 'interested');
 
-  // Chart data for daily approved payments
-  const chartData = [
-    { date: 'Aug 13', amount: 45000 },
-    { date: 'Aug 14', amount: 82000 },
-    { date: 'Aug 15', amount: 65000 },
-    { date: 'Aug 16', amount: 110000 },
-    { date: 'Aug 17', amount: 95000 },
-    { date: 'Aug 18', amount: 69000 },
-    { date: 'Aug 19', amount: 164000 },
-  ];
+  // Dynamically compute last 7 days collections from actual approved payments
+  const chartData = React.useMemo(() => {
+    const approvedPayments = payments.filter((p) => p.status === 'approved');
+    const daysMap = new Map<string, number>();
+
+    // Generate past 7 days keys
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      daysMap.set(key, 0);
+    }
+
+    // Accumulate amounts
+    approvedPayments.forEach((p) => {
+      const dateKey = (p.verified_at || p.created_at || '').split('T')[0];
+      if (daysMap.has(dateKey)) {
+        daysMap.set(dateKey, (daysMap.get(dateKey) || 0) + Number(p.amount || 0));
+      }
+    });
+
+    return Array.from(daysMap.entries()).map(([dateKey, amount]) => {
+      const d = new Date(dateKey + 'T00:00:00');
+      const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return { date: label, amount };
+    });
+  }, [payments]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 font-sans">
