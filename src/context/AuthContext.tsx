@@ -12,6 +12,7 @@ import {
   TradingDay,
   Payment,
   PaymentStatus,
+  PaymentAllocation,
   Expense,
   NotificationItem,
   AuditLog,
@@ -98,6 +99,9 @@ interface AuthContextType {
   verifyPayment: (paymentId: string, isApproved: boolean, remarks?: string) => void;
   addExpense: (expenseInput: Omit<Expense, 'id' | 'created_at'>) => void;
   markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: (userId?: string) => void;
+  deleteNotification: (id: string) => void;
+  clearAllNotifications: (userId?: string) => void;
   updateUserAvatar: (url: string) => Promise<void>;
 
   // Visual Theme
@@ -142,24 +146,50 @@ const isMockUser = (u: any) => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const useMocks = !isSupabaseConfigured || import.meta.env.VITE_ENABLE_MOCK_FALLBACK === 'true';
+  const useMocks = false;
 
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Presence and Attendance State
-  const [presenceList, setPresenceList] = useState<UserPresence[]>(useMocks ? INITIAL_USER_PRESENCE : []);
-  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>(useMocks ? INITIAL_ATTENDANCE_LOGS : []);
+  const [presenceList, setPresenceList] = useState<UserPresence[]>([]);
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
 
-  const [leads, setLeads] = useState<Lead[]>(useMocks ? INITIAL_LEADS : []);
-  const [traders, setTraders] = useState<ActiveTrader[]>(useMocks ? INITIAL_TRADERS : []);
-  const [tradingDays, setTradingDays] = useState<TradingDay[]>(useMocks ? INITIAL_TRADING_DAYS : []);
-  const [payments, setPayments] = useState<Payment[]>(useMocks ? INITIAL_PAYMENTS : []);
-  const [expenses, setExpenses] = useState<Expense[]>(useMocks ? INITIAL_EXPENSES : []);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(useMocks ? INITIAL_NOTIFICATIONS : []);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(useMocks ? INITIAL_AUDIT_LOGS : []);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [traders, setTraders] = useState<ActiveTrader[]>([]);
+  const [tradingDays, setTradingDays] = useState<TradingDay[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
+    try {
+      const stored = localStorage.getItem('time2trade_notifications');
+      if (stored) {
+        const parsed: NotificationItem[] = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(
+            (n) =>
+              !MOCK_USER_NAMES.includes(n.user_name || '') &&
+              !n.user_id?.startsWith('10000000-0000-0000-0000-00000000000')
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('Could not load stored notifications', e);
+    }
+    return [];
+  });
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+
+  // Sync notifications to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('time2trade_notifications', JSON.stringify(notifications));
+    } catch (e) {
+      console.warn('Could not persist notifications', e);
+    }
+  }, [notifications]);
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
 
@@ -187,17 +217,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadSupabaseData = async () => {
     if (!supabase) return;
     try {
-      const [uRes, lRes, tRes, pRes, tdRes, expRes] = await Promise.all([
+      const [uRes, lRes, tRes, pRes, tdRes, expRes, allocRes] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('leads').select('*').order('created_at', { ascending: false }),
         supabase.from('active_traders').select('*').order('joined_at', { ascending: false }),
         supabase.from('payments').select('*').order('created_at', { ascending: false }),
         supabase.from('trading_days').select('*').order('trade_date', { ascending: false }),
         supabase.from('expenses').select('*').order('date', { ascending: false }),
+        Promise.resolve(supabase.from('payment_allocations').select('*').order('created_at', { ascending: true })).catch(() => ({ data: null })),
       ]);
 
+      let userList = users;
       if (uRes.data) {
-        setUsers((uRes.data as User[]).filter((u) => !isMockUser(u)));
+        userList = (uRes.data as User[]).filter((u) => !isMockUser(u));
+        setUsers(userList);
       }
       if (lRes.data) {
         setLeads((lRes.data as Lead[]).filter((l) => !isMockId(l.id) && !isMockId(l.assigned_to)));
@@ -213,9 +246,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
       }
       if (pRes.data) {
-        setPayments(
-          (pRes.data as Payment[]).filter((p) => !isMockId(p.id) && !isMockId(p.trader_id) && !isMockId(p.employee_id))
+        const rawPayments = (pRes.data as Payment[]).filter(
+          (p) => !isMockId(p.id) && !isMockId(p.trader_id) && !isMockId(p.employee_id)
         );
+        const allocations = (allocRes?.data || []) as any[];
+
+        const mappedPayments = rawPayments.map((p) => {
+          const matchedAllocs = allocations.filter((a) => a.payment_id === p.id);
+          const enrichedAllocs = matchedAllocs.map((a) => {
+            const emp = userList.find((u) => u.id === a.employee_id);
+            return {
+              ...a,
+              employee_name: emp?.name || a.employee_name || 'Staff',
+              employee_email: emp?.email || a.employee_email,
+              employee_code: emp?.employee_code || a.employee_code,
+              employee_role: emp?.designation || (emp?.role === 'admin' ? 'Admin' : 'Employee'),
+            };
+          });
+
+          return {
+            ...p,
+            allocations: enrichedAllocs.length > 0 ? enrichedAllocs : p.allocations,
+            is_shared: (enrichedAllocs.length > 1) || p.is_shared,
+          };
+        });
+
+        setPayments(mappedPayments);
       }
       if (tdRes.data) {
         setTradingDays(
@@ -598,12 +654,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // 2. Fallback ONLY for the initial mock seed admin (karthik@time2trade.com)
       // which was inserted directly in SQL schema without a Supabase Auth account
       if (!authenticatedUser && normalizedEmail === 'karthik@time2trade.com' && passwordInput === 'Time2trade@2026') {
-        const foundAdmin = users.find((u) => u.email.toLowerCase() === 'karthik@time2trade.com') || INITIAL_USERS[0];
+        const foundAdmin = users.find((u) => u.email.toLowerCase() === 'karthik@time2trade.com');
         authenticatedUser = {
-          ...foundAdmin,
+          id: foundAdmin?.id || 'admin-karthik',
+          name: foundAdmin?.name || 'Karthik Muni',
+          email: 'karthik@time2trade.com',
           role: 'admin',
           is_active: true,
           approval_status: 'approved',
+          created_at: foundAdmin?.created_at || new Date().toISOString(),
         };
       }
 
@@ -837,12 +896,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         })
         .eq('id', userId);
     }
+
+    // Send account approved notification to employee
+    const approvedNotif: NotificationItem = {
+      id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
+      user_id: userId,
+      user_name: targetUser?.name,
+      title: '🎉 Account Approved!',
+      message: `Your account registration was approved by Admin. Your role is set to ${assignedRole}. Welcome to Time2Trade CRM!`,
+      type: 'success',
+      category: 'system',
+      action_tab: assignedRole === 'admin' ? 'dashboard' : 'employee-dashboard',
+      action_label: 'Access Dashboard',
+      is_read: false,
+      created_at: nowIso,
+    };
+    setNotifications((prev) => [approvedNotif, ...prev]);
   };
 
   // Admin Action: Reject Employee Application
   const rejectEmployee = async (userId: string, reason: string) => {
     const nowIso = new Date().toISOString();
     const adminId = currentUser?.id || 'admin-system';
+    const targetUser = users.find((u) => u.id === userId);
 
     setUsers((prev) =>
       prev.map((u) =>
@@ -882,6 +958,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         })
         .eq('id', userId);
     }
+
+    // Send rejection notification
+    const rejectNotif: NotificationItem = {
+      id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
+      user_id: userId,
+      user_name: targetUser?.name,
+      title: 'Account Application Update',
+      message: `Your account application was reviewed: ${reason}`,
+      type: 'danger',
+      category: 'system',
+      is_read: false,
+      created_at: nowIso,
+    };
+    setNotifications((prev) => [rejectNotif, ...prev]);
   };
 
   // Admin Action: Toggle Active/Inactive
@@ -985,6 +1075,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Optimistic UI update
     setLeads((prev) => [newLead, ...prev]);
 
+    // Send notification to assigned staff member
+    if (validAssignedTo) {
+      const assignedNotif: NotificationItem = {
+        id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
+        user_id: validAssignedTo,
+        user_name: assignedUser?.name,
+        title: '📋 New Lead Assigned',
+        message: `Lead "${leadInput.name}" (${leadInput.phone}) has been assigned to you.`,
+        type: 'info',
+        category: 'leads',
+        action_tab: 'employee-dashboard',
+        action_label: 'View Desk',
+        client_name: leadInput.name,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      };
+      setNotifications((prev) => [assignedNotif, ...prev]);
+    }
+
     if (supabase && !useMocks) {
       const { error } = await supabase.from('leads').insert({
         id: newId,
@@ -1069,12 +1178,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (selectedRMId) {
       const targetLead = leads.find((l) => l.id === leadId);
+      const rmUser = users.find((u) => u.id === selectedRMId);
       const newNotif: NotificationItem = {
-        id: `notif-${Date.now()}`,
+        id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
         user_id: selectedRMId,
-        title: 'New Lead Handoff Assigned',
-        message: `${targetLead?.name || 'Lead'} interested in RM call (${qualification.preferred_market})`,
+        user_name: rmUser?.name,
+        title: '🎯 New Lead Handoff Assigned',
+        message: `${targetLead?.name || 'Lead'} interested in RM call (${qualification.preferred_market || 'Equity/Commodity'})`,
         type: 'info',
+        category: 'leads',
+        action_tab: 'employee-dashboard',
+        action_label: 'View Desk',
+        client_name: targetLead?.name,
         is_read: false,
         link_path: '/rm-leads',
         created_at: new Date().toISOString(),
@@ -1137,12 +1252,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           initial_capital: details?.initialCapital,
           selected_service: details?.selectedService,
           preferred_market: details?.preferredMarket,
+          current_streak: 0,
+          longest_streak: 0,
+          total_profit_gained: 0,
+          total_profit_shared: 0,
         }),
-        supabase.from('leads').update({ 
-          status: 'active_trader', 
-          updated_at: now 
-        }).eq('id', leadId)
+        supabase.from('leads').update({
+          status: 'active_trader',
+          updated_at: now,
+        }).eq('id', leadId),
       ]);
+    }
+
+    // Send notification to RM
+    if (rmId) {
+      const rmNotif: NotificationItem = {
+        id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
+        user_id: rmId,
+        user_name: rmObj?.name,
+        title: '🚀 Trader Converted!',
+        message: `${targetLead.name} was successfully converted to an active trader under your desk.`,
+        type: 'success',
+        category: 'leads',
+        action_tab: 'employee-dashboard',
+        action_label: 'View Traders',
+        client_name: targetLead.name,
+        is_read: false,
+        created_at: now,
+      };
+      setNotifications((prev) => [rmNotif, ...prev]);
     }
   };
 
@@ -1278,6 +1416,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ? currentUser.id
       : null;
 
+    const rawAllocations = paymentInput.allocations || [];
+    const enrichedAllocations: PaymentAllocation[] = rawAllocations.map((alloc) => {
+      const emp = users.find((u) => u.id === alloc.employee_id);
+      return {
+        ...alloc,
+        id: alloc.id || generateUUID(),
+        payment_id: newPayId,
+        employee_name: emp?.name || alloc.employee_name || 'Staff',
+        employee_email: emp?.email || alloc.employee_email,
+        employee_code: emp?.employee_code || alloc.employee_code,
+        employee_role: emp?.designation || (emp?.role === 'admin' ? 'Admin' : 'Employee'),
+        allocation_percentage:
+          alloc.allocation_percentage ||
+          Number(((alloc.allocation_amount / paymentInput.amount) * 100).toFixed(2)),
+      };
+    });
+
+    const isSharedPayment = enrichedAllocations.length > 1 || Boolean(paymentInput.is_shared);
+
     const newPayment: Payment = {
       ...paymentInput,
       id: newPayId,
@@ -1286,7 +1443,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       trader_phone: targetTrader?.phone || (paymentInput as any).trader_phone,
       employee_id: effectiveEmployeeId || 'sys',
       employee_name: currentUser?.name || 'Staff',
+      submitted_by_employee_id: currentUser?.id || effectiveEmployeeId || undefined,
+      submitted_by_employee_name: currentUser?.name || 'Staff',
       status: 'pending_verification',
+      is_shared: isSharedPayment,
+      allocations: enrichedAllocations.length > 0 ? enrichedAllocations : undefined,
       created_at: new Date().toISOString(),
     };
 
@@ -1294,7 +1455,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (supabase && !useMocks) {
       try {
-        const { error } = await supabase.from('payments').insert({
+        const payload: Record<string, any> = {
           id: newPayId,
           trader_id: targetTraderId,
           employee_id: effectiveEmployeeId,
@@ -1304,29 +1465,131 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           transaction_time: paymentInput.transaction_time,
           screenshot_url: paymentInput.screenshot_url,
           status: 'pending_verification',
-        });
+        };
+
+        if (paymentInput.service_category) payload.service_category = paymentInput.service_category;
+        if (paymentInput.service_type) payload.service_type = paymentInput.service_type;
+        if (paymentInput.subscription_duration) payload.subscription_duration = paymentInput.subscription_duration;
+        if (paymentInput.receiver_bank_name) payload.receiver_bank_name = paymentInput.receiver_bank_name;
+        if (paymentInput.remarks) payload.remarks = paymentInput.remarks;
+        if (currentUser?.id) payload.submitted_by_employee_id = currentUser.id;
+        payload.is_shared = isSharedPayment;
+
+        const { error } = await supabase.from('payments').insert(payload);
 
         if (error) {
-          console.error('Supabase Payment Insert Error:', error.message);
+          console.warn('Supabase extended payment insert notice, falling back to base columns:', error.message);
+          // Fallback to basic columns if migration columns aren't added yet
+          await supabase.from('payments').insert({
+            id: newPayId,
+            trader_id: targetTraderId,
+            employee_id: effectiveEmployeeId,
+            amount: paymentInput.amount,
+            payment_mode: paymentInput.payment_mode,
+            utr: paymentInput.utr,
+            transaction_time: paymentInput.transaction_time,
+            screenshot_url: paymentInput.screenshot_url,
+            status: 'pending_verification',
+          });
+        }
+
+        // Insert allocations if provided
+        if (enrichedAllocations.length > 0) {
+          const allocationRecords = enrichedAllocations.map((a) => ({
+            id: a.id,
+            payment_id: newPayId,
+            employee_id: a.employee_id,
+            allocation_amount: a.allocation_amount,
+            allocation_percentage: a.allocation_percentage,
+            is_primary: Boolean(a.is_primary),
+          }));
+
+          const { error: allocErr } = await supabase.from('payment_allocations').insert(allocationRecords);
+          if (allocErr) {
+            console.warn('Could not insert to payment_allocations table:', allocErr.message);
+          }
         }
       } catch (err) {
         console.error('Network error inserting payment:', err);
       }
     }
 
+    const now = new Date().toISOString();
+    const newNotifs: NotificationItem[] = [];
+
+    // 1. Admin Verification Notification
     const adminUser = users.find((u) => u.role === 'admin');
     if (adminUser) {
-      const newNotif: NotificationItem = {
-        id: `notif-${Date.now()}`,
+      newNotifs.push({
+        id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
         user_id: adminUser.id,
+        user_name: adminUser.name,
         title: 'New Payment Verification Required',
-        message: `${newPayment.trader_name} submitted ₹${newPayment.amount} (UTR: ${newPayment.utr})`,
+        message: `${newPayment.trader_name} submitted ₹${Number(newPayment.amount).toLocaleString('en-IN')} (UTR: ${newPayment.utr})`,
         type: 'warning',
+        category: 'sales',
+        action_tab: 'payment-verification',
+        action_label: 'Verify Payment',
+        amount: Number(newPayment.amount),
+        client_name: newPayment.trader_name,
         is_read: false,
         link_path: '/verification',
-        created_at: new Date().toISOString(),
-      };
-      setNotifications((prev) => [newNotif, ...prev]);
+        created_at: now,
+      });
+    }
+
+    // 2. Primary Employee Submission Notification
+    const primaryAlloc = enrichedAllocations.find((a) => a.is_primary);
+    const primaryEmp = users.find(
+      (u) => u.id === newPayment.employee_id || u.id === primaryAlloc?.employee_id || u.name === newPayment.employee_name
+    );
+    if (primaryEmp) {
+      const primaryShareAmt = primaryAlloc ? primaryAlloc.allocation_amount : newPayment.amount;
+      const primaryPct = primaryAlloc ? primaryAlloc.allocation_percentage : 100;
+      newNotifs.push({
+        id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
+        user_id: primaryEmp.id,
+        user_name: primaryEmp.name,
+        title: 'Payment Submitted for Verification',
+        message: `Payment of ₹${Number(newPayment.amount).toLocaleString('en-IN')} for client ${newPayment.trader_name} submitted to Admin. Your share: ₹${Number(primaryShareAmt).toLocaleString('en-IN')} (${primaryPct}%).`,
+        type: 'info',
+        category: 'sales',
+        action_tab: 'employee-dashboard',
+        action_label: 'View Sales',
+        amount: Number(primaryShareAmt),
+        share_percentage: primaryPct,
+        client_name: newPayment.trader_name,
+        is_read: false,
+        created_at: now,
+      });
+    }
+
+    // 3. Shared Staff Allocation Notifications
+    const sharedAllocs = enrichedAllocations.filter((a) => !a.is_primary);
+    sharedAllocs.forEach((a) => {
+      const staffMember = users.find((u) => u.id === a.employee_id || u.name === a.employee_name);
+      if (staffMember) {
+        newNotifs.push({
+          id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
+          user_id: staffMember.id,
+          user_name: staffMember.name,
+          title: `💰 Sales Credit Allocated: ₹${Number(a.allocation_amount).toLocaleString('en-IN')}`,
+          message: `You have been allocated a ${a.allocation_percentage}% profit share (₹${Number(a.allocation_amount).toLocaleString('en-IN')}) for client ${newPayment.trader_name} by ${newPayment.employee_name || 'Team'}. Status: Pending Verification.`,
+          type: 'success',
+          category: 'sales',
+          action_tab: 'employee-dashboard',
+          action_label: 'View Credit',
+          amount: Number(a.allocation_amount),
+          share_percentage: Number(a.allocation_percentage),
+          client_name: newPayment.trader_name,
+          is_read: false,
+          created_at: now,
+        });
+      }
+    });
+
+    if (newNotifs.length > 0) {
+      setNotifications((prev) => [...newNotifs, ...prev]);
     }
   };
 
@@ -1350,28 +1613,123 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
+    const traderId = targetPayment.trader_id;
+    let totalShared = 0;
+
     if (isApproved) {
-      const traderId = targetPayment.trader_id;
       const traderApprovedPayments = [
         ...payments.filter((p) => p.trader_id === traderId && p.id !== paymentId && p.status === 'approved'),
         { ...targetPayment, status: 'approved' as const },
       ];
-      const totalShared = traderApprovedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+      totalShared = traderApprovedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
       setTraders((prev) =>
         prev.map((t) => (t.id === traderId ? { ...t, total_profit_shared: totalShared, updated_at: now } : t))
       );
+    }
       
-      if (supabase && !useMocks) {
+    if (supabase && !useMocks) {
+      if (isApproved) {
         await Promise.all([
           supabase.from('payments').update({ status: newStatus, admin_remarks: remarks, verified_at: now }).eq('id', paymentId),
-          supabase.from('active_traders').update({ total_profit_shared: totalShared, updated_at: now }).eq('id', traderId)
+          supabase.from('active_traders').update({ total_profit_shared: totalShared, updated_at: now }).eq('id', traderId),
         ]);
-      }
-    } else {
-      if (supabase && !useMocks) {
+      } else {
         await supabase.from('payments').update({ status: newStatus, admin_remarks: remarks, verified_at: now }).eq('id', paymentId);
       }
+    }
+
+    // Per-Employee Verification Notifications (Approved / Rejected)
+    const primaryEmp = users.find(
+      (u) => u.id === targetPayment.employee_id || u.name === targetPayment.employee_name
+    );
+    const allocs = targetPayment.allocations || [];
+    const verifyNotifs: NotificationItem[] = [];
+
+    if (isApproved) {
+      if (primaryEmp) {
+        const primaryAlloc = allocs.find((a) => a.is_primary);
+        const myAmount = primaryAlloc ? primaryAlloc.allocation_amount : targetPayment.amount;
+        verifyNotifs.push({
+          id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
+          user_id: primaryEmp.id,
+          user_name: primaryEmp.name,
+          title: `✅ Payment Approved: ₹${Number(targetPayment.amount).toLocaleString('en-IN')}`,
+          message: `Admin approved the payment for client ${targetPayment.trader_name}. Your credit of ₹${Number(myAmount).toLocaleString('en-IN')} is confirmed!`,
+          type: 'success',
+          category: 'sales',
+          action_tab: 'employee-dashboard',
+          action_label: 'View Sales',
+          amount: Number(myAmount),
+          client_name: targetPayment.trader_name,
+          is_read: false,
+          created_at: now,
+        });
+      }
+
+      allocs.filter((a) => !a.is_primary).forEach((a) => {
+        const staff = users.find((u) => u.id === a.employee_id || u.name === a.employee_name);
+        if (staff) {
+          verifyNotifs.push({
+            id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
+            user_id: staff.id,
+            user_name: staff.name,
+            title: `🎉 Sales Credit Confirmed: ₹${Number(a.allocation_amount).toLocaleString('en-IN')}`,
+            message: `Your ${a.allocation_percentage}% profit share (₹${Number(a.allocation_amount).toLocaleString('en-IN')}) for client ${targetPayment.trader_name} has been verified and confirmed.`,
+            type: 'success',
+            category: 'sales',
+            action_tab: 'employee-dashboard',
+            action_label: 'View Credit',
+            amount: Number(a.allocation_amount),
+            share_percentage: Number(a.allocation_percentage),
+            client_name: targetPayment.trader_name,
+            is_read: false,
+            created_at: now,
+          });
+        }
+      });
+    } else {
+      if (primaryEmp) {
+        verifyNotifs.push({
+          id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
+          user_id: primaryEmp.id,
+          user_name: primaryEmp.name,
+          title: `❌ Payment Rejected: ₹${Number(targetPayment.amount).toLocaleString('en-IN')}`,
+          message: `Payment for client ${targetPayment.trader_name} was rejected by Admin.${remarks ? ` Reason: ${remarks}` : ''}`,
+          type: 'danger',
+          category: 'sales',
+          action_tab: 'employee-dashboard',
+          action_label: 'View Desk',
+          amount: Number(targetPayment.amount),
+          client_name: targetPayment.trader_name,
+          is_read: false,
+          created_at: now,
+        });
+      }
+
+      allocs.filter((a) => !a.is_primary).forEach((a) => {
+        const staff = users.find((u) => u.id === a.employee_id || u.name === a.employee_name);
+        if (staff) {
+          verifyNotifs.push({
+            id: `notif-${Date.now()}-${generateUUID().slice(0, 4)}`,
+            user_id: staff.id,
+            user_name: staff.name,
+            title: `⚠️ Allocation Cancelled`,
+            message: `Payment of ₹${Number(targetPayment.amount).toLocaleString('en-IN')} for ${targetPayment.trader_name} was rejected by Admin.${remarks ? ` Reason: ${remarks}` : ''}`,
+            type: 'warning',
+            category: 'sales',
+            action_tab: 'employee-dashboard',
+            action_label: 'View Desk',
+            client_name: targetPayment.trader_name,
+            is_read: false,
+            created_at: now,
+          });
+        }
+      });
+    }
+
+    if (verifyNotifs.length > 0) {
+      setNotifications((prev) => [...verifyNotifs, ...prev]);
     }
   };
 
@@ -1406,6 +1764,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const markNotificationRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+  };
+
+  const markAllNotificationsRead = (userId?: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (!userId || n.user_id === userId ? { ...n, is_read: true } : n))
+    );
+  };
+
+  const deleteNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  const clearAllNotifications = (userId?: string) => {
+    setNotifications((prev) => (userId ? prev.filter((n) => n.user_id !== userId) : []));
   };
 
   return (
@@ -1444,6 +1816,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         verifyPayment,
         addExpense,
         markNotificationRead,
+        markAllNotificationsRead,
+        deleteNotification,
+        clearAllNotifications,
         updateUserAvatar,
         isDarkMode,
         toggleDarkMode,

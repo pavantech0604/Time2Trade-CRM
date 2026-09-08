@@ -51,10 +51,15 @@ export const EmployeeDashboard: React.FC = () => {
 
   if (!currentUser) return null;
 
-  // Derived Data
+  // Derived Data: All payments where current employee is primary, submitting, or shared recipient
   const myLeads = leads.filter(l => l.assigned_to === currentUser.id && l.status !== 'active_trader');
   const myTraders = traders.filter(t => t.employee_id === currentUser.id);
-  const myPayments = payments.filter(p => p.employee_id === currentUser.id);
+
+  const myPayments = payments.filter(p => {
+    const isDirect = p.employee_id === currentUser.id || p.submitted_by_employee_id === currentUser.id;
+    const isAllocated = p.allocations?.some(a => a.employee_id === currentUser.id);
+    return isDirect || isAllocated;
+  });
 
   const filteredLeads = myLeads.filter(l => 
     l.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -68,12 +73,38 @@ export const EmployeeDashboard: React.FC = () => {
 
   const filteredPayments = myPayments.filter(p => 
     p.trader_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.trader_phone?.includes(searchQuery)
+    p.trader_phone?.includes(searchQuery) ||
+    p.utr.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const getMyCreditedAmount = (p: typeof payments[0]) => {
+    if (p.allocations && p.allocations.length > 0) {
+      const myAlloc = p.allocations.find(a => a.employee_id === currentUser.id);
+      return myAlloc ? Number(myAlloc.allocation_amount) : 0;
+    }
+    return p.employee_id === currentUser.id ? Number(p.amount) : 0;
+  };
 
   const totalProfit = myTraders.reduce((sum, t) => sum + (Number(t.total_profit_shared) || 0), 0);
   const approvedPayments = myPayments.filter(p => p.status === 'approved');
-  const totalSales = approvedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const pendingPayments = myPayments.filter(p => p.status === 'pending_verification');
+  
+  // Total sales represents the employee's credited share, not the full payment if shared
+  const totalSales = approvedPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0);
+
+  // Shared sales received (where employee was added by someone else)
+  const sharedSalesReceived = approvedPayments
+    .filter(p => p.allocations?.some(a => a.employee_id === currentUser.id && !a.is_primary))
+    .reduce((sum, p) => sum + getMyCreditedAmount(p), 0);
+
+  // Category breakdown for approved payments
+  const equitySales = approvedPayments
+    .filter(p => p.service_category === 'Equity')
+    .reduce((sum, p) => sum + getMyCreditedAmount(p), 0);
+
+  const commoditySales = approvedPayments
+    .filter(p => p.service_category === 'Commodity')
+    .reduce((sum, p) => sum + getMyCreditedAmount(p), 0);
 
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,7 +177,7 @@ export const EmployeeDashboard: React.FC = () => {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         <MetricCard
           title="Active Leads"
           value={myLeads.length.toString()}
@@ -163,78 +194,69 @@ export const EmployeeDashboard: React.FC = () => {
           isCurrency={false}
           onClick={() => setActiveTab('traders')}
         />
-        <div className="sm:col-span-2 md:col-span-1">
-          <MetricCard
-            title="Total Sales"
-            value={totalSales}
-            icon={Wallet}
-            variant="positive"
-            isCurrency={true}
-            onClick={() => setActiveTab('payments')}
-          />
-        </div>
+        <MetricCard
+          title="My Approved Sales"
+          value={totalSales}
+          icon={Wallet}
+          variant="positive"
+          isCurrency={true}
+          onClick={() => setActiveTab('payments')}
+        />
+        <MetricCard
+          title="Shared Sales Received"
+          value={sharedSalesReceived}
+          icon={TrendingUp}
+          variant="info"
+          isCurrency={true}
+          onClick={() => setActiveTab('payments')}
+        />
       </div>
 
       {/* Main Content Area */}
       <div className="bg-white border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden flex flex-col min-h-[520px]">
-        
-        {/* Tabs */}
-        <div className="flex items-center gap-4 sm:gap-6 px-4 sm:px-6 pt-4 sm:pt-6 border-b border-slate-100 overflow-x-auto touch-scroll">
-          <button
-            onClick={() => setActiveTab('leads')}
-            className={`pb-4 text-xs sm:text-sm font-bold transition-all relative shrink-0 cursor-pointer ${
-              activeTab === 'leads' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            My Leads Pipeline
-            {activeTab === 'leads' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full" />
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('traders')}
-            className={`pb-4 text-xs sm:text-sm font-bold transition-all relative shrink-0 cursor-pointer ${
-              activeTab === 'traders' ? 'text-teal-600' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            Active Traders
-            {activeTab === 'traders' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-600 rounded-t-full" />
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('payments')}
-            className={`pb-4 text-xs sm:text-sm font-bold transition-all relative shrink-0 cursor-pointer ${
-              activeTab === 'payments' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            Uploaded Payments
-            {activeTab === 'payments' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full" />
-            )}
-          </button>
-        </div>
+        {/* Navigation Tabs and Search */}
+        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-1.5 bg-slate-100/70 p-1 rounded-2xl">
+            <button
+              onClick={() => setActiveTab('leads')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'leads' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              My Leads ({myLeads.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('traders')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'traders' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              My Traders ({myTraders.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('payments')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'payments' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              My Sales & Payments ({myPayments.length})
+            </button>
+          </div>
 
-        {/* Toolbar */}
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between gap-4">
-          <div className="relative flex-1 max-w-md">
+          <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder={`Search ${activeTab === 'leads' ? 'leads' : activeTab === 'traders' ? 'traders' : 'payments'}...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
+              placeholder="Search by name, phone, UTR..."
+              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all">
-            <Filter className="w-4 h-4" />
-            Filters
-          </button>
         </div>
 
-        {/* Data List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/30">
+        {/* Tab Contents */}
+        <div className="p-4 sm:p-6 flex-1 space-y-3">
           {activeTab === 'leads' && (
             filteredLeads.length > 0 ? filteredLeads.map((lead) => (
               <div key={lead.id} className="bg-white p-4 rounded-2xl border border-slate-200/80 hover:border-blue-300 shadow-sm transition-all group flex flex-col md:flex-row gap-4 md:items-center justify-between">
@@ -270,7 +292,7 @@ export const EmployeeDashboard: React.FC = () => {
                 </div>
               </div>
             )) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3">
+              <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3 py-12">
                 <Users className="w-12 h-12 text-slate-200" />
                 <p className="font-medium">No leads found.</p>
               </div>
@@ -304,7 +326,7 @@ export const EmployeeDashboard: React.FC = () => {
                 </div>
               </div>
             )) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3">
+              <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3 py-12">
                 <TrendingUp className="w-12 h-12 text-slate-200" />
                 <p className="font-medium">No active traders found.</p>
               </div>
@@ -312,38 +334,88 @@ export const EmployeeDashboard: React.FC = () => {
           )}
 
           {activeTab === 'payments' && (
-            filteredPayments.length > 0 ? filteredPayments.map((payment) => (
-              <div key={payment.id} className="bg-white p-4 rounded-2xl border border-slate-200/80 hover:border-indigo-300 shadow-sm transition-all group flex flex-col md:flex-row gap-4 md:items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-lg shadow-inner">
-                    {payment.trader_name?.charAt(0) || 'P'}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors">{payment.trader_name || 'Unknown Trader'}</h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                        {payment.trader_phone}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider font-mono
-                        ${payment.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 
-                          payment.status === 'pending_verification' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}
-                      `}>
-                        {payment.status.replace(/_/g, ' ')}
+            filteredPayments.length > 0 ? filteredPayments.map((payment) => {
+              const myCredited = getMyCreditedAmount(payment);
+              const isShared = Boolean(payment.is_shared || (payment.allocations && payment.allocations.length > 1));
+              const otherEmployeesCount = payment.allocations
+                ? payment.allocations.filter((a) => a.employee_id !== currentUser.id && a.allocation_amount > 0).length
+                : 0;
+
+              return (
+                <div key={payment.id} className="bg-white p-5 rounded-2xl border border-slate-200/80 hover:border-indigo-300 shadow-sm transition-all space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-base shadow-inner shrink-0">
+                        {payment.trader_name?.charAt(0) || 'C'}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-slate-800 text-sm">{payment.trader_name || 'Client'}</h4>
+                          {payment.trader_phone && (
+                            <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                              {payment.trader_phone}
+                            </span>
+                          )}
+                        </div>
+                        {payment.service_category && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
+                            <span className="font-semibold text-slate-700">{payment.service_category} • {payment.service_type}</span>
+                            <span>•</span>
+                            <span className="font-medium text-teal-600">{payment.subscription_duration}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono ${
+                        payment.status === 'approved' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                        payment.status === 'pending_verification' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                        'bg-rose-100 text-rose-800 border border-rose-200'
+                      }`}>
+                        {payment.status === 'pending_verification' ? 'Under Review' : payment.status}
                       </span>
                     </div>
                   </div>
+
+                  {/* Detailed Sharing and Amount Breakdown */}
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/70 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Payment Total</span>
+                      <span className="font-mono font-bold text-slate-700 text-sm mt-0.5 block">
+                        ₹{payment.amount.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">My Credited Amount</span>
+                      <span className="font-mono font-black text-emerald-700 text-base mt-0.5 block">
+                        ₹{myCredited.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Sharing Status</span>
+                      {isShared ? (
+                        <span className="font-semibold text-blue-700 block mt-0.5">
+                          Shared with {otherEmployeesCount} other {otherEmployeesCount === 1 ? 'employee' : 'employees'}
+                        </span>
+                      ) : (
+                        <span className="font-medium text-slate-500 block mt-0.5">Single employee (100%)</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-100">
+                    <span className="font-mono">UTR: {payment.utr} • Mode: {payment.payment_mode}</span>
+                    <span>Submitted: {new Date(payment.created_at).toLocaleDateString()}</span>
+                  </div>
                 </div>
-                
-                <div className="flex flex-col items-end">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider font-mono">Amount Paid</span>
-                  <span className="font-black text-slate-800">₹{payment.amount.toLocaleString('en-IN')}</span>
-                  <span className="text-[10px] text-slate-400 font-medium">{new Date(payment.created_at).toLocaleDateString()}</span>
-                </div>
-              </div>
-            )) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3">
+              );
+            }) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3 py-12">
                 <Wallet className="w-12 h-12 text-slate-200" />
-                <p className="font-medium">No payments found.</p>
+                <p className="font-medium">No payment records found.</p>
               </div>
             )
           )}

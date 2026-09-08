@@ -49,11 +49,8 @@ export const EmployeeManagement: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const MOCK_USER_NAMES = ['Priya Verma', 'Ankit Kumar', 'Vikram Malhotra', 'Rahul Saxena', 'Rajesh Sharma'];
-
   // Filter users
   const filteredUsers = users
-    .filter((u) => !MOCK_USER_NAMES.includes(u.name) && !u.email.includes('capitalgrow.com'))
     .filter((u) => {
       const matchesSearch =
         u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -72,7 +69,7 @@ export const EmployeeManagement: React.FC = () => {
     });
 
   // KPIs
-  const realUsers = users.filter((u) => !MOCK_USER_NAMES.includes(u.name) && !u.email.includes('capitalgrow.com'));
+  const realUsers = users;
   const totalEmployees = realUsers.length;
   const pendingReviews = realUsers.filter(
     (u) => u.approval_status === 'pending_admin_review' || u.role === 'pending'

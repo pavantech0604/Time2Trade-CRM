@@ -10,12 +10,9 @@ export const EmployeeScorecards: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
-  const MOCK_USER_NAMES = ['Priya Verma', 'Ankit Kumar', 'Vikram Malhotra', 'Rahul Saxena', 'Rajesh Sharma'];
-
   // Table ONLY displays leads successfully converted to active traders
   const filteredLeads = leads.filter((l) => {
     if (l.status !== 'active_trader') return false;
-    if (l.id?.startsWith('20000000-')) return false;
     
     if (selectedEmployeeId && l.assigned_to !== selectedEmployeeId) return false;
 
@@ -27,18 +24,15 @@ export const EmployeeScorecards: React.FC = () => {
     return matchesSearch;
   });
 
-  // Calculate detailed performance scorecard metrics for REAL active employees only
+  // Calculate detailed performance scorecard metrics for real active employees only
   const staffMetrics = users
     .filter(
       (u) =>
         u.role === 'employee' &&
-        u.is_active &&
-        !MOCK_USER_NAMES.includes(u.name) &&
-        !u.email.includes('capitalgrow.com') &&
-        !u.id.startsWith('10000000-0000-0000-0000-')
+        u.is_active
     )
     .map((user) => {
-      const handledLeads = leads.filter((l) => l.assigned_to === user.id && !l.id?.startsWith('20000000-'));
+      const handledLeads = leads.filter((l) => l.assigned_to === user.id);
 
       // Filtered count (leads called/actioned from fresh state)
       const filteredCount = handledLeads.length;

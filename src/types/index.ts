@@ -28,6 +28,16 @@ export type PaymentStatus = 'pending_verification' | 'approved' | 'rejected';
 
 export type PaymentMode = 'UPI' | 'Bank Transfer' | 'Other';
 
+export type ServiceCategory = 'Equity' | 'Commodity';
+
+export type EquityServiceType = 'Cash' | 'Future Option' | 'Stock Option';
+
+export type CommodityServiceType = 'Gold' | 'Silver' | 'Crude Oil';
+
+export type ServiceType = EquityServiceType | CommodityServiceType;
+
+export type SubscriptionDuration = '3 Months' | '6 Months' | 'Yearly';
+
 export type TradingExperience = 'beginner' | 'intermediate' | 'advanced';
 
 export interface User {
@@ -36,6 +46,9 @@ export interface User {
   email: string;
   phone?: string;
   role: UserRole;
+  employee_code?: string;
+  designation?: string;
+  department?: string;
   is_active?: boolean;
   approval_status?: ApprovalStatus;
   approved_by?: string;
@@ -144,6 +157,22 @@ export interface TradingDay {
   updated_at?: string;
 }
 
+export interface PaymentAllocation {
+  id: string;
+  payment_id?: string;
+  employee_id: string;
+  employee_name?: string;
+  employee_code?: string;
+  employee_role?: string;
+  employee_email?: string;
+  employee_avatar?: string;
+  allocation_amount: number;
+  allocation_percentage?: number;
+  is_primary: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Payment {
   id: string;
   trader_id: string;
@@ -151,6 +180,13 @@ export interface Payment {
   trader_phone?: string;
   employee_id?: string;
   employee_name?: string;
+  submitted_by_employee_id?: string;
+  submitted_by_employee_name?: string;
+  service_category?: ServiceCategory;
+  service_type?: ServiceType;
+  subscription_duration?: SubscriptionDuration;
+  receiver_bank_name?: string;
+  remarks?: string;
   amount: number;
   payment_mode: PaymentMode;
   utr: string;
@@ -160,6 +196,8 @@ export interface Payment {
   admin_remarks?: string;
   verified_at?: string;
   created_at: string;
+  allocations?: PaymentAllocation[];
+  is_shared?: boolean;
 }
 
 export interface Expense {
@@ -174,14 +212,23 @@ export interface Expense {
   created_at: string;
 }
 
+export type NotificationCategory = 'sales' | 'leads' | 'system';
+
 export interface NotificationItem {
   id: string;
   user_id: string;
+  user_name?: string;
   title: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'danger';
+  category?: NotificationCategory;
   is_read: boolean;
   link_path?: string;
+  action_tab?: string;
+  action_label?: string;
+  amount?: number;
+  share_percentage?: number;
+  client_name?: string;
   created_at: string;
 }
 

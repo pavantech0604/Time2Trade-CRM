@@ -22,13 +22,59 @@ export const EmployeeSalesDashboard: React.FC = () => {
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'Equity' | 'Commodity'>('all');
 
   // Filter only approved payments
   const approvedPayments = useMemo(() => {
     return payments.filter(p => p.status === 'approved');
   }, [payments]);
 
-  // Calculate statistics per employee
+  // High-level payment statistics for Admin
+  const adminKPIs = useMemo(() => {
+    const totalPaymentsCount = payments.length;
+    const pendingCount = payments.filter((p) => p.status === 'pending_verification').length;
+    const approvedCount = approvedPayments.length;
+    const rejectedCount = payments.filter((p) => p.status === 'rejected').length;
+
+    const totalPaymentAmount = approvedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const sharedPaymentCount = approvedPayments.filter((p) => p.is_shared || (p.allocations && p.allocations.length > 1)).length;
+
+    // Breakdown by Service Category
+    const equitySales = approvedPayments
+      .filter((p) => p.service_category === 'Equity')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    const commoditySales = approvedPayments
+      .filter((p) => p.service_category === 'Commodity')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    // Breakdown by Duration
+    const durationSales = {
+      '3 Months': approvedPayments
+        .filter((p) => p.subscription_duration === '3 Months')
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+      '6 Months': approvedPayments
+        .filter((p) => p.subscription_duration === '6 Months')
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+      'Yearly': approvedPayments
+        .filter((p) => p.subscription_duration === 'Yearly')
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+    };
+
+    return {
+      totalPaymentsCount,
+      pendingCount,
+      approvedCount,
+      rejectedCount,
+      totalPaymentAmount,
+      sharedPaymentCount,
+      equitySales,
+      commoditySales,
+      durationSales,
+    };
+  }, [payments, approvedPayments]);
+
+  // Calculate statistics per employee based on individual allocations
   const employeeStats = useMemo(() => {
     const stats: Record<string, {
       id: string;
@@ -38,7 +84,12 @@ export const EmployeeSalesDashboard: React.FC = () => {
       weekly: number;
       monthly: number;
       total: number;
-      payments: typeof approvedPayments;
+      payments: Array<{
+        payment: typeof approvedPayments[0];
+        creditedAmount: number;
+        allocationPercentage: number;
+        isShared: boolean;
+      }>;
     }> = {};
 
     const now = new Date();
@@ -52,7 +103,7 @@ export const EmployeeSalesDashboard: React.FC = () => {
     // Start of month
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Initialize stats for users who have at least one approved payment or are active employees
+    // Initialize stats for staff
     users.forEach(user => {
       if (['employee', 'admin'].includes(user.role)) {
         stats[user.id] = {
@@ -68,7 +119,7 @@ export const EmployeeSalesDashboard: React.FC = () => {
       }
     });
 
-    // Also handle 'Direct / Head Office' payments that have no employee_id
+    // Also handle 'Direct / Head Office' payments
     stats['direct'] = {
       id: 'direct',
       name: 'Direct / Head Office',
@@ -81,54 +132,87 @@ export const EmployeeSalesDashboard: React.FC = () => {
     };
 
     approvedPayments.forEach(payment => {
-      const empId = payment.employee_id || 'direct';
-      
-      if (!stats[empId]) {
-        stats[empId] = {
-          id: empId,
-          name: payment.employee_name || 'Unknown',
-          role: 'Unknown',
-          daily: 0,
-          weekly: 0,
-          monthly: 0,
-          total: 0,
-          payments: []
-        };
-      }
-
-      const amount = Number(payment.amount);
       const txDate = new Date(payment.transaction_time);
       const txDateStr = payment.transaction_time.split('T')[0];
 
-      stats[empId].total += amount;
-      stats[empId].payments.push(payment);
+      if (payment.allocations && payment.allocations.length > 0) {
+        // Multi-employee allocation distribution
+        payment.allocations.forEach(alloc => {
+          const empId = alloc.employee_id || 'direct';
+          if (!stats[empId]) {
+            stats[empId] = {
+              id: empId,
+              name: alloc.employee_name || 'Staff',
+              role: alloc.employee_role || 'Employee',
+              daily: 0,
+              weekly: 0,
+              monthly: 0,
+              total: 0,
+              payments: [],
+            };
+          }
 
-      if (txDateStr === todayStr) {
-        stats[empId].daily += amount;
-      }
-      if (txDate >= startOfWeek) {
-        stats[empId].weekly += amount;
-      }
-      if (txDate >= startOfMonth) {
-        stats[empId].monthly += amount;
+          const credited = Number(alloc.allocation_amount) || 0;
+          stats[empId].total += credited;
+
+          stats[empId].payments.push({
+            payment,
+            creditedAmount: credited,
+            allocationPercentage: alloc.allocation_percentage || 100,
+            isShared: payment.allocations!.length > 1,
+          });
+
+          if (txDateStr === todayStr) stats[empId].daily += credited;
+          if (txDate >= startOfWeek) stats[empId].weekly += credited;
+          if (txDate >= startOfMonth) stats[empId].monthly += credited;
+        });
+      } else {
+        // Single employee / Direct payment
+        const empId = payment.employee_id || 'direct';
+        if (!stats[empId]) {
+          stats[empId] = {
+            id: empId,
+            name: payment.employee_name || 'Unknown',
+            role: 'Unknown',
+            daily: 0,
+            weekly: 0,
+            monthly: 0,
+            total: 0,
+            payments: [],
+          };
+        }
+
+        const credited = Number(payment.amount) || 0;
+        stats[empId].total += credited;
+
+        stats[empId].payments.push({
+          payment,
+          creditedAmount: credited,
+          allocationPercentage: 100,
+          isShared: false,
+        });
+
+        if (txDateStr === todayStr) stats[empId].daily += credited;
+        if (txDate >= startOfWeek) stats[empId].weekly += credited;
+        if (txDate >= startOfMonth) stats[empId].monthly += credited;
       }
     });
 
     // Sort payments within each employee by newest first
     Object.values(stats).forEach(stat => {
-      stat.payments.sort((a, b) => new Date(b.transaction_time).getTime() - new Date(a.transaction_time).getTime());
+      stat.payments.sort(
+        (a, b) => new Date(b.payment.transaction_time).getTime() - new Date(a.payment.transaction_time).getTime()
+      );
     });
 
-    // Filter out those with 0 total sales if they are just inactive roles, keep those with data
     return Object.values(stats)
       .filter(s => s.total > 0)
       .sort((a, b) => b.total - a.total);
-      
   }, [approvedPayments, users]);
 
   const toggleCard = (id: string) => {
     setExpandedCardId(prev => prev === id ? null : id);
-    setSearchQuery(''); // Reset search when switching cards
+    setSearchQuery('');
   };
 
   return (
@@ -140,8 +224,52 @@ export const EmployeeSalesDashboard: React.FC = () => {
             Performance & Verified Sales
           </h2>
           <p className="text-sm text-slate-500 mt-1 font-medium">
-            Click on any employee card to inspect their verified payment ledger
+            Inspect verified employee sales ledgers, shared payment allocations, and service distributions
           </p>
+        </div>
+      </div>
+
+      {/* Top Admin KPI Metrics Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Approved Sales</span>
+          <span className="text-xl sm:text-2xl font-black text-emerald-700 block mt-1">
+            {formatINR(adminKPIs.totalPaymentAmount)}
+          </span>
+          <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
+            {adminKPIs.approvedCount} verified transactions
+          </span>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Awaiting Verification</span>
+          <span className="text-xl sm:text-2xl font-black text-amber-600 block mt-1">
+            {adminKPIs.pendingCount} Payments
+          </span>
+          <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
+            Requires admin approval
+          </span>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Shared Payments</span>
+          <span className="text-xl sm:text-2xl font-black text-blue-700 block mt-1">
+            {adminKPIs.sharedPaymentCount} Shared
+          </span>
+          <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
+            Multi-employee sales splits
+          </span>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Category Distribution</span>
+          <div className="flex items-center gap-3 mt-1.5 text-xs font-bold">
+            <span className="text-blue-700">Equity: {formatINR(adminKPIs.equitySales)}</span>
+            <span className="text-amber-700">MCX: {formatINR(adminKPIs.commoditySales)}</span>
+          </div>
+          <span className="text-[10px] text-slate-400 font-semibold block mt-1">
+            3M: {formatINR(adminKPIs.durationSales['3 Months'])} • 6M: {formatINR(adminKPIs.durationSales['6 Months'])} • 1Y: {formatINR(adminKPIs.durationSales['Yearly'])}
+          </span>
         </div>
       </div>
 
@@ -155,13 +283,14 @@ export const EmployeeSalesDashboard: React.FC = () => {
             const isExpanded = expandedCardId === stat.id;
             
             // Filter payments for this specific expanded card if search query exists
-            const filteredCardPayments = stat.payments.filter(p => {
+            const filteredCardPayments = stat.payments.filter(({ payment }) => {
               if (!searchQuery) return true;
               const q = searchQuery.toLowerCase();
               return (
-                p.trader_name?.toLowerCase().includes(q) ||
-                p.utr.toLowerCase().includes(q) ||
-                p.payment_mode.toLowerCase().includes(q)
+                payment.trader_name?.toLowerCase().includes(q) ||
+                payment.utr.toLowerCase().includes(q) ||
+                payment.payment_mode.toLowerCase().includes(q) ||
+                (payment.service_category && payment.service_category.toLowerCase().includes(q))
               );
             });
 
@@ -219,23 +348,34 @@ export const EmployeeSalesDashboard: React.FC = () => {
                         <div className="flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
                           <Calendar className="w-3.5 h-3.5 text-slate-400 group-hover/stat:text-blue-500 transition-colors" /> Today's Verified
                         </div>
-                        <div className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-800 tracking-tight transition-transform duration-300 origin-left group-hover/stat:scale-105">
-                          {formatINR(stat.daily).replace('.00', '')}
+                        <div className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-baseline gap-1 group-hover/stat:text-blue-700 transition-colors">
+                          {formatINR(stat.daily)}
                         </div>
                       </div>
+
                       <div className="space-y-1.5 sm:space-y-2 group/stat">
-                        <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[10px] uppercase tracking-widest">
-                          <CalendarRange className="w-3.5 h-3.5 text-blue-500 group-hover/stat:text-indigo-600 transition-colors" /> Monthly Revenue
+                        <div className="flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
+                          <CalendarDays className="w-3.5 h-3.5 text-slate-400 group-hover/stat:text-indigo-500 transition-colors" /> This Week's Sales
                         </div>
-                        <div className="text-3xl sm:text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-600 tracking-tighter drop-shadow-sm transition-transform duration-300 origin-left group-hover/stat:scale-105">
-                          {formatINR(stat.monthly).replace('.00', '')}
+                        <div className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-baseline gap-1 group-hover/stat:text-indigo-700 transition-colors">
+                          {formatINR(stat.weekly)}
                         </div>
                       </div>
                     </div>
 
-                    {/* Expand Icon */}
-                    <div className="hidden xl:flex items-center justify-center w-12 h-12 rounded-2xl bg-white/50 border border-slate-100 shadow-sm text-slate-400 shrink-0 backdrop-blur-sm group-hover:bg-white group-hover:shadow-md transition-all duration-300">
-                      <ChevronDown className={`w-5 h-5 transition-transform duration-500 ${isExpanded ? 'rotate-180 text-blue-600' : ''}`} />
+                    {/* Total All-Time & Action CTA */}
+                    <div className="flex items-center justify-between xl:justify-end gap-6 sm:gap-8 border-t border-slate-100/50 xl:border-t-0 pt-4 sm:pt-6 xl:pt-0">
+                      <div className="text-left xl:text-right space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Credited Sales</span>
+                        <div className="text-2xl sm:text-3xl font-black text-emerald-700">
+                          {formatINR(stat.total)}
+                        </div>
+                      </div>
+
+                      {/* Expand Icon */}
+                      <div className="hidden xl:flex items-center justify-center w-12 h-12 rounded-2xl bg-white/50 border border-slate-100 shadow-sm text-slate-400 shrink-0 backdrop-blur-sm group-hover:bg-white group-hover:shadow-md transition-all duration-300">
+                        <ChevronDown className={`w-5 h-5 transition-transform duration-500 ${isExpanded ? 'rotate-180 text-blue-600' : ''}`} />
+                      </div>
                     </div>
                   </div>
 
@@ -269,8 +409,9 @@ export const EmployeeSalesDashboard: React.FC = () => {
                               <tr className="border-b-2 border-slate-200/60 text-slate-500 uppercase text-[10px] font-black tracking-widest">
                                 <th className="py-4 px-4 pl-0">Date & Time</th>
                                 <th className="py-4 px-4">Client / Trader</th>
-                                <th className="py-4 px-4 text-right">Verified Amount</th>
-                                <th className="py-4 px-4">Payment Mode</th>
+                                <th className="py-4 px-4">Service Package</th>
+                                <th className="py-4 px-4 text-right">Credited Share</th>
+                                <th className="py-4 px-4">Mode & Sharing</th>
                                 <th className="py-4 px-4">Bank Ref (UTR)</th>
                                 <th className="py-4 px-4 text-right pr-0">Visual Proof</th>
                               </tr>
@@ -278,12 +419,12 @@ export const EmployeeSalesDashboard: React.FC = () => {
                             <tbody className="divide-y divide-slate-100/60">
                               {filteredCardPayments.length === 0 ? (
                                 <tr>
-                                  <td colSpan={6} className="py-12 text-center text-slate-400 font-medium text-sm">
+                                  <td colSpan={7} className="py-12 text-center text-slate-400 font-medium text-sm">
                                     No records match your search for this employee.
                                   </td>
                                 </tr>
                               ) : (
-                                filteredCardPayments.map((payment) => (
+                                filteredCardPayments.map(({ payment, creditedAmount, allocationPercentage, isShared }) => (
                                   <tr key={payment.id} className="hover:bg-white/60 transition-colors group/row">
                                     <td className="py-4 px-4 pl-0 font-mono text-slate-500 text-[11px]">
                                       {new Date(payment.transaction_time).toLocaleString('en-IN', {
@@ -291,16 +432,45 @@ export const EmployeeSalesDashboard: React.FC = () => {
                                         hour: '2-digit', minute: '2-digit'
                                       })}
                                     </td>
-                                    <td className="py-4 px-4 font-bold text-slate-800 text-sm">
-                                      {payment.trader_name}
+                                    <td className="py-4 px-4">
+                                      <span className="font-bold text-slate-800 text-sm block">{payment.trader_name}</span>
+                                      {payment.trader_phone && (
+                                        <span className="text-[10px] text-slate-400 font-mono">{payment.trader_phone}</span>
+                                      )}
                                     </td>
-                                    <td className="py-4 px-4 font-black text-emerald-600 text-right text-sm">
-                                      {formatINR(payment.amount)}
+                                    <td className="py-4 px-4">
+                                      {payment.service_category ? (
+                                        <div>
+                                          <span className="font-bold text-slate-800 block">
+                                            {payment.service_category} • {payment.service_type}
+                                          </span>
+                                          <span className="text-[10px] font-semibold text-teal-600">
+                                            {payment.subscription_duration}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-slate-400 text-[11px]">Standard</span>
+                                      )}
+                                    </td>
+                                    <td className="py-4 px-4 text-right">
+                                      <span className="font-black text-emerald-700 text-sm block">
+                                        {formatINR(creditedAmount)}
+                                      </span>
+                                      {isShared && (
+                                        <span className="text-[10px] text-slate-400 block">
+                                          {allocationPercentage}% of {formatINR(payment.amount)}
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="py-4 px-4">
                                       <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100/80 text-slate-700 font-semibold text-[11px] border border-slate-200/50">
                                         {payment.payment_mode}
                                       </span>
+                                      {isShared && (
+                                        <span className="block text-[9px] font-bold text-blue-700 mt-0.5">
+                                          Shared Sale ({payment.allocations?.length} staff)
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="py-4 px-4 font-mono font-bold text-slate-700 group-hover/row:text-blue-600 transition-colors">
                                       {payment.utr}

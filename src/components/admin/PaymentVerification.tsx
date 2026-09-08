@@ -129,22 +129,52 @@ export const PaymentVerification: React.FC = () => {
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-100 text-slate-600 uppercase text-[10px] tracking-wider bg-[#091A2F]/5">
-                <th className="py-3.5 px-4 text-slate-500">Trader Name</th>
-                <th className="py-3.5 px-4 text-slate-500">Amount</th>
-                <th className="py-3.5 px-4 text-slate-500">Mode</th>
-                <th className="py-3.5 px-4 text-slate-500">UTR Reference</th>
+                <th className="py-3.5 px-4 text-slate-500">Client / Trader</th>
+                <th className="py-3.5 px-4 text-slate-500">Amount & Sharing</th>
+                <th className="py-3.5 px-4 text-slate-500">Service Package</th>
+                <th className="py-3.5 px-4 text-slate-500">Mode & UTR</th>
                 <th className="py-3.5 px-4 text-slate-500">Submitted Time</th>
-                <th className="py-3.5 px-4 text-slate-500">Verification Status</th>
+                <th className="py-3.5 px-4 text-slate-500">Status</th>
                 <th className="py-3.5 px-4 text-right text-slate-500">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80">
               {payments.map((payment) => (
                 <tr key={payment.id} className="hover:bg-slate-50/50 transition-all border-b border-slate-100/40">
-                  <td className="py-3.5 px-4 font-bold text-slate-800">{payment.trader_name}</td>
-                  <td className="py-3.5 px-4 font-bold text-emerald-700">{formatINR(payment.amount)}</td>
-                  <td className="py-3.5 px-4 text-slate-600">{payment.payment_mode}</td>
-                  <td className="py-3.5 px-4 font-mono text-slate-800 font-semibold">{payment.utr}</td>
+                  <td className="py-3.5 px-4">
+                    <span className="font-bold text-slate-800 block">{payment.trader_name}</span>
+                    {payment.trader_phone && (
+                      <span className="text-[10px] text-slate-400 font-mono">{payment.trader_phone}</span>
+                    )}
+                  </td>
+                  <td className="py-3.5 px-4">
+                    <span className="font-extrabold text-emerald-700 block">{formatINR(payment.amount)}</span>
+                    {payment.allocations && payment.allocations.length > 1 ? (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 mt-0.5">
+                        Shared ({payment.allocations.length} staff)
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">Single staff</span>
+                    )}
+                  </td>
+                  <td className="py-3.5 px-4">
+                    {payment.service_category ? (
+                      <div>
+                        <span className="font-bold text-slate-800 block">
+                          {payment.service_category} • {payment.service_type}
+                        </span>
+                        <span className="text-[10px] font-semibold text-teal-600">
+                          {payment.subscription_duration}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 text-[11px]">—</span>
+                    )}
+                  </td>
+                  <td className="py-3.5 px-4">
+                    <span className="text-slate-700 font-semibold block">{payment.payment_mode}</span>
+                    <span className="font-mono text-slate-500 text-[11px]">{payment.utr}</span>
+                  </td>
                   <td className="py-3.5 px-4 text-slate-500">
                     {new Date(payment.transaction_time).toLocaleString()}
                   </td>
@@ -221,10 +251,80 @@ export const PaymentVerification: React.FC = () => {
                 <span className="font-bold text-slate-700">{selectedPayment.payment_mode}</span>
               </div>
               <div>
+                <span className="text-slate-500 block">Receiver Bank Holder Name</span>
+                <span className="font-bold text-slate-800">{selectedPayment.receiver_bank_name || 'N/A'}</span>
+              </div>
+              <div className="col-span-2">
                 <span className="text-slate-500 block">Timestamp</span>
                 <span className="text-slate-800 font-bold">{new Date(selectedPayment.transaction_time).toLocaleString()}</span>
               </div>
+              {selectedPayment.service_category && (
+                <div className="col-span-2 pt-2 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Service Package</span>
+                    <span className="font-bold text-slate-800">
+                      {selectedPayment.service_category} • {selectedPayment.service_type || 'General'}
+                    </span>
+                  </div>
+                  {selectedPayment.subscription_duration && (
+                    <span className="px-2 py-1 rounded-md bg-teal-50 text-teal-800 border border-teal-200 font-bold text-[10px]">
+                      {selectedPayment.subscription_duration}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
+
+            {/* Employee Allocation Breakdown */}
+            {selectedPayment.allocations && selectedPayment.allocations.length > 0 && (
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Staff Sales Allocation ({selectedPayment.allocations.length} Staff)
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    {selectedPayment.allocations.length > 1 ? 'Shared Payment' : 'Single Staff'}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {selectedPayment.allocations.map((alloc) => (
+                    <div
+                      key={alloc.employee_id}
+                      className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-full bg-brand-primary/10 text-brand-primary font-bold text-xs flex items-center justify-center">
+                          {alloc.employee_name?.slice(0, 2).toUpperCase() || 'EM'}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900">{alloc.employee_name}</span>
+                            {alloc.is_primary && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-100 text-blue-800">
+                                Primary
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 block font-mono">
+                            {alloc.employee_code || `EMP-${alloc.employee_id.slice(0, 4)}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="font-mono font-black text-emerald-700 block">
+                          {formatINR(alloc.allocation_amount)}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-semibold">
+                          {alloc.allocation_percentage}% share
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Verification Checklist */}
             {selectedPayment.status === 'pending_verification' && (

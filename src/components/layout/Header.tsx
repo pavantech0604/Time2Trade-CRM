@@ -14,23 +14,34 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { UserPresenceStatus } from '../../types';
+import { NotificationCenter } from '../notifications/NotificationCenter';
 
 interface HeaderProps {
   onOpenPaymentForm?: () => void;
   onToggleMobileMenu?: () => void;
+  onNavigate?: (tab: string) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenPaymentForm, onToggleMobileMenu }) => {
+export const Header: React.FC<HeaderProps> = ({
+  onOpenPaymentForm,
+  onToggleMobileMenu,
+  onNavigate,
+}) => {
   const {
     currentUser,
     notifications,
-    markNotificationRead,
     currentPresence,
     updateUserPresence,
     logout,
   } = useAuth();
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  // Employee sees only their own unread alerts, Admin sees all pending
+  const unreadCount = notifications.filter((n) => {
+    if (currentUser?.role === 'admin') {
+      return !n.is_read;
+    }
+    return n.user_id === currentUser?.id && !n.is_read;
+  }).length;
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const [statusToast, setStatusToast] = useState<string | null>(null);
@@ -227,77 +238,26 @@ export const Header: React.FC<HeaderProps> = ({ onOpenPaymentForm, onToggleMobil
           </button>
         )}
 
-        {/* Notification Bell */}
+        {/* Notification Bell & Interactive Center */}
         <div className="relative">
           <button
             onClick={() => setIsNotifOpen(!isNotifOpen)}
-            className="relative p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="relative p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-all cursor-pointer"
+            title="Notifications"
           >
             <Bell className="w-4 h-4" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-black border-2 border-white shadow-sm">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
             )}
           </button>
 
-          {isNotifOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
-                <h4 className="text-xs font-bold text-[#091A2F] font-mono uppercase tracking-wider">
-                  Notifications
-                </h4>
-                <span className="text-[10px] font-bold text-[#C5A028] bg-[#C5A028]/10 px-2 py-0.5 rounded-full font-mono">
-                  {unreadCount} unread
-                </span>
-              </div>
-              <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
-                {notifications.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-6">
-                    No new notifications
-                  </p>
-                ) : (
-                  notifications.map((n) => {
-                    const isWarning = n.type === 'warning';
-                    return (
-                      <div
-                        key={n.id}
-                        onClick={() => markNotificationRead(n.id)}
-                        className={`p-3 rounded-xl border transition-all cursor-pointer hover:shadow-sm ${
-                          n.is_read
-                            ? 'bg-slate-50/50 border-slate-100 opacity-60 hover:bg-slate-50'
-                            : isWarning
-                            ? 'bg-amber-50/40 border-amber-200/60 hover:bg-amber-50/70 hover:border-amber-300'
-                            : 'bg-blue-50/40 border-blue-200/60 hover:bg-blue-50/70 hover:border-blue-300'
-                        }`}
-                      >
-                        <div className="flex items-start gap-2.5">
-                          <div className="mt-0.5 shrink-0">
-                            {n.is_read ? (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
-                            ) : isWarning ? (
-                              <ShieldAlert className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                            ) : (
-                              <Bell className="w-3.5 h-3.5 text-blue-500" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h5 className={`text-xs font-bold ${n.is_read ? 'text-slate-500' : 'text-[#091A2F]'}`}>
-                              {n.title}
-                            </h5>
-                            <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                              {n.message}
-                            </p>
-                            <span className="text-[9px] text-slate-400 mt-1 block font-mono">
-                              {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
+          <NotificationCenter
+            isOpen={isNotifOpen}
+            onClose={() => setIsNotifOpen(false)}
+            onNavigate={onNavigate}
+          />
         </div>
 
         {/* Mobile-Only Logout Button */}

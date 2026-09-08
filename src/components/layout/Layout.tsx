@@ -102,6 +102,7 @@ export const Layout: React.FC<LayoutProps> = ({
         <Header 
           onOpenPaymentForm={onOpenPaymentForm} 
           onToggleMobileMenu={() => setIsMobileMenuOpen(true)}
+          onNavigate={(tab) => setActiveTab(tab)}
         />
         
         {/* Responsive padding: mobile-first optimized with bottom navbar offset */}
