@@ -79,6 +79,8 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
     // 1. Save to local context & Supabase DB in background
     addPayment({
       trader_id: traderId || 'manual-client',
+      trader_name: traderName,
+      trader_phone: traderPhone,
       employee_id: creditedEmployee?.id,
       employee_name: creditedEmployee?.name,
       amount: Number(amount),
@@ -86,7 +88,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
       utr: utr.trim(),
       transaction_time: new Date(transactionTime).toISOString(),
       screenshot_url: screenshotUrl,
-    });
+    } as any);
 
     // 2. Map Payment Mode to Google Form options
     const gFormPaymentMode =

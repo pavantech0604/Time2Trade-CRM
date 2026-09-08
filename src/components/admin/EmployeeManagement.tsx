@@ -388,14 +388,9 @@ export const EmployeeManagement: React.FC = () => {
                             Employee
                           </span>
                         )}
-                        {user.role === 'employee' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold">
-                            RM
-                          </span>
-                        )}
                         {user.role === 'pending' && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-semibold animate-pulse">
-                            Unassigned
+                            Pending Review
                           </span>
                         )}
                       </td>

@@ -463,7 +463,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             name: fullName.trim(),
             email: normalizedEmail,
             phone: phoneInput?.trim() || null,
-            role: 'pending',
+            role: 'employee',
             is_active: false,
             approval_status: 'pending_admin_review',
           });
@@ -481,7 +481,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: fullName.trim(),
         email: normalizedEmail,
         phone: phoneInput?.trim() || undefined,
-        role: 'pending',
+        role: 'employee',
         is_active: false,
         approval_status: 'pending_admin_review',
         created_at: new Date().toISOString(),
@@ -495,7 +495,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           user_id: newUserId,
           user_name: newPendingUser.name,
           user_email: newPendingUser.email,
-          user_role: 'pending',
+          user_role: 'employee',
           current_status: 'offline',
           last_status_change: new Date().toISOString(),
           total_break_minutes: 0,
@@ -542,36 +542,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const normalizedEmail = emailInput.trim().toLowerCase();
       let authenticatedUser: User | null = null;
 
-      // 1. Check Admin Credentials first (to avoid 400 Bad Request against Supabase Auth)
-      if (normalizedEmail === 'karthik@time2trade.com') {
-        if (passwordInput === 'Time2trade@2026') {
-          const foundAdmin = users.find((u) => u.email.toLowerCase() === 'karthik@time2trade.com') || INITIAL_USERS[0];
-          authenticatedUser = {
-            ...foundAdmin,
-            role: 'admin',
-            is_active: true,
-            approval_status: 'approved',
-          };
-        } else {
-          setLoading(false);
-          return {
-            success: false,
-            status: 'error',
-            message: 'Invalid password. Please verify your admin password.',
-          };
-        }
-      }
+      let lastAuthError: string | null = null;
 
-      // 2. Try Supabase Auth for employee accounts
-      if (!authenticatedUser && supabase) {
+      // 1. Authenticate with Supabase Auth using the user's actual signup password
+      if (supabase) {
         try {
           const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
             email: normalizedEmail,
             password: passwordInput,
           });
 
+          if (authError) {
+            lastAuthError = authError.message;
+          }
+
           if (!authError && authData?.user) {
-            // Fetch profile from public.users table
+            // Fetch user profile from public.users table (contains role: admin / employee)
             const { data: profile } = await supabase
               .from('users')
               .select('*')
@@ -590,11 +576,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 avatar_url: profile.avatar_url,
                 created_at: profile.created_at || new Date().toISOString(),
               };
+            } else {
+              // Fallback if profile row is not yet found
+              authenticatedUser = {
+                id: authData.user.id,
+                name: authData.user.user_metadata?.full_name || authData.user.email?.split('@')[0] || 'User',
+                email: authData.user.email || normalizedEmail,
+                phone: authData.user.user_metadata?.phone,
+                role: 'admin' as UserRole,
+                is_active: true,
+                approval_status: 'approved',
+                created_at: authData.user.created_at || new Date().toISOString(),
+              };
             }
           }
-        } catch {
-          // Fall through
+        } catch (sbErr: any) {
+          lastAuthError = sbErr?.message || null;
         }
+      }
+
+      // 2. Fallback ONLY for the initial mock seed admin (karthik@time2trade.com)
+      // which was inserted directly in SQL schema without a Supabase Auth account
+      if (!authenticatedUser && normalizedEmail === 'karthik@time2trade.com' && passwordInput === 'Time2trade@2026') {
+        const foundAdmin = users.find((u) => u.email.toLowerCase() === 'karthik@time2trade.com') || INITIAL_USERS[0];
+        authenticatedUser = {
+          ...foundAdmin,
+          role: 'admin',
+          is_active: true,
+          approval_status: 'approved',
+        };
       }
 
       // 3. If not authenticated, check if user exists in state/DB to give informative error feedback
@@ -631,7 +641,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return {
           success: false,
           status: 'error',
-          message: 'Invalid email or password. Please verify your credentials.',
+          message: lastAuthError || 'Invalid email or password. Please verify your credentials.',
         };
       }
 
@@ -951,9 +961,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addLead = async (leadInput: Omit<Lead, 'id' | 'created_at'>) => {
     const newId = generateUUID();
     const assignedUser = users.find((u) => u.id === leadInput.assigned_to);
+
+    // Sanitize PostgreSQL check constraint values & UUID format
+    const validTradingExp =
+      leadInput.trading_experience && ['beginner', 'intermediate', 'advanced'].includes(leadInput.trading_experience)
+        ? leadInput.trading_experience
+        : undefined;
+
+    const isValidUUID = (id?: string | null) =>
+      Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+
+    const validAssignedTo = isValidUUID(leadInput.assigned_to) ? leadInput.assigned_to : undefined;
+
     const newLead: Lead = {
       ...leadInput,
       id: newId,
+      assigned_to: validAssignedTo,
+      trading_experience: validTradingExp,
       assigned_to_name: assignedUser?.name,
       created_at: new Date().toISOString(),
     };
@@ -964,16 +988,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (supabase && !useMocks) {
       const { error } = await supabase.from('leads').insert({
         id: newId,
-        name: leadInput.name,
-        phone: leadInput.phone,
-        source: leadInput.source,
-        assigned_to: leadInput.assigned_to || null,
-        status: leadInput.status,
-        investment_capacity: leadInput.investment_capacity,
-        trading_experience: leadInput.trading_experience,
-        preferred_market: leadInput.preferred_market,
+        name: leadInput.name.trim(),
+        phone: leadInput.phone.trim(),
+        source: leadInput.source || 'Meta Ads',
+        assigned_to: validAssignedTo || null,
+        status: leadInput.status || 'new',
+        investment_capacity: leadInput.investment_capacity?.trim() || null,
+        trading_experience: validTradingExp || null,
+        preferred_market: leadInput.preferred_market?.trim() || null,
         next_follow_up_at: leadInput.next_follow_up_at || null,
-        notes: leadInput.notes || null,
+        notes: leadInput.notes?.trim() || null,
       });
 
       if (error) {
@@ -1183,15 +1207,84 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addPayment = async (paymentInput: Omit<Payment, 'id' | 'created_at' | 'status'>) => {
-    const targetTrader = traders.find((t) => t.id === paymentInput.trader_id);
+    const isValidUUID = (id?: string | null) =>
+      Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+
+    let targetTraderId = paymentInput.trader_id;
+    let targetTrader = traders.find((t) => t.id === targetTraderId);
+
+    // If trader_id is not a valid UUID (e.g. 'manual-client', empty string, or new prospect)
+    if (!isValidUUID(targetTraderId) || targetTraderId === 'manual-client') {
+      const clientName = (paymentInput as any).trader_name || 'Direct Client';
+      const clientPhone = (paymentInput as any).trader_phone || '+91 98765 43210';
+
+      const existing = traders.find(
+        (t) => t.phone === clientPhone || (t.name && t.name.toLowerCase() === clientName.toLowerCase())
+      );
+
+      if (existing && isValidUUID(existing.id)) {
+        targetTraderId = existing.id;
+        targetTrader = existing;
+      } else {
+        // Auto-create active trader record in Supabase so foreign key is satisfied
+        const newTraderId = generateUUID();
+        const effectiveAssignedTo = isValidUUID(paymentInput.employee_id)
+          ? paymentInput.employee_id
+          : currentUser && isValidUUID(currentUser.id)
+          ? currentUser.id
+          : '10000000-0000-0000-0000-000000000001';
+
+        const newTrader: ActiveTrader = {
+          id: newTraderId,
+          name: clientName,
+          phone: clientPhone,
+          employee_id: effectiveAssignedTo!,
+          status: 'active',
+          joined_at: new Date().toISOString().split('T')[0],
+          current_streak: 0,
+          longest_streak: 0,
+          total_profit_gained: 0,
+          total_profit_shared: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        setTraders((prev) => [newTrader, ...prev]);
+
+        if (supabase && !useMocks) {
+          try {
+            await supabase.from('active_traders').insert({
+              id: newTraderId,
+              name: clientName,
+              phone: clientPhone,
+              assigned_to: effectiveAssignedTo,
+              status: 'active',
+              joined_at: newTrader.joined_at,
+            });
+          } catch (tErr) {
+            console.warn('Could not auto-register trader for payment:', tErr);
+          }
+        }
+
+        targetTraderId = newTraderId;
+        targetTrader = newTrader;
+      }
+    }
+
     const newPayId = generateUUID();
+    const effectiveEmployeeId = isValidUUID(paymentInput.employee_id)
+      ? paymentInput.employee_id
+      : currentUser && isValidUUID(currentUser.id)
+      ? currentUser.id
+      : null;
 
     const newPayment: Payment = {
       ...paymentInput,
       id: newPayId,
-      trader_name: targetTrader?.name || 'Trader',
-      trader_phone: targetTrader?.phone,
-      employee_id: currentUser?.id || 'sys',
+      trader_id: targetTraderId,
+      trader_name: targetTrader?.name || (paymentInput as any).trader_name || 'Trader',
+      trader_phone: targetTrader?.phone || (paymentInput as any).trader_phone,
+      employee_id: effectiveEmployeeId || 'sys',
       employee_name: currentUser?.name || 'Staff',
       status: 'pending_verification',
       created_at: new Date().toISOString(),
@@ -1200,17 +1293,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPayments((prev) => [newPayment, ...prev]);
 
     if (supabase && !useMocks) {
-      await supabase.from('payments').insert({
-        id: newPayId,
-        trader_id: paymentInput.trader_id,
-        employee_id: paymentInput.employee_id || currentUser?.id || null,
-        amount: paymentInput.amount,
-        payment_mode: paymentInput.payment_mode,
-        utr: paymentInput.utr,
-        transaction_time: paymentInput.transaction_time,
-        screenshot_url: paymentInput.screenshot_url,
-        status: 'pending_verification'
-      });
+      try {
+        const { error } = await supabase.from('payments').insert({
+          id: newPayId,
+          trader_id: targetTraderId,
+          employee_id: effectiveEmployeeId,
+          amount: paymentInput.amount,
+          payment_mode: paymentInput.payment_mode,
+          utr: paymentInput.utr,
+          transaction_time: paymentInput.transaction_time,
+          screenshot_url: paymentInput.screenshot_url,
+          status: 'pending_verification',
+        });
+
+        if (error) {
+          console.error('Supabase Payment Insert Error:', error.message);
+        }
+      } catch (err) {
+        console.error('Network error inserting payment:', err);
+      }
     }
 
     const adminUser = users.find((u) => u.role === 'admin');

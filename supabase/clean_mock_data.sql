@@ -73,3 +73,8 @@ DROP POLICY IF EXISTS "Users read all" ON public.users;
 DROP POLICY IF EXISTS "Admin manage users" ON public.users;
 DROP POLICY IF EXISTS "Enable all operations on users" ON public.users;
 CREATE POLICY "Enable all operations on users" ON public.users FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- 11. Ensure role check constraint allows employee, admin, and pending
+ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE public.users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'employee', 'pending'));
+
