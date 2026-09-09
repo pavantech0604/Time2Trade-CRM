@@ -242,12 +242,16 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="relative">
           <button
             onClick={() => setIsNotifOpen(!isNotifOpen)}
-            className="relative p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-all cursor-pointer"
-            title="Notifications"
+            className={`relative p-2 rounded-xl border transition-all cursor-pointer ${
+              isNotifOpen
+                ? 'bg-sky-50 border-sky-300 text-[#0EA5E9] shadow-xs ring-2 ring-sky-400/20'
+                : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-100'
+            }`}
+            title="Trading Desk Alerts"
           >
             <Bell className="w-4 h-4" />
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-black border-2 border-white shadow-sm">
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold font-mono text-white border-2 border-white shadow-xs">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
