@@ -113,7 +113,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
               <div className="bg-slate-50 rounded-2xl p-4 w-full space-y-3 text-left border border-slate-100">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-500 font-semibold">Email</span>
-                  <span className="text-slate-700 font-bold truncate max-w-[150px]">{currentUser.email}</span>
+                  <span className="text-slate-700 font-bold truncate max-w-[200px]">{currentUser.email}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-500 font-semibold">Phone</span>

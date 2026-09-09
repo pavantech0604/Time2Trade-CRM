@@ -154,7 +154,7 @@ export const AttendanceDashboard: React.FC = () => {
           <p className="text-[10px] text-slate-400 font-mono">Team size</p>
         </div>
 
-        <div className="bg-white border border-emerald-250 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
+        <div className="bg-white border border-emerald-200 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
           <div className="flex items-center justify-between text-emerald-700 text-xs font-bold">
             <span>Online</span>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
@@ -163,7 +163,7 @@ export const AttendanceDashboard: React.FC = () => {
           <p className="text-[10px] text-emerald-600 font-mono font-medium">Actively working</p>
         </div>
 
-        <div className="bg-white border border-amber-250 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
+        <div className="bg-white border border-amber-200 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
           <div className="flex items-center justify-between text-amber-700 text-xs font-bold">
             <span>On Break</span>
             <Coffee className="w-4 h-4 text-amber-500" />
@@ -172,13 +172,13 @@ export const AttendanceDashboard: React.FC = () => {
           <p className="text-[10px] text-amber-600 font-mono font-medium">Short break</p>
         </div>
 
-        <div className="bg-white border border-purple-250 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
+        <div className="bg-white border border-purple-200 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
           <div className="flex items-center justify-between text-purple-700 text-xs font-bold">
             <span>On Lunch</span>
             <Utensils className="w-4 h-4 text-purple-500" />
           </div>
           <p className="text-xl font-black text-purple-800">{lunchCount}</p>
-          <p className="text-[10px] text-purple-650 font-mono font-medium">Lunch session</p>
+          <p className="text-[10px] text-purple-600 font-mono font-medium">Lunch session</p>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
@@ -190,7 +190,7 @@ export const AttendanceDashboard: React.FC = () => {
           <p className="text-[10px] text-slate-400 font-mono">Not signed in</p>
         </div>
 
-        <div className="bg-white border border-rose-250 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
+        <div className="bg-white border border-rose-200 rounded-2xl p-3.5 space-y-1.5 shadow-sm">
           <div className="flex items-center justify-between text-rose-700 text-xs font-bold">
             <span>Late Arrivals</span>
             <AlertTriangle className="w-4 h-4 text-rose-500 animate-pulse" />
@@ -255,7 +255,7 @@ export const AttendanceDashboard: React.FC = () => {
             return (
               <div
                 key={p.user_id}
-                className="bg-white border border-slate-200 rounded-3xl p-5 space-y-4 hover:border-slate-350 transition-all shadow-sm"
+                className="bg-white border border-slate-200 rounded-3xl p-5 space-y-4 hover:border-slate-300 transition-all shadow-sm"
               >
                 {/* Top info */}
                 <div className="flex items-start justify-between gap-3">
@@ -273,7 +273,7 @@ export const AttendanceDashboard: React.FC = () => {
 
                   {/* Status badge */}
                   <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-bold ${cfg.bg.replace(/\/10/g, '/20').replace(/bg-emerald-500/g, 'bg-emerald-50').replace(/bg-amber-500/g, 'bg-amber-50').replace(/bg-purple-500/g, 'bg-purple-50').replace(/bg-slate-700/g, 'bg-slate-50')} ${cfg.text.replace(/text-emerald-400/g, 'text-emerald-800').replace(/text-amber-400/g, 'text-amber-800').replace(/text-purple-400/g, 'text-purple-800').replace(/text-slate-400/g, 'text-slate-650')}`}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-bold ${cfg.bg.replace(/\/10/g, '/20').replace(/bg-emerald-500/g, 'bg-emerald-50').replace(/bg-amber-500/g, 'bg-amber-50').replace(/bg-purple-500/g, 'bg-purple-50').replace(/bg-slate-700/g, 'bg-slate-50')} ${cfg.text.replace(/text-emerald-400/g, 'text-emerald-800').replace(/text-amber-400/g, 'text-amber-800').replace(/text-purple-400/g, 'text-purple-800').replace(/text-slate-400/g, 'text-slate-600')}`}
                   >
                     <span className={`w-2 h-2 rounded-full ${cfg.dot.replace(/bg-emerald-400/g, 'bg-emerald-500').replace(/bg-amber-400/g, 'bg-amber-500').replace(/bg-purple-400/g, 'bg-purple-500')}`} />
                     {cfg.label}
@@ -281,7 +281,7 @@ export const AttendanceDashboard: React.FC = () => {
                 </div>
 
                 {/* Timers & Punctuality */}
-                <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-2 text-xs text-slate-650">
+                <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-2 text-xs text-slate-600">
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-slate-500">First Login:</span>
                     <span className="font-mono font-bold text-slate-800">
@@ -315,7 +315,7 @@ export const AttendanceDashboard: React.FC = () => {
                         Late Arrival
                       </span>
                     ) : (
-                      <span className="text-emerald-800 font-bold text-[10px] font-mono uppercase bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-250 shadow-sm">
+                      <span className="text-emerald-800 font-bold text-[10px] font-mono uppercase bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200 shadow-sm">
                         On Time
                       </span>
                     )}

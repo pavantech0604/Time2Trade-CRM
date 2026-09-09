@@ -91,7 +91,7 @@ export const EmployeeScorecards: React.FC = () => {
                 <div 
                   key={metric.id} 
                   onClick={() => setSelectedEmployeeId(selectedEmployeeId === metric.id ? null : metric.id)}
-                  className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-6 rounded-2xl border transition-all duration-200 cursor-pointer ${
+                  className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl border transition-all duration-200 cursor-pointer ${
                     selectedEmployeeId === metric.id 
                       ? 'bg-blue-50/50 border-blue-400 shadow-md ring-2 ring-blue-500/20' 
                       : 'bg-white border-slate-200 shadow-sm hover:shadow-md hover:border-[#C5A028]/30'
@@ -161,7 +161,7 @@ export const EmployeeScorecards: React.FC = () => {
       </div>
 
       {/* Filter Bar (Light Theme) */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input

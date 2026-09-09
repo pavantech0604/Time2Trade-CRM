@@ -56,6 +56,8 @@ export interface User {
   rejection_reason?: string;
   last_sign_in_at?: string;
   avatar_url?: string;
+  must_reset_password?: boolean;
+  temporary_password?: string;
   created_at: string;
   updated_at?: string;
 }

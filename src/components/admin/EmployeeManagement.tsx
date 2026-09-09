@@ -18,6 +18,9 @@ import {
   Sparkles,
   X,
   Loader2,
+  Copy,
+  Check,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { User, UserRole, ApprovalStatus } from '../../types';
@@ -29,6 +32,7 @@ export const EmployeeManagement: React.FC = () => {
     assignRoleAndApprove,
     rejectEmployee,
     toggleEmployeeActive,
+    adminResetEmployeePassword,
   } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,9 +42,11 @@ export const EmployeeManagement: React.FC = () => {
 
   // Modal State
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [modalMode, setModalMode] = useState<'assign' | 'reject' | 'details' | null>(null);
+  const [modalMode, setModalMode] = useState<'assign' | 'reject' | 'details' | 'reset_password' | null>(null);
   const [selectedRole, setSelectedRole] = useState<UserRole>('employee');
   const [rejectReason, setRejectReason] = useState('');
+  const [tempPasswordToAssign, setTempPasswordToAssign] = useState('');
+  const [copiedPassword, setCopiedPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -59,11 +65,16 @@ export const EmployeeManagement: React.FC = () => {
 
       const matchesRole = roleFilter === 'all' || u.role === roleFilter;
       const matchesApproval =
-        approvalFilter === 'all' || (u.approval_status || 'approved') === approvalFilter;
+        approvalFilter === 'all'
+          ? true
+          : approvalFilter === 'pending_admin_review'
+          ? u.approval_status === 'pending_admin_review' ||
+            (u.role === 'pending' && u.approval_status !== 'rejected' && u.approval_status !== 'approved')
+          : (u.approval_status || 'approved') === approvalFilter;
       const matchesStatus =
         statusFilter === 'all' ||
-        (statusFilter === 'active' && u.is_active !== false) ||
-        (statusFilter === 'inactive' && u.is_active === false);
+        (statusFilter === 'active' && u.is_active !== false && u.approval_status !== 'rejected') ||
+        (statusFilter === 'inactive' && (u.is_active === false || u.approval_status === 'rejected'));
 
       return matchesSearch && matchesRole && matchesApproval && matchesStatus;
     });
@@ -72,7 +83,9 @@ export const EmployeeManagement: React.FC = () => {
   const realUsers = users;
   const totalEmployees = realUsers.length;
   const pendingReviews = realUsers.filter(
-    (u) => u.approval_status === 'pending_admin_review' || u.role === 'pending'
+    (u) =>
+      u.approval_status === 'pending_admin_review' ||
+      (u.role === 'pending' && u.approval_status !== 'rejected' && u.approval_status !== 'approved')
   ).length;
   const approvedStaff = realUsers.filter((u) => u.approval_status === 'approved').length;
   const activeStaff = users.filter((u) => u.is_active !== false && u.approval_status === 'approved').length;
@@ -121,8 +134,39 @@ export const EmployeeManagement: React.FC = () => {
     showToast(`${user.name} is now ${nextState ? 'Activated' : 'Deactivated'}`);
   };
 
-  const handleResetPassword = (user: User) => {
-    showToast(`Password reset link dispatched to ${user.email}`);
+  const handleOpenResetPasswordModal = (user: User) => {
+    setSelectedUser(user);
+    const firstName = user.name.split(' ')[0].replace(/[^A-Za-z]/g, '');
+    setTempPasswordToAssign(`T2T@${firstName || 'Staff'}2026`);
+    setCopiedPassword(false);
+    setModalMode('reset_password');
+  };
+
+  const handleCopyTempPassword = () => {
+    if (!tempPasswordToAssign) return;
+    navigator.clipboard.writeText(tempPasswordToAssign);
+    setCopiedPassword(true);
+    setTimeout(() => setCopiedPassword(false), 2500);
+  };
+
+  const handleGenerateRandomKey = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    setTempPasswordToAssign(`T2T#${code}`);
+  };
+
+  const handleConfirmResetPassword = async () => {
+    if (!selectedUser || !tempPasswordToAssign.trim()) return;
+    setActionLoading(true);
+    try {
+      const res = await adminResetEmployeePassword(selectedUser.id, tempPasswordToAssign.trim());
+      showToast(res.message);
+      setModalMode(null);
+      setSelectedUser(null);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   return (
@@ -149,7 +193,7 @@ export const EmployeeManagement: React.FC = () => {
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 font-sans">
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-2 shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
             <span>Total Staff</span>
             <Users className="w-4 h-4 text-blue-500" />
@@ -158,7 +202,7 @@ export const EmployeeManagement: React.FC = () => {
           <p className="text-[10px] text-slate-400 font-mono">Registered across database</p>
         </div>
 
-        <div className="bg-white border border-amber-200 rounded-2xl p-6 space-y-2 shadow-sm">
+        <div className="bg-white border border-amber-200 rounded-2xl p-4 space-y-2 shadow-sm">
           <div className="flex items-center justify-between text-amber-700 text-xs font-bold">
             <span>Pending Reviews</span>
             <Clock className="w-4 h-4 text-amber-500 animate-pulse" />
@@ -167,7 +211,7 @@ export const EmployeeManagement: React.FC = () => {
           <p className="text-[10px] text-amber-600 font-mono font-medium">Requires role assignment</p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-2 shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
             <span>Approved Staff</span>
             <UserCheck className="w-4 h-4 text-emerald-600" />
@@ -176,7 +220,7 @@ export const EmployeeManagement: React.FC = () => {
           <p className="text-[10px] text-slate-400 font-mono">Role validated accounts</p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-2 shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
             <span>Active Operators</span>
             <ShieldCheck className="w-4 h-4 text-indigo-500" />
@@ -247,10 +291,13 @@ export const EmployeeManagement: React.FC = () => {
             <div className="p-8 text-center text-slate-500">No employees found.</div>
           ) : (
             filteredUsers.map((user) => {
-              const isPending = user.approval_status === 'pending_admin_review' || user.role === 'pending';
-              const isApproved = user.approval_status === 'approved';
               const isRejected = user.approval_status === 'rejected';
-              const isActive = user.is_active !== false;
+              const isApproved = user.approval_status === 'approved';
+              const isPending =
+                !isApproved &&
+                !isRejected &&
+                (user.approval_status === 'pending_admin_review' || user.role === 'pending');
+              const isActive = user.is_active !== false && !isRejected;
 
               return (
                 <div key={user.id} className="p-4 space-y-3 bg-white">
@@ -270,22 +317,35 @@ export const EmployeeManagement: React.FC = () => {
                       </div>
                     </div>
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold border ${
-                      user.role === 'admin' ? 'bg-indigo-50 text-indigo-700 border-indigo-150' :
+                      isRejected ? 'bg-slate-100 text-slate-500 border-slate-200' :
+                      user.role === 'admin' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
                       user.role === 'employee' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                      'bg-amber-50 text-amber-800 border-amber-200 animate-pulse'
+                      'bg-amber-50 text-amber-800 border-amber-200'
                     }`}>
-                      {user.role === 'employee' ? 'EMPLOYEE' : user.role.toUpperCase()}
+                      {isRejected ? 'UNASSIGNED' : user.role === 'employee' ? 'EMPLOYEE' : user.role.toUpperCase()}
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center text-[10px]">
                     <div className="flex items-center gap-1.5">
-                      {isPending && <span className="text-amber-700 font-bold">Pending Review</span>}
-                      {isApproved && <span className="text-emerald-700 font-bold">Approved</span>}
-                      {isRejected && <span className="text-rose-700 font-bold">Rejected</span>}
+                      {isRejected && (
+                        <span className="inline-flex items-center gap-1 text-rose-700 font-bold bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
+                          <XCircle className="w-3 h-3 text-rose-500" /> Rejected
+                        </span>
+                      )}
+                      {isApproved && (
+                        <span className="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Approved
+                        </span>
+                      )}
+                      {isPending && (
+                        <span className="inline-flex items-center gap-1 text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                          <Clock className="w-3 h-3 text-amber-600" /> Pending Review
+                        </span>
+                      )}
                     </div>
                     <div>
-                      <span className={`w-2 h-2 inline-block rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-350'} mr-1`} />
+                      <span className={`w-2 h-2 inline-block rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-300'} mr-1`} />
                       <span className="text-slate-600 font-mono">{isActive ? 'Active' : 'Disabled'}</span>
                     </div>
                   </div>
@@ -293,18 +353,25 @@ export const EmployeeManagement: React.FC = () => {
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleOpenAssignModal(user)}
-                      className="flex-1 text-center py-2.5 rounded-xl bg-blue-500/10 text-blue-700 border border-blue-200 font-bold text-[10px] active:scale-95 transition-all shadow-sm"
+                      className="flex-1 text-center py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-[10px] active:scale-95 transition-all shadow-sm"
                     >
-                      {isPending ? 'Review & Assign' : 'Edit Role'}
+                      {isPending ? 'Review & Assign' : isRejected ? 'Re-evaluate' : 'Edit Role'}
                     </button>
                     {isPending && (
                       <button
                         onClick={() => handleOpenRejectModal(user)}
-                        className="flex-1 text-center py-2.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 font-bold text-[10px] active:scale-95 transition-all shadow-sm"
+                        className="flex-1 text-center py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[10px] active:scale-95 transition-all shadow-sm"
                       >
                         Reject
                       </button>
                     )}
+                    <button
+                      onClick={() => handleOpenResetPasswordModal(user)}
+                      className="px-3 py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 text-slate-600 border border-slate-200 font-bold text-[10px] active:scale-95 transition-all shadow-sm shrink-0"
+                      title="Reset Password"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               );
@@ -312,20 +379,20 @@ export const EmployeeManagement: React.FC = () => {
           )}
         </div>
 
-        {/* Desktop View: Heavy Table */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-[#091A2F]/5 text-slate-600 uppercase font-mono text-[10px] tracking-wider border-b border-slate-100">
+        {/* Desktop View: Clean Responsive Table without Horizontal Scroll */}
+        <div className="hidden md:block w-full overflow-hidden">
+          <table className="w-full text-left text-xs table-auto">
+            <thead className="bg-slate-50/90 text-slate-400 uppercase font-mono text-[10px] tracking-wider border-b border-slate-200/80">
               <tr>
-                <th className="py-3.5 px-4 font-bold text-slate-500">Employee</th>
-                <th className="py-3.5 px-4 font-bold text-slate-500">Assigned Role</th>
-                <th className="py-3.5 px-4 font-bold text-slate-500">Approval Status</th>
-                <th className="py-3.5 px-4 font-bold text-slate-500">Account State</th>
-                <th className="py-3.5 px-4 font-bold text-slate-500">Registered</th>
-                <th className="py-3.5 px-4 font-bold text-right text-slate-500">Actions</th>
+                <th className="py-2.5 pl-4 pr-2 font-bold">Employee</th>
+                <th className="py-2.5 px-2 font-bold whitespace-nowrap">Assigned Role</th>
+                <th className="py-2.5 px-2 font-bold whitespace-nowrap">Approval Status</th>
+                <th className="py-2.5 px-2 font-bold whitespace-nowrap">Account State</th>
+                <th className="py-2.5 px-2 font-bold whitespace-nowrap">Registered</th>
+                <th className="py-2.5 pl-2 pr-4 font-bold text-right whitespace-nowrap">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100/80">
+            <tbody className="divide-y divide-slate-100">
               {filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-12 text-slate-500">
@@ -334,39 +401,35 @@ export const EmployeeManagement: React.FC = () => {
                 </tr>
               ) : (
                 filteredUsers.map((user) => {
-                  const isPending =
-                    user.approval_status === 'pending_admin_review' || user.role === 'pending';
-                  const isApproved = user.approval_status === 'approved';
                   const isRejected = user.approval_status === 'rejected';
-                  const isActive = user.is_active !== false;
+                  const isApproved = user.approval_status === 'approved';
+                  const isPending =
+                    !isApproved &&
+                    !isRejected &&
+                    (user.approval_status === 'pending_admin_review' || user.role === 'pending');
+                  const isActive = user.is_active !== false && !isRejected;
 
                   return (
                     <tr
                       key={user.id}
-                      className="hover:bg-slate-50/50 border-b border-slate-100/60 transition-colors group"
+                      className="hover:bg-slate-50/70 border-b border-slate-100/80 transition-colors group"
                     >
                       {/* Employee info */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md overflow-hidden shrink-0">
+                      <td className="py-2.5 pl-4 pr-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-2xs overflow-hidden shrink-0 text-xs">
                             {user.avatar_url ? (
                               <img src={user.avatar_url} alt={user.name} className="w-full h-full object-cover" />
                             ) : (
                               user.name.charAt(0)
                             )}
                           </div>
-                          <div>
-                            <div className="font-bold text-slate-800 text-xs">{user.name}</div>
-                            <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
-                              <span className="flex items-center gap-1">
-                                <Mail className="w-3 h-3 text-slate-400" />
-                                {user.email}
-                              </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-slate-800 text-xs truncate max-w-[150px] lg:max-w-[200px]">{user.name}</div>
+                            <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 truncate">
+                              <span className="truncate max-w-[120px] lg:max-w-[160px]">{user.email}</span>
                               {user.phone && (
-                                <span className="flex items-center gap-1">
-                                  <Phone className="w-3 h-3 text-slate-500" />
-                                  {user.phone}
-                                </span>
+                                <span className="text-slate-300 hidden xl:inline">• {user.phone}</span>
                               )}
                             </div>
                           </div>
@@ -374,63 +437,65 @@ export const EmployeeManagement: React.FC = () => {
                       </td>
 
                       {/* Assigned Role */}
-                      <td className="py-3.5 px-4 font-mono">
-                        {user.role === 'admin' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200 text-[11px] font-semibold">
+                      <td className="py-2.5 px-2 whitespace-nowrap">
+                        {isRejected ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-semibold">
+                            Unassigned
+                          </span>
+                        ) : user.role === 'admin' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
                             Admin
                           </span>
-                        )}
-                        {user.role === 'employee' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-semibold">
+                        ) : user.role === 'employee' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
                             Employee
                           </span>
-                        )}
-                        {user.role === 'pending' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-semibold animate-pulse">
-                            Pending Review
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-semibold animate-pulse">
+                            Pending
                           </span>
                         )}
                       </td>
 
-                      {/* Approval Status */}
-                      <td className="py-3.5 px-4">
-                        {isPending && (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-250 text-[11px] font-bold">
-                            <Clock className="w-3 h-3 text-amber-700" />
-                            Pending Review
+                      {/* Approval Status - Mutually Exclusive (Only one badge) */}
+                      <td className="py-2.5 px-2 whitespace-nowrap">
+                        {isRejected && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold">
+                            <XCircle className="w-3 h-3 text-rose-500 shrink-0" />
+                            <span>Rejected</span>
                           </span>
                         )}
                         {isApproved && (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-800 border border-emerald-250 text-[11px] font-semibold">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            Approved
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <span>Approved</span>
                           </span>
                         )}
-                        {isRejected && (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-[11px] font-semibold">
-                            <XCircle className="w-3 h-3 text-rose-600" />
-                            Rejected
+                        {isPending && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold animate-pulse">
+                            <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>Pending Review</span>
                           </span>
                         )}
                       </td>
 
                       {/* Account State */}
-                      <td className="py-3.5 px-4">
+                      <td className="py-2.5 px-2 whitespace-nowrap">
                         {isActive ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-bold">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                            Active
+                          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-semibold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                            <span>Active</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                            <span className="w-2 h-2 rounded-full bg-slate-350" />
-                            Disabled
+                          <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
+                            <span>Disabled</span>
                           </span>
                         )}
                       </td>
 
                       {/* Signup Date */}
-                      <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
+                      <td className="py-2.5 px-2 whitespace-nowrap text-slate-400 font-mono text-[10px]">
                         {new Date(user.created_at).toLocaleDateString('en-IN', {
                           day: '2-digit',
                           month: 'short',
@@ -438,47 +503,63 @@ export const EmployeeManagement: React.FC = () => {
                         })}
                       </td>
 
-                      {/* Action buttons */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* Role Assignment & Approve Button */}
-                          <button
-                            onClick={() => handleOpenAssignModal(user)}
-                            className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold transition-all cursor-pointer shadow-sm"
-                          >
-                            {isPending ? 'Review & Assign' : 'Edit Role'}
-                          </button>
-
-                          {/* Reject button for pending accounts */}
+                      {/* Action buttons - Designed to never cut off */}
+                      <td className="py-2.5 pl-2 pr-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end gap-1.5">
                           {isPending && (
+                            <>
+                              <button
+                                onClick={() => handleOpenAssignModal(user)}
+                                className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-all cursor-pointer shadow-xs whitespace-nowrap active:scale-95"
+                              >
+                                Review & Assign
+                              </button>
+                              <button
+                                onClick={() => handleOpenRejectModal(user)}
+                                className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-all cursor-pointer shadow-2xs whitespace-nowrap active:scale-95"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
+
+                          {isApproved && (
+                            <>
+                              <button
+                                onClick={() => handleOpenAssignModal(user)}
+                                className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold transition-all cursor-pointer shadow-2xs whitespace-nowrap active:scale-95"
+                              >
+                                Edit Role
+                              </button>
+                              <button
+                                onClick={() => handleToggleActive(user)}
+                                className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0 ${
+                                  isActive
+                                    ? 'bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600 border-slate-200 hover:border-rose-200'
+                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                }`}
+                                title={isActive ? 'Deactivate Account' : 'Activate Account'}
+                              >
+                                {isActive ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                              </button>
+                            </>
+                          )}
+
+                          {isRejected && (
                             <button
-                              onClick={() => handleOpenRejectModal(user)}
-                              className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-semibold transition-all cursor-pointer shadow-sm"
+                              onClick={() => handleOpenAssignModal(user)}
+                              className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-200 text-[11px] font-bold transition-all cursor-pointer shadow-2xs whitespace-nowrap active:scale-95"
+                              title="Re-evaluate registration"
                             >
-                              Reject
+                              Re-evaluate
                             </button>
                           )}
 
-                          {/* Toggle Active status */}
-                          {!isPending && (
-                            <button
-                              onClick={() => handleToggleActive(user)}
-                              className={`p-1.5 rounded-xl border text-[11px] transition-all cursor-pointer ${
-                                isActive
-                                  ? 'bg-slate-800 text-slate-400 hover:text-rose-400 border-slate-700'
-                                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                              }`}
-                              title={isActive ? 'Deactivate Account' : 'Activate Account'}
-                            >
-                              {isActive ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
-                            </button>
-                          )}
-
-                          {/* Password Reset */}
+                          {/* Password Reset Button */}
                           <button
-                            onClick={() => handleResetPassword(user)}
-                            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 text-[11px] transition-all cursor-pointer"
-                            title="Trigger Password Reset Email"
+                            onClick={() => handleOpenResetPasswordModal(user)}
+                            className="w-7 h-7 rounded-lg bg-slate-50 hover:bg-blue-50 text-slate-500 hover:text-blue-600 border border-slate-200 hover:border-blue-200 flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
+                            title="Issue Temporary Password & Reset Credentials"
                           >
                             <KeyRound className="w-3.5 h-3.5" />
                           </button>
@@ -505,7 +586,7 @@ export const EmployeeManagement: React.FC = () => {
               </div>
               <button
                 onClick={() => setModalMode(null)}
-                className="text-slate-400 hover:text-slate-650 hover:bg-slate-50 p-1.5 rounded-lg transition-colors"
+                className="text-slate-400 hover:text-slate-600 hover:bg-slate-50 p-1.5 rounded-lg transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -650,6 +731,113 @@ export const EmployeeManagement: React.FC = () => {
                 className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/10 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 border-none"
               >
                 {actionLoading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : 'Confirm Rejection'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Password Reset Modal */}
+      {modalMode === 'reset_password' && selectedUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 font-sans">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Reset Employee Password</h3>
+                  <p className="text-[11px] text-slate-500 font-medium">Issue temporary access credentials</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModalMode(null)}
+                className="text-slate-400 hover:text-slate-600 hover:bg-slate-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Employee Target Summary */}
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-1.5 text-xs text-slate-700">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Employee:</span>
+                <span className="font-bold text-slate-900">{selectedUser.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Login Email:</span>
+                <span className="text-blue-700 font-mono font-semibold">{selectedUser.email}</span>
+              </div>
+            </div>
+
+            {/* Temporary Password Configuration */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-slate-700 block uppercase font-mono tracking-wider">
+                  Assigned Temporary Password *
+                </label>
+                <button
+                  type="button"
+                  onClick={handleGenerateRandomKey}
+                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+                >
+                  <Sparkles className="w-3 h-3" /> Randomize
+                </button>
+              </div>
+
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={tempPasswordToAssign}
+                  onChange={(e) => setTempPasswordToAssign(e.target.value)}
+                  placeholder="e.g. T2T@Madhan2026"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-24 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:bg-white transition-all shadow-inner"
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyTempPassword}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-blue-600 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
+                >
+                  {copiedPassword ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-500" /> Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3 text-slate-400" /> Copy
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 leading-normal">
+                Standard format: <code className="text-slate-600 font-mono font-bold">T2T@[Name]2026</code>. When the employee logs in with this temporary key, the CRM will pop up an interactive screen prompting them to set their permanent password.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalMode(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading || !tempPasswordToAssign.trim()}
+                onClick={handleConfirmResetPassword}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 border-none active:scale-98"
+              >
+                {actionLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <>
+                    <KeyRound className="w-4 h-4 text-white" />
+                    Save & Force Reset
+                  </>
+                )}
               </button>
             </div>
           </div>

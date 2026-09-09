@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { formatINR } from '../../lib/calculations';
+import { formatINR } from '../../lib/formatters';
 import {
   Calendar,
   CalendarDays,
@@ -230,8 +230,8 @@ export const EmployeeSalesDashboard: React.FC = () => {
       </div>
 
       {/* Top Admin KPI Metrics Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Approved Sales</span>
           <span className="text-xl sm:text-2xl font-black text-emerald-700 block mt-1">
             {formatINR(adminKPIs.totalPaymentAmount)}
@@ -241,7 +241,7 @@ export const EmployeeSalesDashboard: React.FC = () => {
           </span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Awaiting Verification</span>
           <span className="text-xl sm:text-2xl font-black text-amber-600 block mt-1">
             {adminKPIs.pendingCount} Payments
@@ -251,7 +251,7 @@ export const EmployeeSalesDashboard: React.FC = () => {
           </span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Shared Payments</span>
           <span className="text-xl sm:text-2xl font-black text-blue-700 block mt-1">
             {adminKPIs.sharedPaymentCount} Shared
@@ -261,7 +261,7 @@ export const EmployeeSalesDashboard: React.FC = () => {
           </span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Category Distribution</span>
           <div className="flex items-center gap-3 mt-1.5 text-xs font-bold">
             <span className="text-blue-700">Equity: {formatINR(adminKPIs.equitySales)}</span>
@@ -373,8 +373,8 @@ export const EmployeeSalesDashboard: React.FC = () => {
                       </div>
 
                       {/* Expand Icon */}
-                      <div className="hidden xl:flex items-center justify-center w-12 h-12 rounded-2xl bg-white/50 border border-slate-100 shadow-sm text-slate-400 shrink-0 backdrop-blur-sm group-hover:bg-white group-hover:shadow-md transition-all duration-300">
-                        <ChevronDown className={`w-5 h-5 transition-transform duration-500 ${isExpanded ? 'rotate-180 text-blue-600' : ''}`} />
+                      <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 xl:w-12 xl:h-12 rounded-xl xl:rounded-2xl bg-slate-50 xl:bg-white/50 border border-slate-100 shadow-xs text-slate-400 shrink-0 backdrop-blur-sm group-hover:bg-white group-hover:shadow-md transition-all duration-300">
+                        <ChevronDown className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-500 ${isExpanded ? 'rotate-180 text-blue-600' : ''}`} />
                       </div>
                     </div>
                   </div>

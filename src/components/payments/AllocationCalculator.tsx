@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { CheckCircle2, AlertTriangle, AlertOctagon, Sparkles, Divide, RotateCcw, ArrowRight } from 'lucide-react';
-import { formatINR } from '../../lib/calculations';
+import { CheckCircle2, AlertTriangle, AlertOctagon, Sparkles, Divide, RotateCcw } from 'lucide-react';
+import { formatINR } from '../../lib/formatters';
 
 interface AllocationCalculatorProps {
   totalAmount: number;
@@ -217,7 +217,7 @@ export const AllocationCalculator: React.FC<AllocationCalculatorProps> = ({
 
       {/* Confirmation Dialog */}
       {confirmModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95">
             <div>
               <h4 className="text-base font-black text-slate-800">{confirmModal.title}</h4>

@@ -30,11 +30,24 @@ import {
   FileText,
   Clock,
   Sparkles,
+  ShieldCheck,
+  ArrowRight,
+  Lock,
+  RotateCcw,
 } from 'lucide-react';
 import { uploadFileToBucket, supabase } from '../../lib/supabase';
-import { formatINR } from '../../lib/calculations';
+import { formatINR } from '../../lib/formatters';
 import { EmployeeAutocomplete } from './EmployeeAutocomplete';
 import { AllocationCalculator } from './AllocationCalculator';
+
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
+    (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16)
+  );
+};
 
 interface PublicPaymentFormProps {
   onBack?: () => void;
@@ -49,10 +62,10 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
   const [manualClientName, setManualClientName] = useState('');
   const [manualClientPhone, setManualClientPhone] = useState('');
 
-  // 2. Service Details State
-  const [serviceCategory, setServiceCategory] = useState<ServiceCategory>('Equity');
-  const [serviceType, setServiceType] = useState<ServiceType>('Cash');
-  const [subscriptionDuration, setSubscriptionDuration] = useState<SubscriptionDuration>('3 Months');
+  // 2. Service Details State (Initially unselected/blank)
+  const [serviceCategory, setServiceCategory] = useState<ServiceCategory | ''>('');
+  const [serviceType, setServiceType] = useState<ServiceType | ''>('');
+  const [subscriptionDuration, setSubscriptionDuration] = useState<SubscriptionDuration | ''>('');
 
   // 3. Payment Details State
   const [amount, setAmount] = useState<number | ''>('');
@@ -99,18 +112,20 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
   // Confirmation modal state for removing allocated employee
   const [removeConfirmEmp, setRemoveConfirmEmp] = useState<PaymentAllocation | null>(null);
 
-  // Category change side-effect: ensure serviceType belongs to category
+  // Category change side-effect: ensure serviceType belongs to category, or clear if mismatched
   useEffect(() => {
     if (serviceCategory === 'Equity') {
       const equityOptions: ServiceType[] = ['Cash', 'Future Option', 'Stock Option'];
-      if (!equityOptions.includes(serviceType)) {
-        setServiceType('Cash');
+      if (serviceType && !equityOptions.includes(serviceType as ServiceType)) {
+        setServiceType('');
       }
     } else if (serviceCategory === 'Commodity') {
       const commodityOptions: ServiceType[] = ['Gold', 'Silver', 'Crude Oil'];
-      if (!commodityOptions.includes(serviceType)) {
-        setServiceType('Gold');
+      if (serviceType && !commodityOptions.includes(serviceType as ServiceType)) {
+        setServiceType('');
       }
+    } else {
+      setServiceType('');
     }
   }, [serviceCategory]);
 
@@ -123,7 +138,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
         // Initialize with primary employee taking full amount
         return [
           {
-            id: `alloc-primary-${Date.now()}`,
+            id: generateUUID(),
             employee_id: effectivePrimaryUser.id,
             employee_name: effectivePrimaryUser.name,
             employee_code: effectivePrimaryUser.employee_code || `EMP-${effectivePrimaryUser.id.slice(0, 4).toUpperCase()}`,
@@ -209,7 +224,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
     if (allocations.length >= 4) return; // Primary + max 3 additional
 
     const newAlloc: PaymentAllocation = {
-      id: `alloc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      id: generateUUID(),
       employee_id: user.id,
       employee_name: user.name,
       employee_code: user.employee_code || `EMP-${user.id.slice(0, 4).toUpperCase()}`,
@@ -545,6 +560,12 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
           type="button"
           onClick={() => {
             setSubmittedRefId(null);
+            setTraderId(traders[0]?.id || '');
+            setManualClientName('');
+            setManualClientPhone('');
+            setServiceCategory('');
+            setServiceType('');
+            setSubscriptionDuration('');
             setAmount('');
             setUtr('');
             setRemarks('');
@@ -553,9 +574,10 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
             setIsConfirmed(false);
             setAllocations([]);
           }}
-          className="w-full py-3.5 rounded-xl bg-gradient-to-r from-brand-primary to-brand-primaryLight hover:from-brand-primaryLight hover:to-brand-primary text-white font-bold text-xs transition-all shadow-lg shadow-brand-primary/30 hover:shadow-brand-primary/50 hover:-translate-y-0.5 cursor-pointer uppercase tracking-widest"
+          className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/40 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer flex items-center justify-center gap-2"
         >
-          Submit Another Payment Proof
+          <Sparkles className="w-4 h-4 text-blue-200" />
+          <span>Submit Another Payment Proof</span>
         </button>
       </div>
     );
@@ -583,7 +605,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl md:text-2xl font-black text-[#091A2F]">
-                Profit Sharing Payment Portal
+                Payment Submission Portal
               </h1>
               <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
                 Shared Workflow
@@ -680,56 +702,160 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
             </div>
 
             {/* SECTION 2: SERVICE DETAILS */}
-            <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-5">
-              <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-blue-50 text-blue-700 font-bold text-xs flex items-center justify-center border border-blue-200">
+            <div className="bg-white border border-slate-200/90 p-6 md:p-7 rounded-3xl shadow-sm space-y-6">
+              <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 font-black text-xs flex items-center justify-center border border-blue-100 shadow-xs shrink-0">
                     2
                   </span>
-                  <h3 className="text-base font-black text-slate-800">Service Details</h3>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-black text-slate-800 tracking-tight">Service Details</h3>
+                    <p className="text-[11px] text-slate-400 font-medium truncate">Select advisory category, sub-segment, and duration</p>
+                  </div>
                 </div>
-                <span className="text-[11px] text-slate-400 font-medium">Dependent Service Selection</span>
+
+                <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                  {(serviceCategory || serviceType || subscriptionDuration) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setServiceCategory('');
+                        setServiceType('');
+                        setSubscriptionDuration('');
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-2xs whitespace-nowrap shrink-0"
+                      title="Unselect and leave all service options blank"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                      <span className="whitespace-nowrap">Unselect All</span>
+                    </button>
+                  )}
+                  <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-500 font-semibold whitespace-nowrap shrink-0">
+                    <Layers className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    <span className="whitespace-nowrap">Click to toggle</span>
+                  </div>
+                </div>
               </div>
 
               {/* Service Category */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  Service Category <span className="text-rose-500">*</span>
-                </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="flex items-center justify-between mb-2.5">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                    Service Category <span className="text-rose-500">*</span>
+                  </label>
+                  {!serviceCategory ? (
+                    <span className="text-[11px] text-slate-400 font-semibold bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 whitespace-nowrap shrink-0">
+                      Unselected (Click to choose)
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setServiceCategory('');
+                        setServiceType('');
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 rounded-full transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      title="Click to unselect category"
+                    >
+                      <Check className="w-3 h-3 stroke-[2.5]" /> {serviceCategory} <span className="text-[9px] text-emerald-600 font-normal ml-0.5">(Click to clear)</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Equity Card Button */}
                   <button
                     type="button"
-                    onClick={() => setServiceCategory('Equity')}
-                    className={`p-3.5 rounded-2xl border flex items-center gap-3 transition-all cursor-pointer ${
+                    onClick={() => {
+                      if (serviceCategory === 'Equity') {
+                        setServiceCategory('');
+                        setServiceType('');
+                      } else {
+                        setServiceCategory('Equity');
+                      }
+                    }}
+                    className={`group relative p-4 rounded-2xl border text-left transition-all duration-200 cursor-pointer flex items-center justify-between ${
                       serviceCategory === 'Equity'
-                        ? 'border-brand-primary bg-brand-primary/5 ring-2 ring-brand-primary/20 text-brand-primary font-bold'
-                        : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                        ? 'border-blue-600 bg-gradient-to-br from-blue-50/90 via-indigo-50/40 to-white ring-2 ring-blue-500/20 shadow-md shadow-blue-500/10'
+                        : 'border-slate-200/90 hover:border-blue-300 hover:bg-slate-50/70 bg-white shadow-2xs hover:shadow-sm'
                     }`}
                   >
-                    <div className={`p-2 rounded-xl ${serviceCategory === 'Equity' ? 'bg-brand-primary text-white' : 'bg-slate-100 text-slate-600'}`}>
-                      <TrendingUp className="w-5 h-5" />
+                    <div className="flex items-center gap-3.5">
+                      <div
+                        className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+                          serviceCategory === 'Equity'
+                            ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-white'
+                            : 'bg-blue-50 text-blue-600 group-hover:scale-105 group-hover:bg-blue-100'
+                        }`}
+                      >
+                        <TrendingUp className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className={`block text-sm font-bold ${serviceCategory === 'Equity' ? 'text-blue-950' : 'text-slate-800'}`}>
+                          Equity
+                        </span>
+                        <span className="block text-[11px] text-slate-500 mt-0.5">
+                          Cash, Future & Stock Options
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-left">
-                      <span className="block text-sm font-bold">Equity</span>
-                      <span className="block text-[10px] text-slate-500">Cash, Future & Stock Options</span>
+                    {/* Check / Radio Indicator */}
+                    <div
+                      className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all shrink-0 ml-2 ${
+                        serviceCategory === 'Equity'
+                          ? 'border-blue-600 bg-blue-600 text-white shadow-2xs'
+                          : 'border-slate-300 bg-white group-hover:border-slate-400'
+                      }`}
+                    >
+                      {serviceCategory === 'Equity' && <Check className="w-3 h-3 stroke-[3]" />}
                     </div>
                   </button>
 
+                  {/* Commodity Card Button */}
                   <button
                     type="button"
-                    onClick={() => setServiceCategory('Commodity')}
-                    className={`p-3.5 rounded-2xl border flex items-center gap-3 transition-all cursor-pointer ${
+                    onClick={() => {
+                      if (serviceCategory === 'Commodity') {
+                        setServiceCategory('');
+                        setServiceType('');
+                      } else {
+                        setServiceCategory('Commodity');
+                      }
+                    }}
+                    className={`group relative p-4 rounded-2xl border text-left transition-all duration-200 cursor-pointer flex items-center justify-between ${
                       serviceCategory === 'Commodity'
-                        ? 'border-amber-600 bg-amber-500/5 ring-2 ring-amber-500/20 text-amber-900 font-bold'
-                        : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                        ? 'border-amber-500 bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-white ring-2 ring-amber-500/20 shadow-md shadow-amber-500/10'
+                        : 'border-slate-200/90 hover:border-amber-300 hover:bg-slate-50/70 bg-white shadow-2xs hover:shadow-sm'
                     }`}
                   >
-                    <div className={`p-2 rounded-xl ${serviceCategory === 'Commodity' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                      <Coins className="w-5 h-5" />
+                    <div className="flex items-center gap-3.5">
+                      <div
+                        className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+                          serviceCategory === 'Commodity'
+                            ? 'bg-gradient-to-tr from-amber-500 to-orange-500 text-white shadow-md shadow-amber-500/30 ring-2 ring-white'
+                            : 'bg-amber-50 text-amber-600 group-hover:scale-105 group-hover:bg-amber-100'
+                        }`}
+                      >
+                        <Coins className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className={`block text-sm font-bold ${serviceCategory === 'Commodity' ? 'text-amber-950' : 'text-slate-800'}`}>
+                          Commodity
+                        </span>
+                        <span className="block text-[11px] text-slate-500 mt-0.5">
+                          Gold, Silver & Crude Oil
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-left">
-                      <span className="block text-sm font-bold">Commodity</span>
-                      <span className="block text-[10px] text-slate-500">Gold, Silver & Crude Oil</span>
+                    {/* Check / Radio Indicator */}
+                    <div
+                      className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all shrink-0 ml-2 ${
+                        serviceCategory === 'Commodity'
+                          ? 'border-amber-500 bg-amber-500 text-white shadow-2xs'
+                          : 'border-slate-300 bg-white group-hover:border-slate-400'
+                      }`}
+                    >
+                      {serviceCategory === 'Commodity' && <Check className="w-3 h-3 stroke-[3]" />}
                     </div>
                   </button>
                 </div>
@@ -737,69 +863,163 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
               {/* Dependent Service Types */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Service Type ({serviceCategory}) <span className="text-rose-500">*</span>
-                </label>
-                <div className="grid grid-cols-3 gap-2.5">
-                  {serviceCategory === 'Equity' ? (
-                    <>
-                      {(['Cash', 'Future Option', 'Stock Option'] as ServiceType[]).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => setServiceType(type)}
-                          className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer text-center ${
-                            serviceType === type
-                              ? 'border-brand-primary bg-brand-primary text-white shadow-md shadow-brand-primary/20'
-                              : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          {type}
-                        </button>
-                      ))}
-                    </>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                    Service Type {serviceCategory ? `(${serviceCategory})` : ''} <span className="text-rose-500">*</span>
+                  </label>
+                  {!serviceType ? (
+                    <span className="text-[11px] text-slate-400 font-semibold bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 whitespace-nowrap shrink-0">
+                      Unselected (Click an option below)
+                    </span>
                   ) : (
-                    <>
-                      {(['Gold', 'Silver', 'Crude Oil'] as ServiceType[]).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => setServiceType(type)}
-                          className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer text-center ${
-                            serviceType === type
-                              ? 'border-amber-600 bg-amber-600 text-white shadow-md shadow-amber-600/20'
-                              : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          {type}
-                        </button>
-                      ))}
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => setServiceType('')}
+                      className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 rounded-full transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      title="Click to unselect service type"
+                    >
+                      <Check className="w-3 h-3 stroke-[2.5]" /> {serviceType} <span className="text-[9px] text-emerald-600 font-normal ml-0.5">(Click to clear)</span>
+                    </button>
                   )}
                 </div>
+
+                {serviceCategory === 'Equity' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 animate-in fade-in duration-200">
+                    {(['Cash', 'Future Option', 'Stock Option'] as ServiceType[]).map((type) => {
+                      const isSelected = serviceType === type;
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setServiceType((prev) => (prev === type ? '' : type))}
+                          className={`py-3 px-3.5 rounded-xl border text-xs font-bold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
+                            isSelected
+                              ? 'border-blue-600 bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25 ring-2 ring-blue-500/20'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 text-slate-700 shadow-2xs'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                          <span>{type}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : serviceCategory === 'Commodity' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 animate-in fade-in duration-200">
+                    {(['Gold', 'Silver', 'Crude Oil'] as ServiceType[]).map((type) => {
+                      const isSelected = serviceType === type;
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setServiceType((prev) => (prev === type ? '' : type))}
+                          className={`py-3 px-3.5 rounded-xl border text-xs font-bold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
+                            isSelected
+                              ? 'border-amber-600 bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-amber-600/25 ring-2 ring-amber-500/20'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 text-slate-700 shadow-2xs'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                          <span>{type}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-3 animate-in fade-in duration-200">
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                        <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider">
+                          Equity Segments
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {(['Cash', 'Future Option', 'Stock Option'] as ServiceType[]).map((type) => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => {
+                              setServiceCategory('Equity');
+                              setServiceType(type);
+                            }}
+                            className="py-2.5 px-3 rounded-xl border border-slate-200 bg-white hover:border-blue-400 hover:bg-blue-50/50 text-slate-700 text-xs font-semibold transition-all cursor-pointer text-center shadow-2xs hover:shadow-xs"
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                        <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider">
+                          Commodity Segments
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {(['Gold', 'Silver', 'Crude Oil'] as ServiceType[]).map((type) => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => {
+                              setServiceCategory('Commodity');
+                              setServiceType(type);
+                            }}
+                            className="py-2.5 px-3 rounded-xl border border-slate-200 bg-white hover:border-amber-400 hover:bg-amber-50/50 text-slate-700 text-xs font-semibold transition-all cursor-pointer text-center shadow-2xs hover:shadow-xs"
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Subscription Duration */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Subscription Duration <span className="text-rose-500">*</span>
-                </label>
-                <div className="grid grid-cols-3 gap-2.5">
-                  {(['3 Months', '6 Months', 'Yearly'] as SubscriptionDuration[]).map((duration) => (
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                    Subscription Duration <span className="text-rose-500">*</span>
+                  </label>
+                  {!subscriptionDuration ? (
+                    <span className="text-[11px] text-slate-400 font-semibold bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 whitespace-nowrap shrink-0">
+                      Unselected (Click to choose)
+                    </span>
+                  ) : (
                     <button
-                      key={duration}
                       type="button"
-                      onClick={() => setSubscriptionDuration(duration)}
-                      className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                        subscriptionDuration === duration
-                          ? 'border-teal-600 bg-teal-50 text-teal-800 ring-2 ring-teal-500/20'
-                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                      }`}
+                      onClick={() => setSubscriptionDuration('')}
+                      className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-bold bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 rounded-full transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      title="Click to unselect duration"
                     >
-                      <Calendar className="w-3.5 h-3.5" />
-                      {duration}
+                      <Check className="w-3 h-3 stroke-[2.5]" /> {subscriptionDuration} <span className="text-[9px] text-emerald-600 font-normal ml-0.5">(Click to clear)</span>
                     </button>
-                  ))}
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {(['3 Months', '6 Months', 'Yearly'] as SubscriptionDuration[]).map((duration) => {
+                    const isSelected = subscriptionDuration === duration;
+                    return (
+                      <button
+                        key={duration}
+                        type="button"
+                        onClick={() => setSubscriptionDuration((prev) => (prev === duration ? '' : duration))}
+                        className={`py-3 px-3 rounded-xl border text-xs font-bold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
+                          isSelected
+                            ? 'border-emerald-600 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/25 ring-2 ring-emerald-500/20'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 text-slate-700 shadow-2xs'
+                        }`}
+                      >
+                        <Calendar className={`w-3.5 h-3.5 ${isSelected ? 'text-emerald-100' : 'text-slate-400'}`} />
+                        <span>{duration}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3] text-white ml-0.5" />}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1152,11 +1372,19 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                 </div>
 
                 {/* Service Review */}
-                <div className="pt-2 flex justify-between">
+                <div className="pt-2 flex justify-between items-baseline">
                   <span className="text-slate-500 font-semibold">Service:</span>
                   <span className="font-bold text-slate-800 text-right">
-                    {serviceCategory} • {serviceType}
-                    <span className="block text-[10px] text-teal-600 font-semibold">{subscriptionDuration}</span>
+                    {serviceCategory && serviceType ? (
+                      <>
+                        {serviceCategory} • {serviceType}
+                        {subscriptionDuration && (
+                          <span className="block text-[10px] text-teal-600 font-semibold">{subscriptionDuration}</span>
+                        )}
+                      </>
+                    ) : (
+                      <em className="text-slate-400 font-normal">Pending Selection</em>
+                    )}
                   </span>
                 </div>
 
@@ -1229,47 +1457,71 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                 </div>
               </div>
 
-              {/* Confirmation Checkbox */}
+              {/* Confirmation Tile */}
               <div className="pt-2 border-t border-slate-100">
-                <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={isConfirmed}
-                    onChange={(e) => setIsConfirmed(e.target.checked)}
-                    className="mt-0.5 rounded border-slate-300 text-brand-primary focus:ring-brand-primary h-4 w-4 cursor-pointer"
-                  />
-                  <span className="text-xs text-slate-700 font-medium leading-tight">
+                <label
+                  onClick={() => setIsConfirmed(!isConfirmed)}
+                  className={`flex items-start gap-3 p-3 rounded-2xl border transition-all cursor-pointer select-none ${
+                    isConfirmed
+                      ? 'bg-blue-50/70 border-blue-200 text-blue-950 shadow-xs'
+                      : 'bg-slate-50 border-slate-200/80 text-slate-600 hover:bg-slate-100/70'
+                  }`}
+                >
+                  <div
+                    className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 transition-all ${
+                      isConfirmed
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                        : 'bg-white border-slate-300 text-transparent'
+                    }`}
+                  >
+                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  </div>
+                  <span className="text-xs font-semibold leading-snug">
                     I confirm that the payment details and employee allocation amounts are correct.
                   </span>
                 </label>
               </div>
 
-              {/* Submit Button with 4 Distinct States */}
+              {/* Submit Button with High-Conversion Fintech CTA */}
               <button
                 type="submit"
                 disabled={!isFormValid || isSubmitting || isUploading}
-                className={`w-full py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
+                className={`group relative w-full overflow-hidden py-3.5 px-5 rounded-2xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer ${
                   !isFormValid
-                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                    ? 'bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                     : isSubmitting
-                    ? 'bg-brand-primary text-white opacity-80 cursor-wait'
-                    : 'bg-gradient-to-r from-brand-primary to-brand-primaryLight hover:from-brand-primaryLight hover:to-brand-primary text-white shadow-brand-primary/30 hover:shadow-brand-primary/50 hover:-translate-y-0.5 active:translate-y-0'
+                    ? 'bg-gradient-to-r from-blue-700 to-indigo-700 text-white cursor-wait opacity-90 shadow-md'
+                    : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-600 text-white shadow-lg shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] border-t border-white/20'
                 }`}
               >
+                {/* Subtle Glass Top Highlight */}
+                {isFormValid && !isSubmitting && (
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent pointer-events-none" />
+                )}
+
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Submitting Payment…
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-200 shrink-0" />
+                    <span>Submitting Payment Proof…</span>
                   </>
                 ) : !isFormValid ? (
                   <>
-                    <AlertCircle className="w-4 h-4" />
-                    Complete Required Fields
+                    <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span className="font-semibold text-xs uppercase tracking-wider">Complete Required Fields</span>
                   </>
                 ) : (
                   <>
-                    <FileCheck className="w-4 h-4" />
-                    Submit Payment for Verification
+                    {/* Illuminated Icon Badge */}
+                    <div className="w-7 h-7 rounded-xl bg-white/15 backdrop-blur-xs flex items-center justify-center text-white shrink-0 border border-white/20 group-hover:scale-110 transition-transform">
+                      <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                    </div>
+
+                    <span className="tracking-tight text-sm font-black">
+                      Submit Payment for Verification
+                    </span>
+
+                    {/* Right Trailing Arrow with Slide */}
+                    <ArrowRight className="w-4 h-4 text-white/80 group-hover:translate-x-1 group-hover:text-white transition-transform shrink-0" />
                   </>
                 )}
               </button>
@@ -1277,6 +1529,9 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
               {!isFormValid && (
                 <div className="space-y-1 text-[11px] text-slate-400 font-medium">
                   {!isClientValid && <p>• Client name and phone are required.</p>}
+                  {(!serviceCategory || !serviceType || !subscriptionDuration) && (
+                    <p>• Select service category, type, and subscription duration.</p>
+                  )}
                   {totalPaymentAmount <= 0 && <p>• Payment amount must be greater than ₹0.</p>}
                   {!utr.trim() && <p>• UTR / Reference number is required.</p>}
                   {!screenshotUrl && <p>• Upload a payment proof screenshot.</p>}

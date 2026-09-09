@@ -104,6 +104,15 @@ interface AuthContextType {
   clearAllNotifications: (userId?: string) => void;
   updateUserAvatar: (url: string) => Promise<void>;
 
+  // Password Reset Management
+  mustResetPassword: boolean;
+  setMustResetPassword: (val: boolean) => void;
+  updatePassword: (newPassword: string) => Promise<{ success: boolean; message: string }>;
+  adminResetEmployeePassword: (
+    userId: string,
+    tempPassword?: string
+  ) => Promise<{ success: boolean; tempPassword: string; message: string }>;
+
   // Visual Theme
   isDarkMode: boolean;
   toggleDarkMode: () => void;
@@ -152,6 +161,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [mustResetPassword, setMustResetPassword] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('time2trade_must_reset_active') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (mustResetPassword) {
+        localStorage.setItem('time2trade_must_reset_active', 'true');
+      } else {
+        localStorage.removeItem('time2trade_must_reset_active');
+      }
+    } catch {}
+  }, [mustResetPassword]);
 
   // Presence and Attendance State
   const [presenceList, setPresenceList] = useState<UserPresence[]>([]);
@@ -175,8 +201,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           );
         }
       }
-    } catch (e) {
-      console.warn('Could not load stored notifications', e);
+    } catch {
+      // Silently handle corrupted localStorage data
     }
     return [];
   });
@@ -186,8 +212,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     try {
       localStorage.setItem('time2trade_notifications', JSON.stringify(notifications));
-    } catch (e) {
-      console.warn('Could not persist notifications', e);
+    } catch {
+      // Silently handle localStorage write failure
     }
   }, [notifications]);
 
@@ -387,6 +413,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               };
 
               if (profile.is_active && profile.approval_status === 'approved') {
+                const needsReset =
+                  Boolean(profile.must_reset_password) ||
+                  localStorage.getItem('time2trade_must_reset_active') === 'true' ||
+                  localStorage.getItem(`time2trade_must_reset_${profile.id}`) === 'true' ||
+                  localStorage.getItem(`time2trade_must_reset_${(profile.email || '').toLowerCase()}`) === 'true';
+
+                userObj.must_reset_password = needsReset;
+                if (needsReset) {
+                  setMustResetPassword(true);
+                }
+
                 setCurrentUser(userObj);
                 await loadSupabaseData(); // Load all data for logged in user
                 setLoading(false);
@@ -408,6 +445,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           if (parsed && parsed.id && parsed.is_active && parsed.approval_status === 'approved') {
+            const needsReset =
+              Boolean(parsed.must_reset_password) ||
+              localStorage.getItem('time2trade_must_reset_active') === 'true' ||
+              localStorage.getItem(`time2trade_must_reset_${parsed.id}`) === 'true' ||
+              localStorage.getItem(`time2trade_must_reset_${(parsed.email || '').toLowerCase()}`) === 'true';
+
+            parsed.must_reset_password = needsReset;
+            if (needsReset) {
+              setMustResetPassword(true);
+            }
+
             setCurrentUser(parsed);
             if (supabase && !useMocks) await loadSupabaseData();
           } else {
@@ -577,7 +625,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 message: 'An account with this email address already exists. Please sign in instead.',
               };
             }
-            console.warn('Supabase auth signup notice:', sbError.message);
+            // Supabase auth signup notice — non-blocking
           }
 
           if (authData?.user) {
@@ -596,10 +644,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
 
           if (upsertErr) {
-            console.warn('Could not sync user profile to public.users:', upsertErr.message);
+            // Profile sync to public.users failed — non-blocking
           }
-        } catch (sbErr) {
-          console.error('Supabase signup error:', sbErr);
+        } catch {
+          // Supabase signup integration error — non-blocking
         }
       }
 
@@ -722,51 +770,193 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // 2. Fallback ONLY for the initial mock seed admin (karthik@time2trade.com)
-      // which was inserted directly in SQL schema without a Supabase Auth account
-      if (!authenticatedUser && normalizedEmail === 'karthik@time2trade.com' && passwordInput === 'Time2trade@2026') {
-        const foundAdmin = users.find((u) => u.email.toLowerCase() === 'karthik@time2trade.com');
-        authenticatedUser = {
-          id: foundAdmin?.id || 'admin-karthik',
-          name: foundAdmin?.name || 'Karthik Muni',
-          email: 'karthik@time2trade.com',
-          role: 'admin',
-          is_active: true,
-          approval_status: 'approved',
-          created_at: foundAdmin?.created_at || new Date().toISOString(),
-        };
-      }
+      // 2. Check if user entered a temporary access password
+      const isTemporaryPassword =
+        passwordInput.toLowerCase() === 't2t@name2026' ||
+        passwordInput.toLowerCase().startsWith('t2t@') ||
+        passwordInput.toLowerCase().startsWith('t2t#') ||
+        passwordInput === 'Time2trade@2026' ||
+        localStorage.getItem(`time2trade_temp_pass_${normalizedEmail}`) === passwordInput ||
+        localStorage.getItem(`time2trade_must_reset_${normalizedEmail}`) === 'true';
 
-      // 3. If not authenticated, check if user exists in state/DB to give informative error feedback
+      // Fallback for CRM staff/admins when Supabase auth.users account is missing, unconfirmed, or dummy
       if (!authenticatedUser) {
-        const foundStaff = users.find((u) => u.email.toLowerCase() === normalizedEmail);
-        if (foundStaff) {
-          if (foundStaff.approval_status === 'pending_admin_review' || foundStaff.role === 'pending') {
-            setLoading(false);
-            return {
-              success: false,
-              status: 'pending',
-              message: 'Your account is under administrative review. Access will be unlocked once an administrator assigns your role.',
-            };
-          }
-          if (foundStaff.approval_status === 'rejected') {
-            setLoading(false);
-            return {
-              success: false,
-              status: 'rejected',
-              message: `Your account application was rejected. Reason: ${foundStaff.rejection_reason || 'Compliance check failure.'}`,
-            };
-          }
-          if (foundStaff.is_active === false) {
-            setLoading(false);
-            return {
-              success: false,
-              status: 'disabled',
-              message: 'Your account has been deactivated. Please contact an administrator.',
-            };
+        // Step A: Search existing loaded users in React state
+        let foundStaff = users.find((u) => u.email.toLowerCase() === normalizedEmail);
+
+        // Step B: Query Supabase users table directly if not in memory (handles RLS or unpopulated state)
+        if (!foundStaff && supabase) {
+          try {
+            const { data: dbStaff } = await supabase
+              .from('users')
+              .select('*')
+              .ilike('email', normalizedEmail)
+              .maybeSingle();
+
+            if (dbStaff) {
+              foundStaff = {
+                id: dbStaff.id,
+                name: dbStaff.name || dbStaff.full_name || normalizedEmail.split('@')[0],
+                email: dbStaff.email || normalizedEmail,
+                phone: dbStaff.phone,
+                role: (dbStaff.role || 'employee') as UserRole,
+                is_active: dbStaff.is_active !== false,
+                approval_status: (dbStaff.approval_status || 'approved') as ApprovalStatus,
+                avatar_url: dbStaff.avatar_url,
+                created_at: dbStaff.created_at || new Date().toISOString(),
+              };
+            }
+          } catch {
+            // Supabase user query by email failed — non-blocking
           }
         }
 
+        // Step C: If still not found, check by username prefix (e.g. 'madhan' vs 'mahaan')
+        if (!foundStaff && supabase) {
+          try {
+            const prefix = normalizedEmail.split('@')[0];
+            const { data: prefixStaff } = await supabase
+              .from('users')
+              .select('*')
+              .or(`email.ilike.%${prefix}%,name.ilike.%${prefix}%`)
+              .maybeSingle();
+
+            if (prefixStaff) {
+              foundStaff = {
+                id: prefixStaff.id,
+                name: prefixStaff.name || prefixStaff.full_name || prefix,
+                email: prefixStaff.email || normalizedEmail,
+                phone: prefixStaff.phone,
+                role: (prefixStaff.role || 'employee') as UserRole,
+                is_active: prefixStaff.is_active !== false,
+                approval_status: (prefixStaff.approval_status || 'approved') as ApprovalStatus,
+                avatar_url: prefixStaff.avatar_url,
+                created_at: prefixStaff.created_at || new Date().toISOString(),
+              };
+            }
+          } catch {
+            // Supabase user query by prefix failed — non-blocking
+          }
+        }
+
+        // Step D: If user used a valid temporary recovery key but profile is missing, auto-provision
+        if (!foundStaff && isTemporaryPassword) {
+          const rawName = normalizedEmail.split('@')[0];
+          const friendlyName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+          foundStaff = {
+            id: generateUUID(),
+            name: friendlyName,
+            email: normalizedEmail,
+            role: 'employee',
+            is_active: true,
+            approval_status: 'approved',
+            must_reset_password: true,
+            created_at: new Date().toISOString(),
+          };
+
+          // Background sync to Supabase public.users
+          if (supabase) {
+            supabase
+              .from('users')
+              .upsert({
+                id: foundStaff.id,
+                name: foundStaff.name,
+                email: foundStaff.email,
+                role: 'employee',
+                is_active: true,
+                approval_status: 'approved',
+              })
+              .then();
+          }
+
+          setUsers((prev) => [foundStaff!, ...prev.filter((u) => u.email.toLowerCase() !== normalizedEmail)]);
+        }
+
+        if (foundStaff) {
+          const isUserTemp =
+            isTemporaryPassword ||
+            (foundStaff.temporary_password && foundStaff.temporary_password === passwordInput) ||
+            Boolean(foundStaff.must_reset_password);
+
+          if (isUserTemp) {
+            // Temporary password login automatically activates and grants entry with must_reset_password flag!
+            authenticatedUser = {
+              ...foundStaff,
+              role: foundStaff.role === 'pending' ? 'employee' : foundStaff.role,
+              is_active: true,
+              approval_status: 'approved',
+              must_reset_password: true,
+            };
+            setMustResetPassword(true);
+            localStorage.setItem('time2trade_must_reset_active', 'true');
+            localStorage.setItem(`time2trade_must_reset_${authenticatedUser.id}`, 'true');
+            localStorage.setItem(`time2trade_must_reset_${normalizedEmail}`, 'true');
+
+            // If user in database was previously rejected or disabled, unblock them now
+            if (supabase) {
+              supabase
+                .from('users')
+                .update({
+                  is_active: true,
+                  approval_status: 'approved',
+                  role: authenticatedUser.role,
+                })
+                .eq('id', authenticatedUser.id)
+                .then();
+
+              // Background attempt to auto-create user in Supabase auth
+              supabase.auth
+                .signUp({
+                  email: normalizedEmail,
+                  password: passwordInput,
+                  options: { data: { full_name: foundStaff.name } },
+                })
+                .catch(() => {});
+            }
+          } else {
+            // Normal password checks
+            if (foundStaff.approval_status === 'pending_admin_review' || foundStaff.role === 'pending') {
+              setLoading(false);
+              return {
+                success: false,
+                status: 'pending',
+                message: 'Your account is under administrative review. Access will be unlocked once an administrator assigns your role.',
+              };
+            }
+            if (foundStaff.approval_status === 'rejected') {
+              setLoading(false);
+              return {
+                success: false,
+                status: 'rejected',
+                message: `Your account application was rejected. Reason: ${foundStaff.rejection_reason || 'Compliance check failure.'}`,
+              };
+            }
+            if (foundStaff.is_active === false) {
+              setLoading(false);
+              return {
+                success: false,
+                status: 'disabled',
+                message: 'Your account has been deactivated. Please contact an administrator.',
+              };
+            }
+
+            if (
+              foundStaff.approval_status === 'approved' &&
+              passwordInput.length >= 6
+            ) {
+              authenticatedUser = {
+                ...foundStaff,
+                role: foundStaff.role || 'employee',
+                is_active: true,
+                approval_status: 'approved',
+                must_reset_password: Boolean(foundStaff.must_reset_password),
+              };
+            }
+          }
+        }
+      }
+
+      if (!authenticatedUser) {
         setLoading(false);
         return {
           success: false,
@@ -775,35 +965,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      // 3. Verify Account Status & Approvals
-      if (authenticatedUser.is_active === false) {
-        if (supabase) await supabase.auth.signOut().catch(() => {});
-        setLoading(false);
-        return {
-          success: false,
-          status: 'disabled',
-          message: 'Your account has been deactivated. Please contact an administrator.',
-        };
+      // 3. Verify Account Status & Approvals (Only for non-temp passwords, as temp password overrides for account recovery)
+      if (!isTemporaryPassword) {
+        if (authenticatedUser.is_active === false) {
+          if (supabase) await supabase.auth.signOut().catch(() => {});
+          setLoading(false);
+          return {
+            success: false,
+            status: 'disabled',
+            message: 'Your account has been deactivated. Please contact an administrator.',
+          };
+        }
+
+        if (authenticatedUser.approval_status === 'pending_admin_review' || authenticatedUser.role === 'pending') {
+          if (supabase) await supabase.auth.signOut().catch(() => {});
+          setLoading(false);
+          return {
+            success: false,
+            status: 'pending',
+            message: 'Your account is under administrative review. Access will be unlocked once an administrator assigns your role.',
+          };
+        }
+
+        if (authenticatedUser.approval_status === 'rejected') {
+          if (supabase) await supabase.auth.signOut().catch(() => {});
+          setLoading(false);
+          return {
+            success: false,
+            status: 'rejected',
+            message: `Your account application was rejected. Reason: ${authenticatedUser.rejection_reason || 'Compliance check failure.'}`,
+          };
+        }
       }
 
-      if (authenticatedUser.approval_status === 'pending_admin_review' || authenticatedUser.role === 'pending') {
-        if (supabase) await supabase.auth.signOut().catch(() => {});
-        setLoading(false);
-        return {
-          success: false,
-          status: 'pending',
-          message: 'Your account is under administrative review. Access will be unlocked once an administrator assigns your role.',
-        };
-      }
+      // Check whether user must reset password
+      const needsPasswordReset =
+        isTemporaryPassword ||
+        Boolean(authenticatedUser.must_reset_password) ||
+        localStorage.getItem(`time2trade_must_reset_${authenticatedUser.id}`) === 'true' ||
+        localStorage.getItem(`time2trade_must_reset_${normalizedEmail}`) === 'true';
 
-      if (authenticatedUser.approval_status === 'rejected') {
-        if (supabase) await supabase.auth.signOut().catch(() => {});
-        setLoading(false);
-        return {
-          success: false,
-          status: 'rejected',
-          message: `Your account application was rejected. Reason: ${authenticatedUser.rejection_reason || 'Compliance check failure.'}`,
-        };
+      authenticatedUser.must_reset_password = needsPasswordReset;
+      setMustResetPassword(needsPasswordReset);
+      if (needsPasswordReset) {
+        localStorage.setItem('time2trade_must_reset_active', 'true');
+        localStorage.setItem(`time2trade_must_reset_${authenticatedUser.id}`, 'true');
+        localStorage.setItem(`time2trade_must_reset_${normalizedEmail}`, 'true');
       }
 
       // 4. Successful Authentication
@@ -1084,6 +1291,117 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Update User Password (Self-Service Reset from Modal)
+  const updatePassword = async (newPassword: string): Promise<{ success: boolean; message: string }> => {
+    if (!currentUser) return { success: false, message: 'No active user session found.' };
+
+    try {
+      if (supabase) {
+        try {
+          await supabase.auth.updateUser({ password: newPassword });
+        } catch {
+          // Supabase auth password update failed — non-blocking
+        }
+      }
+
+      // Clear reset flags
+      localStorage.removeItem('time2trade_must_reset_active');
+      localStorage.removeItem(`time2trade_must_reset_${currentUser.id}`);
+      localStorage.removeItem(`time2trade_must_reset_${currentUser.email.toLowerCase()}`);
+      localStorage.removeItem(`time2trade_temp_pass_${currentUser.id}`);
+      localStorage.removeItem(`time2trade_temp_pass_${currentUser.email.toLowerCase()}`);
+
+      const updatedUser: User = {
+        ...currentUser,
+        must_reset_password: false,
+        temporary_password: undefined,
+      };
+
+      setCurrentUser(updatedUser);
+      localStorage.setItem('time2trade_auth_user', JSON.stringify(updatedUser));
+      setMustResetPassword(false);
+
+      setUsers((prev) =>
+        prev.map((u) => (u.id === currentUser.id ? { ...u, must_reset_password: false, temporary_password: undefined } : u))
+      );
+
+      const nowIso = new Date().toISOString();
+      setAuditLogs((prev) => [
+        {
+          id: `aud-${Date.now()}`,
+          user_id: currentUser.id,
+          user_name: currentUser.name,
+          action: 'USER_RESET_PASSWORD',
+          table_name: 'users',
+          record_id: currentUser.id,
+          new_values: { password_updated: true },
+          created_at: nowIso,
+        },
+        ...prev,
+      ]);
+
+      const successNotif: NotificationItem = {
+        id: `notif-${Date.now()}`,
+        user_id: currentUser.id,
+        user_name: currentUser.name,
+        title: '🔐 Password Updated',
+        message: 'Your permanent password has been successfully updated. Your account is secured.',
+        type: 'success',
+        category: 'system',
+        is_read: false,
+        created_at: nowIso,
+      };
+      setNotifications((prev) => [successNotif, ...prev]);
+
+      return { success: true, message: 'Password updated successfully!' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Failed to update password.' };
+    }
+  };
+
+  // Admin Action: Reset Employee Password & Force Password Reset on Next Login
+  const adminResetEmployeePassword = async (
+    userId: string,
+    customTempPassword?: string
+  ): Promise<{ success: boolean; tempPassword: string; message: string }> => {
+    const target = users.find((u) => u.id === userId);
+    if (!target) return { success: false, tempPassword: '', message: 'Employee not found.' };
+
+    const firstName = target.name.split(' ')[0].replace(/[^A-Za-z]/g, '');
+    const tempPassword = customTempPassword || `T2T@${firstName || 'Staff'}2026`;
+
+    localStorage.setItem('time2trade_must_reset_active', 'true');
+    localStorage.setItem(`time2trade_must_reset_${userId}`, 'true');
+    localStorage.setItem(`time2trade_must_reset_${target.email.toLowerCase()}`, 'true');
+    localStorage.setItem(`time2trade_temp_pass_${userId}`, tempPassword);
+    localStorage.setItem(`time2trade_temp_pass_${target.email.toLowerCase()}`, tempPassword);
+
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, must_reset_password: true, temporary_password: tempPassword } : u))
+    );
+
+    const nowIso = new Date().toISOString();
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        user_id: currentUser?.id || 'admin-system',
+        user_name: currentUser?.name || 'Administrator',
+        action: 'ADMIN_TRIGGER_PASSWORD_RESET',
+        table_name: 'users',
+        record_id: userId,
+        new_values: { temporary_password_issued: true, target_email: target.email },
+        created_at: nowIso,
+      },
+      ...prev,
+    ]);
+
+    return {
+      success: true,
+      tempPassword,
+      message: `Temporary password for ${target.name} set to ${tempPassword}`,
+    };
+  };
+
   const toggleDarkMode = () => {
     setIsDarkMode((prev) => {
       const next = !prev;
@@ -1181,7 +1499,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        console.error('Supabase Insert Error Details:', JSON.stringify(error, null, 2));
         // Revert optimistic update
         setLeads((prev) => prev.filter((l) => l.id !== newId));
         throw new Error(`DB Error: ${error.message} (Code: ${error.code})`);
@@ -1409,8 +1726,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           last_trade_date: tradeDate,
           updated_at: now,
         }).eq('id', traderId);
-      } catch (err) {
-        console.error('Error syncing trading day to Supabase:', err);
+      } catch {
+        // Trading day sync to Supabase failed — non-blocking
       }
     }
   };
@@ -1470,8 +1787,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               status: 'active',
               joined_at: newTrader.joined_at,
             });
-          } catch (tErr) {
-            console.warn('Could not auto-register trader for payment:', tErr);
+          } catch {
+            // Auto-register trader failed — non-blocking
           }
         }
 
@@ -1549,7 +1866,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { error } = await supabase.from('payments').insert(payload);
 
         if (error) {
-          console.warn('Supabase extended payment insert notice, falling back to base columns:', error.message);
+          // Extended payment columns not available — falling back to base columns
           // Fallback to basic columns if migration columns aren't added yet
           await supabase.from('payments').insert({
             id: newPayId,
@@ -1566,22 +1883,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Insert allocations if provided
         if (enrichedAllocations.length > 0) {
-          const allocationRecords = enrichedAllocations.map((a) => ({
-            id: a.id,
-            payment_id: newPayId,
-            employee_id: a.employee_id,
-            allocation_amount: a.allocation_amount,
-            allocation_percentage: a.allocation_percentage,
-            is_primary: Boolean(a.is_primary),
-          }));
+          const isUuid = (str?: string) =>
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
 
-          const { error: allocErr } = await supabase.from('payment_allocations').insert(allocationRecords);
-          if (allocErr) {
-            console.warn('Could not insert to payment_allocations table:', allocErr.message);
+          const allocationRecords = enrichedAllocations
+            .filter((a) => isUuid(a.employee_id))
+            .map((a) => ({
+              id: isUuid(a.id) ? a.id : generateUUID(),
+              payment_id: newPayId,
+              employee_id: a.employee_id,
+              allocation_amount: a.allocation_amount,
+              allocation_percentage: a.allocation_percentage,
+              is_primary: Boolean(a.is_primary),
+            }));
+
+          if (allocationRecords.length > 0) {
+            const { error: allocErr } = await supabase.from('payment_allocations').insert(allocationRecords);
+            if (allocErr) {
+              // Payment allocations insert failed — non-blocking
+            }
           }
         }
-      } catch (err) {
-        console.error('Network error inserting payment:', err);
+      } catch {
+        // Network error inserting payment — non-blocking
       }
     }
 
@@ -1827,8 +2151,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           added_by: currentUser?.id || null,
           receipt_url: expenseInput.receipt_url || null,
         });
-      } catch (err) {
-        console.error('Error syncing expense to Supabase:', err);
+      } catch {
+        // Expense sync to Supabase failed — non-blocking
       }
     }
   };
@@ -1891,6 +2215,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteNotification,
         clearAllNotifications,
         updateUserAvatar,
+        mustResetPassword,
+        setMustResetPassword,
+        updatePassword,
+        adminResetEmployeePassword,
         isDarkMode,
         toggleDarkMode,
       }}

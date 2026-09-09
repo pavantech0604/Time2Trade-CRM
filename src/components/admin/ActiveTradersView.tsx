@@ -109,9 +109,9 @@ export const ActiveTradersView: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
           <button
             onClick={() => setSelectedTrader(null)}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer w-full sm:w-auto transition-colors active:scale-95"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer w-full sm:w-auto transition-colors active:scale-95 shadow-sm"
           >
-            <ArrowLeft className="w-4 h-4 text-slate-300" /> Back to Traders List
+            <ArrowLeft className="w-4 h-4 text-slate-600" /> Back to Traders List
           </button>
 
           <button
@@ -123,7 +123,7 @@ export const ActiveTradersView: React.FC = () => {
         </div>
 
         {/* Trader Overview Banner */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-sans">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-sans">
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-black text-[#091A2F] font-heading">{selectedTrader.name}</h2>
@@ -140,17 +140,17 @@ export const ActiveTradersView: React.FC = () => {
 
         {/* Summary Metric Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-sans">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs font-bold text-slate-500 uppercase font-mono">Total Profit Gained</span>
             <h3 className="text-2xl font-black text-emerald-700 mt-1">{formatINR(selectedTrader.total_profit_gained)}</h3>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs font-bold text-slate-500 uppercase font-mono">Total Profit Shared</span>
             <h3 className="text-2xl font-black text-blue-700 mt-1">{formatINR(selectedTrader.total_profit_shared)}</h3>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs font-bold text-slate-500 uppercase font-mono">Longest Winning Streak</span>
             <h3 className="text-2xl font-black text-amber-700 mt-1">{selectedTrader.longest_streak} Days</h3>
           </div>
@@ -160,9 +160,9 @@ export const ActiveTradersView: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 font-sans">
           <CalendarHeatmap tradingDays={traderDays} />
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
             <h4 className="text-sm font-bold text-slate-700 mb-4 font-mono uppercase">Daily P&L History</h4>
-            <div className="h-64 w-full">
+            <div className="h-48 sm:h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
@@ -181,10 +181,10 @@ export const ActiveTradersView: React.FC = () => {
         {/* Modal to Log Trading Day */}
         {isLogTdModalOpen && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
-            <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 space-y-4 shadow-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-sm font-bold text-[#091A2F]">Log Trading Day P&L — {selectedTrader.name}</h3>
-                <button onClick={() => setIsLogTdModalOpen(false)} className="text-slate-400 hover:text-slate-650 hover:bg-slate-50 p-1.5 rounded-lg transition-colors">
+                <button onClick={() => setIsLogTdModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-50 p-1.5 rounded-lg transition-colors">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -197,7 +197,7 @@ export const ActiveTradersView: React.FC = () => {
                     required
                     value={logTdForm.trade_date}
                     onChange={(e) => setLogTdForm({ ...logTdForm, trade_date: e.target.value })}
-                    className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
                   />
                 </div>
 
@@ -208,7 +208,7 @@ export const ActiveTradersView: React.FC = () => {
                     required
                     value={logTdForm.total_profit}
                     onChange={(e) => setLogTdForm({ ...logTdForm, total_profit: Number(e.target.value) })}
-                    className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
                   />
                 </div>
 
@@ -220,7 +220,7 @@ export const ActiveTradersView: React.FC = () => {
                     min={1}
                     value={logTdForm.trades_count}
                     onChange={(e) => setLogTdForm({ ...logTdForm, trades_count: Number(e.target.value) })}
-                    className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
                   />
                 </div>
 
@@ -243,7 +243,7 @@ export const ActiveTradersView: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-300 font-sans">
       {/* Toast */}
       {toastMsg && (
-        <div className="fixed top-20 right-8 bg-white border border-emerald-200 text-emerald-800 text-xs px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in fade-in slide-in-from-top-3">
+        <div className="fixed top-20 left-4 right-4 sm:left-auto sm:right-8 bg-white border border-emerald-200 text-emerald-800 text-xs px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in fade-in slide-in-from-top-3">
           <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
           <span className="font-semibold">{toastMsg}</span>
         </div>
@@ -280,7 +280,7 @@ export const ActiveTradersView: React.FC = () => {
           traders.map((trader) => (
             <div
               key={trader.id}
-              className="bg-white border border-slate-200 rounded-2xl p-6 space-y-3 shadow-sm hover:border-[#C5A028]/45 transition-colors"
+              className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 space-y-3 shadow-sm hover:border-[#C5A028]/45 transition-colors"
             >
               <div className="flex justify-between items-start">
                 <div>
@@ -370,13 +370,13 @@ export const ActiveTradersView: React.FC = () => {
       {/* Add New Active Trader Modal */}
       {isAddTraderModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
-          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-emerald-600" />
                 <h3 className="text-base font-bold text-[#091A2F]">Add New Active Trader</h3>
               </div>
-              <button onClick={() => setIsAddTraderModalOpen(false)} className="text-slate-400 hover:text-slate-650 hover:bg-slate-50 p-1.5 rounded-lg transition-colors">
+              <button onClick={() => setIsAddTraderModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-50 p-1.5 rounded-lg transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -391,7 +391,7 @@ export const ActiveTradersView: React.FC = () => {
                     value={newTraderForm.name}
                     onChange={(e) => setNewTraderForm({ ...newTraderForm, name: e.target.value })}
                     placeholder="Rakesh Shah"
-                    className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
                   />
                 </div>
 
@@ -403,7 +403,7 @@ export const ActiveTradersView: React.FC = () => {
                     value={newTraderForm.phone}
                     onChange={(e) => setNewTraderForm({ ...newTraderForm, phone: e.target.value })}
                     placeholder="+91 98765 43210"
-                    className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
                   />
                 </div>
               </div>
@@ -414,7 +414,7 @@ export const ActiveTradersView: React.FC = () => {
                   <select
                     value={newTraderForm.employee_id}
                     onChange={(e) => setNewTraderForm({ ...newTraderForm, employee_id: e.target.value })}
-                    className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-sm font-medium"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-sm font-medium"
                   >
                     {rms.map((rm) => (
                       <option key={rm.id} value={rm.id}>
@@ -430,7 +430,7 @@ export const ActiveTradersView: React.FC = () => {
                     type="number"
                     value={newTraderForm.initial_capital}
                     onChange={(e) => setNewTraderForm({ ...newTraderForm, initial_capital: Number(e.target.value) })}
-                    className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-emerald-500 shadow-sm"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-emerald-500 shadow-sm"
                   />
                 </div>
               </div>
@@ -441,7 +441,7 @@ export const ActiveTradersView: React.FC = () => {
                   <select
                     value={newTraderForm.selected_service}
                     onChange={(e) => setNewTraderForm({ ...newTraderForm, selected_service: e.target.value })}
-                    className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-sm font-medium"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-sm font-medium"
                   >
                     <option value="Equity Cash">Equity Cash</option>
                     <option value="Options Trading">Options Trading</option>
@@ -455,7 +455,7 @@ export const ActiveTradersView: React.FC = () => {
                   <select
                     value={newTraderForm.preferred_market}
                     onChange={(e) => setNewTraderForm({ ...newTraderForm, preferred_market: e.target.value })}
-                    className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-sm font-medium"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-sm font-medium"
                   >
                     <option value="NSE">NSE</option>
                     <option value="BSE">BSE</option>
@@ -472,7 +472,7 @@ export const ActiveTradersView: React.FC = () => {
                   value={newTraderForm.notes}
                   onChange={(e) => setNewTraderForm({ ...newTraderForm, notes: e.target.value })}
                   placeholder="Client prefers morning session intraday signals..."
-                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
                 />
               </div>
 

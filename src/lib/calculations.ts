@@ -1,4 +1,8 @@
 import { ActiveTrader, TradingDay, Payment, Expense, Lead, DashboardKPIs } from '../types';
+import { formatINR } from './formatters';
+
+// Re-export formatINR from the canonical source so existing imports from calculations.ts still work
+export { formatINR };
 
 /**
  * Streak Calculation Algorithm:
@@ -85,15 +89,4 @@ export function calculateDashboardKPIs(
     pendingVerificationCount,
     totalExpenses,
   };
-}
-
-/**
- * Format currency to INR format (₹1,25,000)
- */
-export function formatINR(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
 }

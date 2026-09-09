@@ -13,13 +13,15 @@ import {
   Calendar,
   Wallet,
   AlertCircle,
-  X
+  X,
+  KeyRound,
+  ShieldCheck,
 } from 'lucide-react';
 import { MetricCard } from '../common/MetricCard';
 import { LeadStatus } from '../../types';
 
 export const EmployeeDashboard: React.FC = () => {
-  const { currentUser, leads, traders, payments, addLead, convertLeadToTrader } = useAuth();
+  const { currentUser, leads, traders, payments, addLead, convertLeadToTrader, mustResetPassword, setMustResetPassword } = useAuth();
   const [activeTab, setActiveTab] = useState<'leads' | 'traders' | 'payments'>('leads');
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
@@ -42,8 +44,8 @@ export const EmployeeDashboard: React.FC = () => {
 
   const [convertData, setConvertData] = useState({
     initialCapital: '',
-    selectedService: 'Equity Cash',
-    preferredMarket: 'NSE'
+    selectedService: '',
+    preferredMarket: ''
   });
 
   // Filters
@@ -144,7 +146,7 @@ export const EmployeeDashboard: React.FC = () => {
       });
       showToast('Lead successfully converted to Active Trader!', 'success');
       setIsConvertModalOpen(false);
-      setConvertData({ initialCapital: '', selectedService: 'Equity Cash', preferredMarket: 'NSE' });
+      setConvertData({ initialCapital: '', selectedService: '', preferredMarket: '' });
       setActiveTab('traders'); // Automatically switch to traders tab for better UX
     } catch (err: any) {
       showToast(err.message || 'Failed to convert lead', 'error');
@@ -153,6 +155,34 @@ export const EmployeeDashboard: React.FC = () => {
 
   return (
     <div className="p-3.5 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500">
+      {/* Interactive Temporary Password Alert Banner */}
+      {Boolean(currentUser?.must_reset_password || mustResetPassword) && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-blue-500/10 to-indigo-500/10 border border-amber-300 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-amber-500/5 animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+              <KeyRound className="w-5 h-5 animate-bounce" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-slate-900 text-sm sm:text-base">Temporary Password Active</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-mono uppercase font-bold">Action Required</span>
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                You logged in with a temporary key (<span className="font-mono font-bold text-blue-700">T2T@...</span>). Set your permanent password to secure your desk and avoid sign-in interruptions.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setMustResetPassword(true)}
+            className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer whitespace-nowrap active:scale-95 flex items-center justify-center gap-2"
+          >
+            <span>Set Permanent Password</span>
+            <ShieldCheck className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6 bg-white p-4 sm:p-6 rounded-3xl border border-slate-200/60 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
@@ -523,6 +553,7 @@ export const EmployeeDashboard: React.FC = () => {
                   onChange={(e) => setConvertData({ ...convertData, selectedService: e.target.value })}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all appearance-none"
                 >
+                  <option value="" disabled>-- Select Service Details --</option>
                   <option value="Equity Cash">Equity Cash</option>
                   <option value="Equity Futures">Equity Futures</option>
                   <option value="BankNifty/Nifty Options">BankNifty/Nifty Options</option>
@@ -541,6 +572,7 @@ export const EmployeeDashboard: React.FC = () => {
                   onChange={(e) => setConvertData({ ...convertData, preferredMarket: e.target.value })}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all appearance-none"
                 >
+                  <option value="" disabled>-- Select Preferred Market --</option>
                   <option value="NSE">NSE</option>
                   <option value="BSE">BSE</option>
                   <option value="MCX">MCX</option>

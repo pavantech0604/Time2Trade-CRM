@@ -11,6 +11,7 @@ import {
   LogOut,
   ShieldAlert,
   Menu,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { UserPresenceStatus } from '../../types';
@@ -33,6 +34,8 @@ export const Header: React.FC<HeaderProps> = ({
     currentPresence,
     updateUserPresence,
     logout,
+    mustResetPassword,
+    setMustResetPassword,
   } = useAuth();
 
   // Employee sees only their own unread alerts, Admin sees all pending
@@ -107,7 +110,7 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="h-16 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 font-sans">
       {/* Toast Alert on Status Change */}
       {statusToast && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white border border-blue-200 text-blue-800 text-xs px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in fade-in slide-in-from-top-3">
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white border border-blue-200 text-blue-800 text-xs px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in fade-in slide-in-from-top-3 max-w-[90vw]">
           <Clock className="w-4 h-4 text-blue-500 animate-pulse" />
           <span className="font-semibold">{statusToast}</span>
         </div>
@@ -207,7 +210,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Today's break summary */}
                 {currentPresence && (
-                  <div className="mt-1 pt-2 border-t border-slate-100 px-3 py-1 text-[11px] text-slate-555 space-y-0.5 font-sans">
+                  <div className="mt-1 pt-2 border-t border-slate-100 px-3 py-1 text-[11px] text-slate-500 space-y-0.5 font-sans">
                     <div className="flex justify-between">
                       <span>Break Today:</span>
                       <span className="font-bold text-amber-700">
@@ -227,13 +230,26 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
+        {/* Interactive Reset Password Trigger Button */}
+        {Boolean(currentUser?.must_reset_password || mustResetPassword) && (
+          <button
+            type="button"
+            onClick={() => setMustResetPassword(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-800 border border-amber-300 hover:bg-amber-500/25 text-xs font-bold transition-all cursor-pointer shadow-xs animate-pulse shrink-0"
+            title="Temporary password in use. Click to set permanent password."
+          >
+            <KeyRound className="w-3.5 h-3.5 text-amber-600 animate-bounce" />
+            <span className="hidden sm:inline">Reset Password</span>
+          </button>
+        )}
+
         {/* Quick Payment Submission Action */}
         {onOpenPaymentForm && (
           <button
             onClick={onOpenPaymentForm}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-700 border border-emerald-300 text-xs font-semibold hover:bg-emerald-50 transition-all cursor-pointer"
           >
-            <CreditCard className="w-3.5 h-3.5 text-emerald-650" />
+            <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
             <span>Submit Payment</span>
           </button>
         )}

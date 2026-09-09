@@ -8,6 +8,7 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Flame,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { MetricCard } from '../common/MetricCard';
@@ -21,7 +22,7 @@ interface AdminOverviewProps {
 }
 
 export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
-  const { leads, traders, payments, expenses } = useAuth();
+  const { leads, traders, payments, expenses, currentUser, mustResetPassword, setMustResetPassword } = useAuth();
 
   const kpis = calculateDashboardKPIs(leads, traders, payments, expenses);
 
@@ -58,6 +59,34 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 font-sans">
+      {/* Interactive Temporary Password Alert Banner */}
+      {Boolean(currentUser?.must_reset_password || mustResetPassword) && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-blue-500/10 to-indigo-500/10 border border-amber-300 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-amber-500/5 animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+              <KeyRound className="w-5 h-5 animate-bounce" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-slate-900 text-sm sm:text-base">Temporary Password Active</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-mono uppercase font-bold">Action Required</span>
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                You logged into the Command Centre using a temporary credential (<span className="font-mono font-bold text-blue-700">T2T@...</span>). Set your permanent administrative password now.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setMustResetPassword(true)}
+            className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer whitespace-nowrap active:scale-95 flex items-center justify-center gap-2"
+          >
+            <span>Set Permanent Password</span>
+            <ShieldCheck className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Page Title */}
       <div className="flex items-center justify-between">
         <div>
@@ -137,14 +166,14 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
       {/* Main Chart + Lead Funnel Summary */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Daily Profit Shared Chart */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="lg:col-span-2 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-bold text-slate-800">Daily Approved Profit Collections</h3>
               <p className="text-xs text-slate-500 font-medium">30-day verified bank collection trend</p>
             </div>
           </div>
-          <div className="h-64 w-full">
+          <div className="h-48 sm:h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
                 <defs>
@@ -166,7 +195,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
         </div>
 
         {/* Lead Conversion Funnel */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-800">Lead Stage Distribution</h3>
             <p className="text-xs text-slate-500 mb-4 font-medium">Advisory onboarding pipeline breakdown</p>
@@ -198,7 +227,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
       </div>
 
       {/* Top Active Traders List Preview */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-800">Top Performing Active Traders</h3>
           <button

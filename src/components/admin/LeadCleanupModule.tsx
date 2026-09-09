@@ -1,24 +1,20 @@
 import React, { useState } from 'react';
 import {
-  Trash2,
   Archive,
   AlertTriangle,
   CheckCircle2,
-  Filter,
-  Search,
   RefreshCw,
   Database,
   ShieldAlert,
-  Loader2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { Lead } from '../../types';
+import { StatusBadge } from '../common/StatusBadge';
 
 export const LeadCleanupModule: React.FC = () => {
-  const { leads, updateLead, currentUser } = useAuth();
+  const { leads, updateLead } = useAuth();
 
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
-  const [daysOldThreshold, setDaysOldThreshold] = useState<number>(7);
+  const [daysOldThreshold] = useState<number>(7);
   const [statusFilter, setStatusFilter] = useState<string>('all_candidates');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -73,8 +69,8 @@ export const LeadCleanupModule: React.FC = () => {
     <div className="space-y-6 font-sans">
       {/* Toast */}
       {toastMsg && (
-        <div className="fixed top-20 right-8 bg-[#112240] border border-emerald-500/40 text-emerald-300 text-xs px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in fade-in slide-in-from-top-3">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="fixed top-20 left-4 right-4 sm:left-auto sm:right-8 bg-white border border-emerald-200 text-emerald-800 text-xs px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 z-50 animate-in fade-in slide-in-from-top-3">
+          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
           <span className="font-semibold">{toastMsg}</span>
         </div>
       )}
@@ -82,20 +78,20 @@ export const LeadCleanupModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight flex items-center gap-2.5">
-            <Database className="w-6 h-6 text-rose-400" />
+          <h1 className="text-xl sm:text-2xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-2.5">
+            <Database className="w-6 h-6 text-rose-500" />
             Lead Storage Cleanup & Archiving Desk
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-1 font-medium">
             Identify unwanted, invalid, or lost leads older than {daysOldThreshold} days and archive them to maintain database efficiency.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
             disabled={selectedLeadIds.length === 0}
             onClick={handleArchiveSelected}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 border-none"
           >
             <Archive className="w-4 h-4" />
             Archive Selected ({selectedLeadIds.length})
@@ -104,68 +100,70 @@ export const LeadCleanupModule: React.FC = () => {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-[#112240]/80 border border-slate-800 rounded-2xl p-4 space-y-1.5">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-1.5 shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
             <span>Cleanup Candidates</span>
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
-          <p className="text-2xl font-black text-white">{cleanupCandidates.length}</p>
-          <p className="text-[10px] text-slate-500 font-mono">Unwanted / Discarded status</p>
+          <p className="text-2xl font-black text-slate-800">{cleanupCandidates.length}</p>
+          <p className="text-[10px] text-slate-400 font-mono">Unwanted / Discarded status</p>
         </div>
 
-        <div className="bg-[#112240]/80 border border-slate-800 rounded-2xl p-4 space-y-1.5">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-1.5 shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
             <span>Archived Records</span>
-            <Archive className="w-4 h-4 text-blue-400" />
+            <Archive className="w-4 h-4 text-blue-500" />
           </div>
-          <p className="text-2xl font-black text-blue-400">
+          <p className="text-2xl font-black text-blue-600">
             {leads.filter((l) => l.is_archived).length}
           </p>
-          <p className="text-[10px] text-slate-500 font-mono">Soft-deleted from daily pipeline</p>
+          <p className="text-[10px] text-slate-400 font-mono">Soft-deleted from daily pipeline</p>
         </div>
 
-        <div className="bg-[#112240]/80 border border-slate-800 rounded-2xl p-4 space-y-1.5">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-1.5 shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
             <span>Retention Period</span>
-            <RefreshCw className="w-4 h-4 text-emerald-400" />
+            <RefreshCw className="w-4 h-4 text-emerald-500" />
           </div>
-          <p className="text-2xl font-black text-emerald-400">{daysOldThreshold} Days</p>
-          <p className="text-[10px] text-slate-500 font-mono">Configurable policy</p>
+          <p className="text-2xl font-black text-emerald-600">{daysOldThreshold} Days</p>
+          <p className="text-[10px] text-slate-400 font-mono">Configurable policy</p>
         </div>
 
-        <div className="bg-[#112240]/80 border border-slate-800 rounded-2xl p-4 space-y-1.5">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-1.5 shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
             <span>Storage Efficiency</span>
-            <ShieldAlert className="w-4 h-4 text-indigo-400" />
+            <ShieldAlert className="w-4 h-4 text-indigo-500" />
           </div>
-          <p className="text-2xl font-black text-white">99.8%</p>
-          <p className="text-[10px] text-slate-500 font-mono">Optimized index space</p>
+          <p className="text-2xl font-black text-slate-800">99.8%</p>
+          <p className="text-[10px] text-slate-400 font-mono">Optimized index space</p>
         </div>
       </div>
 
-      {/* Table & Controls */}
-      <div className="bg-[#112240]/80 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+      {/* Table & Controls Container */}
+      <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
+              id="selectAllCandidates"
               onChange={handleSelectAll}
               checked={
                 selectedLeadIds.length > 0 &&
                 selectedLeadIds.length === cleanupCandidates.length
               }
-              className="w-4 h-4 accent-amber-500 cursor-pointer"
+              className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
             />
-            <span className="text-xs font-bold text-slate-300">
+            <label htmlFor="selectAllCandidates" className="text-xs font-bold text-slate-700 cursor-pointer">
               Select All Candidates ({cleanupCandidates.length})
-            </span>
+            </label>
           </div>
 
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-[#070F1B] border border-slate-700 text-xs text-slate-300 rounded-xl px-3 py-1.5 focus:outline-none cursor-pointer"
+            aria-label="Filter by candidate status"
+            className="bg-white border border-slate-200 text-xs font-semibold text-slate-700 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer shadow-xs"
           >
             <option value="all_candidates">All Candidate Statuses</option>
             <option value="not_interested">Not Interested</option>
@@ -175,45 +173,89 @@ export const LeadCleanupModule: React.FC = () => {
           </select>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile View: Card Stack */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {cleanupCandidates.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 text-xs">
+              No leads pending storage cleanup.
+            </div>
+          ) : (
+            cleanupCandidates.map((l) => (
+              <div
+                key={l.id}
+                onClick={() => handleSelectOne(l.id)}
+                className={`p-4 flex items-start gap-3 transition-colors cursor-pointer ${
+                  selectedLeadIds.includes(l.id) ? 'bg-amber-50/40' : 'hover:bg-slate-50'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedLeadIds.includes(l.id)}
+                  onChange={() => handleSelectOne(l.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-4 h-4 rounded accent-amber-500 mt-1 cursor-pointer"
+                />
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800 text-xs">{l.name}</span>
+                    <StatusBadge status={l.status} />
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono">{l.phone}</div>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
+                    <span>Source: {l.source}</span>
+                    <span>RM: {l.assigned_to_name || 'Unassigned'}</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-[#0A1424] text-slate-400 uppercase font-mono text-[11px] border-b border-slate-800">
+            <thead className="bg-slate-50 text-slate-500 uppercase font-mono text-[10px] tracking-wider border-b border-slate-200">
               <tr>
                 <th className="py-3 px-4 w-10"></th>
-                <th className="py-3 px-4 font-semibold">Lead Name</th>
-                <th className="py-3 px-4 font-semibold">Phone</th>
-                <th className="py-3 px-4 font-semibold">Status</th>
-                <th className="py-3 px-4 font-semibold">Source</th>
-                <th className="py-3 px-4 font-semibold">Assigned Employee</th>
+                <th className="py-3 px-4 font-bold">Lead Name</th>
+                <th className="py-3 px-4 font-bold">Phone</th>
+                <th className="py-3 px-4 font-bold">Status</th>
+                <th className="py-3 px-4 font-bold">Source</th>
+                <th className="py-3 px-4 font-bold">Assigned Employee</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+            <tbody className="divide-y divide-slate-100">
               {cleanupCandidates.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-500 font-sans">
+                  <td colSpan={6} className="text-center py-12 text-slate-400 font-sans">
                     No leads pending storage cleanup.
                   </td>
                 </tr>
               ) : (
                 cleanupCandidates.map((l) => (
-                  <tr key={l.id} className="hover:bg-slate-800/30 transition-colors">
+                  <tr
+                    key={l.id}
+                    className={`transition-colors cursor-pointer ${
+                      selectedLeadIds.includes(l.id) ? 'bg-amber-50/40' : 'hover:bg-slate-50'
+                    }`}
+                    onClick={() => handleSelectOne(l.id)}
+                  >
                     <td className="py-3 px-4">
                       <input
                         type="checkbox"
                         checked={selectedLeadIds.includes(l.id)}
                         onChange={() => handleSelectOne(l.id)}
-                        className="w-4 h-4 accent-amber-500 cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
                       />
                     </td>
-                    <td className="py-3 px-4 font-sans font-bold text-white">{l.name}</td>
-                    <td className="py-3 px-4 text-slate-400">{l.phone}</td>
+                    <td className="py-3 px-4 font-sans font-bold text-slate-800">{l.name}</td>
+                    <td className="py-3 px-4 text-slate-500 font-mono">{l.phone}</td>
                     <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold uppercase text-[10px]">
-                        {l.status.replace(/_/g, ' ')}
-                      </span>
+                      <StatusBadge status={l.status} />
                     </td>
-                    <td className="py-3 px-4 text-slate-400">{l.source}</td>
-                    <td className="py-3 px-4 text-slate-300 font-sans">
+                    <td className="py-3 px-4 text-slate-500 font-medium">{l.source}</td>
+                    <td className="py-3 px-4 text-slate-700 font-medium">
                       {l.assigned_to_name || 'Unassigned'}
                     </td>
                   </tr>

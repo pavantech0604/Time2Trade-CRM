@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
 
 // Check if valid credentials are configured
 export const isSupabaseConfigured =
@@ -42,7 +42,7 @@ export async function uploadFileToBucket(
     if (error) throw error;
 
     return { path: `${bucketName}/${filePath}`, error: null };
-  } catch (err: any) {
-    return { path: null, error: err };
+  } catch (err) {
+    return { path: null, error: err instanceof Error ? err : new Error(String(err)) };
   }
 }

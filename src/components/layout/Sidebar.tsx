@@ -29,7 +29,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
 
   const pendingVerifications = payments.filter((p) => p.status === 'pending_verification').length;
   const pendingReviews = users.filter(
-    (u) => u.approval_status === 'pending_admin_review' || u.role === 'pending'
+    (u) =>
+      u.approval_status === 'pending_admin_review' ||
+      (u.role === 'pending' && u.approval_status !== 'rejected' && u.approval_status !== 'approved')
   ).length;
 
   const role = currentUser.role;

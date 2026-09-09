@@ -15,10 +15,11 @@ import { PublicPaymentForm } from './components/payments/PublicPaymentForm';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
 import { PendingApprovalPage } from './components/auth/PendingApprovalPage';
+import { PasswordResetModal } from './components/auth/PasswordResetModal';
 import { Loader2, Building2 } from 'lucide-react';
 
 const MainApp: React.FC = () => {
-  const { currentUser, loading } = useAuth();
+  const { currentUser, loading, mustResetPassword } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [authView, setAuthView] = useState<'login' | 'signup' | 'pending'>('login');
 
@@ -114,14 +115,19 @@ const MainApp: React.FC = () => {
     }
   };
 
+  const isPasswordResetRequired = Boolean(mustResetPassword || currentUser?.must_reset_password);
+
   return (
-    <Layout
-      activeTab={activeTab}
-      setActiveTab={setActiveTab}
-      onOpenPaymentForm={() => setActiveTab('public-payment-form')}
-    >
-      {renderContent()}
-    </Layout>
+    <>
+      <Layout
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onOpenPaymentForm={() => setActiveTab('public-payment-form')}
+      >
+        {renderContent()}
+      </Layout>
+      {isPasswordResetRequired && <PasswordResetModal />}
+    </>
   );
 };
 

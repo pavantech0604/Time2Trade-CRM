@@ -1,6 +1,6 @@
 import React from 'react';
 import { TradingDay } from '../../types';
-import { formatINR } from '../../lib/calculations';
+import { formatINR } from '../../lib/formatters';
 
 interface CalendarHeatmapProps {
   tradingDays: TradingDay[];
@@ -33,53 +33,53 @@ export const CalendarHeatmap: React.FC<CalendarHeatmapProps> = ({
   const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
   return (
-    <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800/80 shadow-lg">
-      <div className="flex items-center justify-between mb-4">
-        <h4 className="text-sm font-bold text-slate-200">
+    <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm font-sans">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+        <h4 className="text-sm font-bold text-slate-800">
           Trading Activity Heatmap — {monthNames[month]} {year}
         </h4>
-        <div className="flex items-center gap-3 text-xs text-slate-400">
-          <div className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/80" />
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
             <span>Winning Day</span>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-sm bg-rose-500/80" />
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-rose-500" />
             <span>Losing Day</span>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-sm bg-slate-800" />
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-slate-200" />
             <span>No Trade</span>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1.5 text-center text-xs">
+      <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-xs">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
-          <div key={day} className="font-semibold text-slate-500 py-1">
+          <div key={day} className="font-semibold text-slate-400 py-1 text-[11px]">
             {day}
           </div>
         ))}
 
         {emptyCells.map((_, idx) => (
-          <div key={`empty-${idx}`} className="h-9" />
+          <div key={`empty-${idx}`} className="h-8 sm:h-9" />
         ))}
 
         {daysArray.map((dayNum) => {
           const td = dayMap.get(dayNum);
-          let bgClass = 'bg-slate-800/40 text-slate-500 border border-slate-800/50';
+          let bgClass = 'bg-slate-50 text-slate-400 border border-slate-100';
           let titleText = `Day ${dayNum}: No trade recorded`;
 
           if (td) {
             if (td.total_profit > 0) {
-              bgClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold';
-              titleText = `Aug ${dayNum}: Profit ${formatINR(td.total_profit)} (${td.trades_count} trades)`;
+              bgClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold hover:bg-emerald-100';
+              titleText = `${monthNames[month]} ${dayNum}: Profit ${formatINR(td.total_profit)} (${td.trades_count} trades)`;
             } else if (td.total_profit < 0) {
-              bgClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/40 font-bold';
-              titleText = `Aug ${dayNum}: Loss ${formatINR(td.total_profit)} (${td.trades_count} trades)`;
+              bgClass = 'bg-rose-50 text-rose-700 border border-rose-200 font-bold hover:bg-rose-100';
+              titleText = `${monthNames[month]} ${dayNum}: Loss ${formatINR(td.total_profit)} (${td.trades_count} trades)`;
             } else {
-              bgClass = 'bg-slate-700/30 text-slate-300 border border-slate-700/50';
-              titleText = `Aug ${dayNum}: Break-even (${td.trades_count} trades)`;
+              bgClass = 'bg-amber-50 text-amber-700 border border-amber-200 font-bold hover:bg-amber-100';
+              titleText = `${monthNames[month]} ${dayNum}: Break-even (${td.trades_count} trades)`;
             }
           }
 
@@ -87,7 +87,7 @@ export const CalendarHeatmap: React.FC<CalendarHeatmapProps> = ({
             <div
               key={dayNum}
               title={titleText}
-              className={`h-9 rounded-lg flex flex-col items-center justify-center transition-all hover:scale-105 cursor-pointer ${bgClass}`}
+              className={`h-8 sm:h-9 rounded-lg flex flex-col items-center justify-center text-[11px] sm:text-xs transition-all hover:scale-105 cursor-pointer shadow-xs ${bgClass}`}
             >
               <span>{dayNum}</span>
             </div>

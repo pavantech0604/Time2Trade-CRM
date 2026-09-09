@@ -191,13 +191,15 @@
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
 }
 
-
-
 /* ==========================================================================
    Mobile-First Device Optimizations & Native App Touch Feel
    ========================================================================== */
 .safe-area-bottom {
   padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* Prevent auto-zoom on iOS inputs while maintaining clean sizing on desktop */
@@ -207,9 +209,16 @@
   input[type="password"],
   input[type="number"],
   input[type="tel"],
+  input[type="date"],
   select,
   textarea {
     font-size: 16px !important;
+  }
+
+  /* Compact padding on mobile premium cards */
+  .premium-card {
+    padding: 1rem;
+    border-radius: 1rem;
   }
 }
 
@@ -240,5 +249,52 @@ button:active:not(:disabled) {
 @media (max-width: 768px) {
   .metric-card, .table-card {
     border-radius: 1rem;
+  }
+}
+
+/* ==========================================================================
+   Mobile-First Responsive Helpers
+   ========================================================================== */
+
+/* Mobile-optimized form inputs */
+@media (max-width: 640px) {
+  .mobile-form-input {
+    min-height: 44px;
+    padding: 0.625rem 0.75rem;
+  }
+
+  /* Ensure buttons have adequate touch targets on mobile */
+  .mobile-btn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.625rem 1rem;
+  }
+}
+
+/* Responsive text scaling */
+.text-responsive-title {
+  font-size: clamp(1.25rem, 4vw, 1.875rem);
+  line-height: 1.2;
+}
+
+.text-responsive-subtitle {
+  font-size: clamp(0.75rem, 2.5vw, 0.875rem);
+}
+
+/* Prevent content from causing horizontal overflow */
+.overflow-safe {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Mobile-first card grid layout helper */
+@media (max-width: 480px) {
+  .mobile-card-compact {
+    padding: 0.75rem !important;
+  }
+
+  .mobile-text-compact .text-2xl {
+    font-size: 1.25rem !important;
   }
 }

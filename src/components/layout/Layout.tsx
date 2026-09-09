@@ -106,7 +106,7 @@ export const Layout: React.FC<LayoutProps> = ({
         />
         
         {/* Responsive padding: mobile-first optimized with bottom navbar offset */}
-        <main className="flex-1 p-3.5 sm:p-6 md:p-8 pb-24 md:pb-8 max-w-7xl w-full mx-auto space-y-6 overflow-y-auto">
+        <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-7 pb-24 md:pb-8 max-w-7xl w-full mx-auto space-y-6 overflow-y-auto">
           {children}
         </main>
 

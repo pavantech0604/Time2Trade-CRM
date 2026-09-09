@@ -1,6 +1,6 @@
 import React from 'react';
 import { LucideIcon, TrendingUp, TrendingDown } from 'lucide-react';
-import { formatINR } from '../../lib/calculations';
+import { formatINR } from '../../lib/formatters';
 
 interface MetricCardProps {
   title: string;

@@ -112,7 +112,7 @@ export const PaymentVerification: React.FC = () => {
                 onClick={() => handleOpenDrawer(payment)}
                 className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer shadow-sm active:scale-95 ${
                   payment.status === 'pending_verification'
-                    ? 'bg-amber-50 text-amber-700 border border-amber-250 hover:bg-amber-100/50 animate-pulse'
+                    ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100/50 animate-pulse'
                     : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
                 }`}
               >
@@ -186,7 +186,7 @@ export const PaymentVerification: React.FC = () => {
                       onClick={() => handleOpenDrawer(payment)}
                       className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer shadow-sm ${
                         payment.status === 'pending_verification'
-                          ? 'bg-amber-50 text-amber-700 border border-amber-250 hover:bg-amber-100/50 animate-pulse'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100/50 animate-pulse'
                           : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
                       }`}
                     >
@@ -203,13 +203,13 @@ export const PaymentVerification: React.FC = () => {
       {/* Anti-Fraud Inspection Drawer */}
       {selectedPayment && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-end font-sans">
-          <div className="w-full max-w-xl bg-white h-full border-l border-slate-200 p-6 overflow-y-auto space-y-6 animate-in slide-in-from-right duration-250 z-50 shadow-2xl">
+          <div className="w-full max-w-xl bg-white h-full border-l border-slate-200 p-4 sm:p-6 overflow-y-auto space-y-6 animate-in slide-in-from-right duration-250 z-50 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
                 <h3 className="text-lg font-black text-[#091A2F]">Payment Verification Drawer</h3>
                 <p className="text-xs text-slate-500 font-medium">Trader: {selectedPayment.trader_name}</p>
               </div>
-              <button onClick={() => setSelectedPayment(null)} className="text-slate-400 hover:text-slate-650 hover:bg-slate-50 p-1.5 rounded-lg transition-colors">
+              <button onClick={() => setSelectedPayment(null)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-50 p-1.5 rounded-lg transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -382,7 +382,7 @@ export const PaymentVerification: React.FC = () => {
                     </button>
                   </div>
                 ) : (
-                  <form onSubmit={handleReject} className="space-y-3 bg-rose-50/40 p-4 rounded-xl border border-rose-250">
+                  <form onSubmit={handleReject} className="space-y-3 bg-rose-50/40 p-4 rounded-xl border border-rose-200">
                     <h5 className="text-xs font-bold text-rose-800">Mandatory Rejection Remark</h5>
                     <textarea
                       required

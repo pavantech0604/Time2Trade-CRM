@@ -65,7 +65,7 @@ export const PendingApprovalPage: React.FC<PendingApprovalPageProps> = ({ onBack
               <p className="font-semibold text-slate-800">Need expedited onboarding?</p>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 Contact the compliance desk at{' '}
-                <a href="mailto:karthik@time2trade.com" className="text-blue-650 hover:underline font-semibold">
+                <a href="mailto:karthik@time2trade.com" className="text-blue-600 hover:underline font-semibold">
                   karthik@time2trade.com
                 </a>
               </p>

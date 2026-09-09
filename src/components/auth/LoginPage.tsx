@@ -9,6 +9,7 @@ import {
   Loader2,
   Clock,
   ShieldCheck,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BackgroundEffects } from '../common/BackgroundEffects';
@@ -150,6 +151,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+
+              {Boolean(
+                password.toLowerCase().startsWith('t2t@') ||
+                password.toLowerCase().startsWith('t2t#') ||
+                password.toLowerCase() === 't2t@name2026' ||
+                password === 'Time2trade@2026'
+              ) && (
+                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-[11px] flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                  <KeyRound className="w-3.5 h-3.5 text-blue-600 shrink-0 animate-pulse" />
+                  <span className="leading-snug font-medium">
+                    <strong className="text-blue-900">Temporary Access Key Detected:</strong> You will be prompted to set your permanent password upon entry.
+                  </span>
+                </div>
+              )}
             </div>
 
             <button

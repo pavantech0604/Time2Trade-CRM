@@ -54,7 +54,7 @@ export const ExpenseModule: React.FC = () => {
       </div>
 
       {/* Summary KPI + Category Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-xs font-bold text-slate-500 uppercase font-mono">Total Monthly Expenses</span>
           <h3 className="text-2xl font-black text-rose-700 mt-1">{formatINR(totalExpenses)}</h3>
@@ -121,7 +121,7 @@ export const ExpenseModule: React.FC = () => {
                       {expense.category}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-slate-855 font-medium">{expense.description}</td>
+                  <td className="py-3.5 px-4 text-slate-800 font-medium">{expense.description}</td>
                   <td className="py-3.5 px-4 text-slate-500">{expense.added_by_name || 'Admin'}</td>
                   <td className="py-3.5 px-4 text-right font-bold text-rose-700 font-mono">{formatINR(expense.amount)}</td>
                 </tr>
@@ -150,7 +150,7 @@ export const ExpenseModule: React.FC = () => {
                   required
                   value={form.date}
                   onChange={(e) => setForm({ ...form, date: e.target.value })}
-                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
                 />
               </div>
 
@@ -159,7 +159,7 @@ export const ExpenseModule: React.FC = () => {
                 <select
                   value={form.category}
                   onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-sm font-medium"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-sm font-medium"
                 >
                   <option value="Ads">Ads / Marketing</option>
                   <option value="Software">Software & Subscriptions</option>
@@ -176,7 +176,7 @@ export const ExpenseModule: React.FC = () => {
                   min={1}
                   value={form.amount}
                   onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
-                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
                 />
               </div>
 
@@ -188,7 +188,7 @@ export const ExpenseModule: React.FC = () => {
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="e.g. Meta Ads August Campaign"
-                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-sm"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-sm"
                 />
               </div>
 

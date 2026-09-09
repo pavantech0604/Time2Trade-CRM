@@ -261,7 +261,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       {/* Soft Backdrop */}
       <div
         onClick={onClose}
-        className="fixed inset-0 z-[100] bg-slate-900/30 backdrop-blur-xs md:bg-black/10 md:backdrop-blur-none transition-opacity"
+        className="fixed inset-0 z-[100] bg-slate-900/30 backdrop-blur-sm md:bg-black/10 md:backdrop-blur-none transition-opacity"
       />
 
       {/* Main Notification Card */}
@@ -555,9 +555,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                           deleteNotification(n.id);
                         }}
                         title="Dismiss"
-                        className="p-1 rounded text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-pointer"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
