@@ -115,7 +115,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
   // Category change side-effect: ensure serviceType belongs to category, or clear if mismatched
   useEffect(() => {
     if (serviceCategory === 'Equity') {
-      const equityOptions: ServiceType[] = ['Cash', 'Future Option', 'Stock Option'];
+      const equityOptions: ServiceType[] = ['Cash', 'Option', 'Stock Option'];
       if (serviceType && !equityOptions.includes(serviceType as ServiceType)) {
         setServiceType('');
       }
@@ -795,7 +795,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                           Equity
                         </span>
                         <span className="block text-[11px] text-slate-500 mt-0.5">
-                          Cash, Future & Stock Options
+                          Cash, Option & Stock Options
                         </span>
                       </div>
                     </div>
@@ -885,7 +885,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
                 {serviceCategory === 'Equity' ? (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 animate-in fade-in duration-200">
-                    {(['Cash', 'Future Option', 'Stock Option'] as ServiceType[]).map((type) => {
+                    {(['Cash', 'Option', 'Stock Option'] as ServiceType[]).map((type) => {
                       const isSelected = serviceType === type;
                       return (
                         <button
@@ -935,7 +935,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                         </span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        {(['Cash', 'Future Option', 'Stock Option'] as ServiceType[]).map((type) => (
+                        {(['Cash', 'Option', 'Stock Option'] as ServiceType[]).map((type) => (
                           <button
                             key={type}
                             type="button"

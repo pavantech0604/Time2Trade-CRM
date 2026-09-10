@@ -30,11 +30,11 @@ export type PaymentMode = 'UPI' | 'Bank Transfer' | 'Other';
 
 export type ServiceCategory = 'Equity' | 'Commodity';
 
-export type EquityServiceType = 'Cash' | 'Future Option' | 'Stock Option';
+export type EquityServiceType = 'Cash' | 'Option' | 'Stock Option';
 
 export type CommodityServiceType = 'Gold' | 'Silver' | 'Crude Oil';
 
-export type ServiceType = EquityServiceType | CommodityServiceType;
+export type ServiceType = EquityServiceType | CommodityServiceType | 'Future Option';
 
 export type SubscriptionDuration = '3 Months' | '6 Months' | 'Yearly';
 
