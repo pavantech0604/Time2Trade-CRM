@@ -20,6 +20,9 @@ export const GOOGLE_FORM_ENTRIES = {
   utr: 'entry.1903456714',
   receiverBank: 'entry.1374647109',
   transactionDate: 'entry.1663408271',
+  allocations: 'entry.1670072038',
+  screenshotProof: 'entry.2025034856',
+  remarks: 'entry.1552774651',
   allocationsAndProof: 'entry.1552774651',
 } as const;
 
@@ -88,7 +91,9 @@ export function buildPrefilledGoogleFormUrl(payload: PaymentSubmissionPayload): 
     [GOOGLE_FORM_ENTRIES.utr]: payload.utr.trim(),
     [GOOGLE_FORM_ENTRIES.receiverBank]: effectiveBank,
     [GOOGLE_FORM_ENTRIES.transactionDate]: payload.transactionDate,
-    [GOOGLE_FORM_ENTRIES.allocationsAndProof]: proofEntryText,
+    [GOOGLE_FORM_ENTRIES.allocations]: payload.allocationSummary,
+    [GOOGLE_FORM_ENTRIES.screenshotProof]: payload.screenshotUrl || 'No Screenshot Attached',
+    [GOOGLE_FORM_ENTRIES.remarks]: payload.remarks?.trim() || 'Submitted via Time2Trade CRM',
   });
 
   return `${GOOGLE_FORM_VIEW_URL}?${params.toString()}`;
@@ -238,7 +243,9 @@ export function submitToGoogleFormViaHiddenIframe(payload: PaymentSubmissionPayl
         [GOOGLE_FORM_ENTRIES.utr, payload.utr.trim()],
         [GOOGLE_FORM_ENTRIES.receiverBank, effectiveBank],
         [GOOGLE_FORM_ENTRIES.transactionDate, payload.transactionDate],
-        [GOOGLE_FORM_ENTRIES.allocationsAndProof, proofEntryText],
+        [GOOGLE_FORM_ENTRIES.allocations, payload.allocationSummary],
+        [GOOGLE_FORM_ENTRIES.screenshotProof, payload.screenshotUrl || 'No Screenshot Attached'],
+        [GOOGLE_FORM_ENTRIES.remarks, payload.remarks?.trim() || 'Submitted via Time2Trade CRM'],
       ];
 
       fieldEntries.forEach(([name, value]) => {
@@ -338,26 +345,61 @@ export async function dispatchToGoogleSheetsWebhook(
 }
 
 /**
- * Dual-channel silent submission to Google Form & Google Sheets
+ * Send a test transaction row to Google Sheets to verify webhook connectivity in real-time
  */
-export async function submitPaymentToGoogleFormDualChannel(
-  payload: PaymentSubmissionPayload
-): Promise<{ hiddenIframe: boolean; webhookDispatched: boolean }> {
-  // 1. Channel A: Invisible Iframe Form POST (bypasses fetch CORS blocks)
-  const iframePromise = submitToGoogleFormViaHiddenIframe(payload);
+export async function sendTestRowToGoogleSheets(
+  customWebhookUrl?: string
+): Promise<{ success: boolean; message: string }> {
+  const url = customWebhookUrl || getSavedGoogleSheetsWebhookUrl();
+  if (!url || !url.trim().startsWith('http')) {
+    return {
+      success: false,
+      message: 'Please paste your Google Apps Script Webhook URL first (e.g. https://script.google.com/macros/s/.../exec).',
+    };
+  }
 
-  // 2. Channel B: Background fetch POST (Parallel redundant dispatch)
+  const testPayload: PaymentSubmissionPayload = {
+    referenceId: 'TEST-' + Math.floor(100000 + Math.random() * 900000),
+    clientName: 'Test Connection (CRM Sync)',
+    clientPhone: '+91 98765 43210',
+    serviceCategory: 'Equity',
+    serviceType: 'Cash',
+    subscriptionDuration: '3 Months',
+    primaryEmployeeName: 'Admin / Live Test',
+    amount: 5000,
+    paymentMode: 'UPI',
+    utr: 'TESTUTR' + Date.now().toString().slice(-6),
+    receiverBank: 'HDFC Bank',
+    transactionDate: new Date().toISOString().split('T')[0],
+    screenshotUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c',
+    allocationSummary: 'Admin: ₹5,000 (100%)',
+    remarks: 'Real-time test ping dispatched from Time2Trade CRM to verify spreadsheet row creation.',
+  };
+
+  const result = await dispatchToGoogleSheetsWebhook(testPayload, url.trim());
+  if (result.success) {
+    return {
+      success: true,
+      message: 'Test row dispatched! Open your Google Sheet now to see the new test row.',
+    };
+  }
+  return {
+    success: false,
+    message: result.message || 'Failed to connect to Google Sheets Webhook.',
+  };
+}
+
+/**
+ * Single, clean submission to Google Form & Google Sheets (prevents duplicate rows)
+ */
+export async function submitPaymentToGoogleForm(
+  payload: PaymentSubmissionPayload
+): Promise<{ success: boolean; webhookDispatched: boolean }> {
+  // 1. Submit to Google Form exactly once via standard background POST
   try {
     const gFormPaymentMode = mapPaymentModeForGoogleForm(payload.paymentMode);
     const gFormDuration = mapDurationForGoogleForm(payload.subscriptionDuration);
     const effectiveBank = payload.receiverBank.trim() || 'N/A';
-    const proofEntryText = [
-      payload.remarks?.trim() ? `Remarks: ${payload.remarks.trim()}` : null,
-      `Allocations: ${payload.allocationSummary}`,
-      payload.screenshotUrl ? `Screenshot Proof: ${payload.screenshotUrl}` : null,
-    ]
-      .filter(Boolean)
-      .join(' | ');
 
     const formData = new URLSearchParams();
     formData.append(GOOGLE_FORM_ENTRIES.clientName, payload.clientName.trim());
@@ -371,21 +413,23 @@ export async function submitPaymentToGoogleFormDualChannel(
     formData.append(GOOGLE_FORM_ENTRIES.utr, payload.utr.trim());
     formData.append(GOOGLE_FORM_ENTRIES.receiverBank, effectiveBank);
     formData.append(GOOGLE_FORM_ENTRIES.transactionDate, payload.transactionDate);
-    formData.append(GOOGLE_FORM_ENTRIES.allocationsAndProof, proofEntryText);
+    formData.append(GOOGLE_FORM_ENTRIES.allocations, payload.allocationSummary);
+    formData.append(GOOGLE_FORM_ENTRIES.screenshotProof, payload.screenshotUrl || 'No Screenshot Attached');
+    formData.append(GOOGLE_FORM_ENTRIES.remarks, payload.remarks?.trim() || 'Submitted via Time2Trade CRM');
 
-    fetch(GOOGLE_FORM_RESPONSE_URL, {
+    await fetch(GOOGLE_FORM_RESPONSE_URL, {
       method: 'POST',
       mode: 'no-cors',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: formData.toString(),
-    }).catch(() => {});
+    });
   } catch {
     // Silent
   }
 
-  // 3. Channel C: Google Sheets Apps Script Webhook (if configured)
+  // 2. Direct Webhook Dispatch to Google Sheets / Apps Script (if configured)
   let webhookDispatched = false;
   try {
     const res = await dispatchToGoogleSheetsWebhook(payload);
@@ -394,9 +438,13 @@ export async function submitPaymentToGoogleFormDualChannel(
     webhookDispatched = false;
   }
 
-  const hiddenIframe = await iframePromise;
-  return { hiddenIframe, webhookDispatched };
+  return { success: true, webhookDispatched };
 }
+
+/**
+ * Backwards compatibility alias
+ */
+export const submitPaymentToGoogleFormDualChannel = submitPaymentToGoogleForm;
 
 /**
  * Ready-to-use Google Apps Script Code snippet for 100% automated sheet synchronization

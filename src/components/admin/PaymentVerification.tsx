@@ -30,6 +30,7 @@ import {
   formatPaymentsBatchTSV,
   getSavedGoogleSheetsWebhookUrl,
   saveGoogleSheetsWebhookUrl,
+  sendTestRowToGoogleSheets,
   GOOGLE_APPS_SCRIPT_SNIPPET,
   GOOGLE_FORM_VIEW_URL,
 } from '../../lib/googleSheets';
@@ -48,12 +49,30 @@ export const PaymentVerification: React.FC = () => {
   const [copiedBatchTSV, setCopiedBatchTSV] = useState(false);
   const [webhookUrlInput, setWebhookUrlInput] = useState(() => getSavedGoogleSheetsWebhookUrl());
   const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const handleCopyAllToSpreadsheet = () => {
     const tsvData = formatPaymentsBatchTSV(payments);
     navigator.clipboard.writeText(tsvData);
     setCopiedBatchTSV(true);
     setTimeout(() => setCopiedBatchTSV(false), 3500);
+  };
+
+  const handleTestWebhook = async () => {
+    if (!webhookUrlInput.trim()) {
+      setTestResult({ success: false, message: 'Please enter a Webhook URL first.' });
+      return;
+    }
+    setIsTestingWebhook(true);
+    setTestResult(null);
+    try {
+      saveGoogleSheetsWebhookUrl(webhookUrlInput.trim());
+      const res = await sendTestRowToGoogleSheets(webhookUrlInput.trim());
+      setTestResult(res);
+    } finally {
+      setIsTestingWebhook(false);
+    }
   };
 
   // Table Row Inline Client Edit State
@@ -996,20 +1015,17 @@ export const PaymentVerification: React.FC = () => {
             <div className="bg-rose-50/80 border border-rose-200 p-4 rounded-2xl space-y-2.5 text-xs text-rose-900">
               <div className="flex items-center gap-2 font-bold text-rose-800 text-sm">
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>Why Were Past Submissions Not Appearing in Google Form Responses?</span>
+                <span>Why Form Responses and Rows Are Not Appearing</span>
               </div>
               <p className="leading-relaxed">
-                Google returned <strong>HTTP 401: Sign in to your Google Account</strong>. When a Google Form has sign-in or response limits enabled, Google blocks all background submissions from external web apps.
+                We inspected your Google Form in the browser: <strong>Question #13 (&ldquo;Upload Payment Screenshot Proof&rdquo;) is set to &ldquo;File upload&rdquo;</strong>. When any Google Form has a file upload question, Google strictly blocks all external submissions with HTTP 401.
               </p>
-              <div className="bg-white/80 p-3 rounded-xl border border-rose-200/80 space-y-1.5 text-[11px]">
-                <span className="font-bold text-rose-900 uppercase tracking-wider block">Required Fix in your Google Form:</span>
-                <ol className="list-decimal list-inside space-y-1 text-slate-700 font-medium">
-                  <li>Open your Google Form in editor mode (Settings tab &rarr; Responses).</li>
-                  <li><strong>Turn OFF &ldquo;Limit to 1 response&rdquo;</strong> (requires respondents to log in).</li>
-                  <li><strong>Turn OFF &ldquo;Restrict to users in [Domain]&rdquo;</strong> (blocks outside submissions).</li>
-                  <li><strong>Set &ldquo;Collect email addresses&rdquo; to &ldquo;Do not collect&rdquo;</strong>.</li>
-                  <li>Ensure there is no &ldquo;File upload&rdquo; question type (CRM already uploads screenshots to cloud CDN).</li>
-                </ol>
+              <div className="bg-white/90 p-3 rounded-xl border border-rose-200/90 space-y-1.5 text-[11px]">
+                <span className="font-bold text-rose-900 uppercase tracking-wider block">Choose Either Solution:</span>
+                <ul className="list-disc list-inside space-y-1.5 text-slate-700 font-medium">
+                  <li><strong>Solution A (Change Question 13 in Google Form):</strong> Click Question 13 in your form editor &rarr; Change dropdown from <em>&ldquo;File upload&rdquo;</em> to <em>&ldquo;Short answer&rdquo;</em> or <em>&ldquo;Paragraph&rdquo;</em>. (The CRM automatically uploads the image and passes the link!). Also in Settings &rarr; Responses, turn off &ldquo;Limit to 1 response&rdquo;.</li>
+                  <li><strong>Solution B (Recommended - Google Apps Script Webhook):</strong> Deploy the script below on your Google Sheet. It connects directly with zero login, writes rows in real-time, and auto-saves screenshots into a Google Drive folder!</li>
+                </ul>
               </div>
               <div className="pt-1 flex items-center justify-between">
                 <a
@@ -1019,7 +1035,7 @@ export const PaymentVerification: React.FC = () => {
                   className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-bold underline cursor-pointer"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Form to Verify Settings</span>
+                  <span>Open Form to Edit Question 13</span>
                 </a>
               </div>
             </div>
@@ -1051,37 +1067,57 @@ export const PaymentVerification: React.FC = () => {
                 Automated Google Sheets Webhook (Recommended)
               </h4>
               <p className="text-[11px] leading-relaxed">
-                Add this 10-line script to your Google Sheet to auto-record every employee payment proof without requiring any Google sign-in.
+                Add this 15-line script to your Google Sheet to auto-record every employee payment proof without requiring any Google sign-in.
               </p>
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                   Google Apps Script Webhook URL
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="url"
                     value={webhookUrlInput}
                     onChange={(e) => setWebhookUrlInput(e.target.value)}
                     placeholder="https://script.google.com/macros/s/.../exec"
-                    className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:border-blue-600"
+                    className="flex-1 min-w-[260px] bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:border-blue-600"
                   />
                   <button
                     type="button"
                     onClick={() => {
                       saveGoogleSheetsWebhookUrl(webhookUrlInput);
-                      setWebhookStatus('Webhook URL saved successfully!');
+                      setWebhookStatus('Webhook URL saved!');
                       setTimeout(() => setWebhookStatus(null), 3000);
                     }}
                     className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all cursor-pointer shadow-sm"
                   >
                     Save
                   </button>
+                  <button
+                    type="button"
+                    disabled={isTestingWebhook || !webhookUrlInput.trim()}
+                    onClick={handleTestWebhook}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                    title="Send an immediate live test row into your Google Sheet to verify sync"
+                  >
+                    {isTestingWebhook ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    <span>{isTestingWebhook ? 'Sending Test Row...' : 'Send Live Test Row'}</span>
+                  </button>
                 </div>
                 {webhookStatus && (
                   <p className="text-emerald-600 font-bold text-[11px] mt-1.5 flex items-center gap-1">
                     <Check className="w-3.5 h-3.5" /> {webhookStatus}
                   </p>
+                )}
+                {testResult && (
+                  <div className={`p-3 rounded-xl border text-xs font-semibold mt-2 flex items-start gap-2 ${
+                    testResult.success
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-rose-50 border-rose-200 text-rose-800'
+                  }`}>
+                    {testResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" /> : <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />}
+                    <span>{testResult.message}</span>
+                  </div>
                 )}
               </div>
 

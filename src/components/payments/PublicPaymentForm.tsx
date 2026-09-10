@@ -59,6 +59,7 @@ import {
   dispatchToGoogleSheetsWebhook,
   getSavedGoogleSheetsWebhookUrl,
   saveGoogleSheetsWebhookUrl,
+  submitPaymentToGoogleForm,
   submitPaymentToGoogleFormDualChannel,
   GOOGLE_APPS_SCRIPT_SNIPPET,
   PaymentSubmissionPayload,
@@ -132,7 +133,6 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedRefId, setSubmittedRefId] = useState<string | null>(null);
   const [prefilledGoogleFormUrl, setPrefilledGoogleFormUrl] = useState<string>('');
-  const hiddenGFormRef = useRef<HTMLFormElement | null>(null);
   const [submitStep, setSubmitStep] = useState<number>(0);
   const [copiedReceipt, setCopiedReceipt] = useState<boolean>(false);
   const [copiedSheetRow, setCopiedSheetRow] = useState(false);
@@ -452,20 +452,8 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
     setSubmitStep(3);
 
-    // 3. Native Hidden Browser Form Submit (carries active Google session silently inside invisible iframe)
-    try {
-      if (hiddenGFormRef.current) {
-        hiddenGFormRef.current.submit();
-      }
-    } catch {
-      // Non-blocking
-    }
-
-    // 4. Multi-Channel Background Synchronization to Google Form & Google Sheets
-    // Channel 1: Hidden Iframe HTML Form POST (Standard browser form submit)
-    // Channel 2: Parallel background fetch POST
-    // Channel 3: Direct Webhook Dispatch to Google Sheets / Apps Script (if configured)
-    await submitPaymentToGoogleFormDualChannel(payload);
+    // 3. Single clean submission to Google Form & Google Sheets (prevents duplicate rows)
+    await submitPaymentToGoogleForm(payload);
 
     // Seamless in-place completion: NO window.open, NO redirecting away from CRM!
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -1839,51 +1827,6 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
           </div>
         </div>
       )}
-      {/* Hidden iframe & form for native browser Google Form response submission */}
-      <iframe
-        name="gform_target_iframe"
-        id="gform_target_iframe"
-        style={{ display: 'none', width: 0, height: 0, border: 'none' }}
-        title="Google Form Auto-Submitter"
-      />
-      <form
-        ref={hiddenGFormRef}
-        action={GOOGLE_FORM_RESPONSE_URL}
-        method="POST"
-        target="gform_target_iframe"
-        style={{ display: 'none' }}
-      >
-        <input type="hidden" name={GOOGLE_FORM_ENTRIES.clientName} value={clientName.trim()} />
-        <input type="hidden" name={GOOGLE_FORM_ENTRIES.clientPhone} value={clientPhone.trim()} />
-        <input type="hidden" name={GOOGLE_FORM_ENTRIES.serviceCategory} value={serviceCategory} />
-        <input type="hidden" name={GOOGLE_FORM_ENTRIES.serviceType} value={serviceType} />
-        <input
-          type="hidden"
-          name={GOOGLE_FORM_ENTRIES.subscriptionDuration}
-          value={mapDurationForGoogleForm(subscriptionDuration)}
-        />
-        <input type="hidden" name={GOOGLE_FORM_ENTRIES.primaryEmployee} value={effectivePrimaryUser.name} />
-        <input type="hidden" name={GOOGLE_FORM_ENTRIES.amount} value={String(totalPaymentAmount)} />
-        <input
-          type="hidden"
-          name={GOOGLE_FORM_ENTRIES.paymentMode}
-          value={mapPaymentModeForGoogleForm(paymentMode)}
-        />
-        <input type="hidden" name={GOOGLE_FORM_ENTRIES.utr} value={utr.trim()} />
-        <input type="hidden" name={GOOGLE_FORM_ENTRIES.receiverBank} value={receiverBank.trim() || 'N/A'} />
-        <input type="hidden" name={GOOGLE_FORM_ENTRIES.transactionDate} value={transactionTime.split('T')[0]} />
-        <input
-          type="hidden"
-          name={GOOGLE_FORM_ENTRIES.allocationsAndProof}
-          value={[
-            remarks.trim() ? `Remarks: ${remarks.trim()}` : null,
-            `Allocations: ${allocations.map((a) => `${a.employee_name}: ₹${a.allocation_amount}`).join('; ')}`,
-            screenshotUrl ? `Screenshot Proof: ${screenshotUrl}` : null,
-          ]
-            .filter(Boolean)
-            .join(' | ')}
-        />
-      </form>
 
       {/* Google Sheets Direct Webhook Configuration Modal */}
       {showWebhookModal && (
