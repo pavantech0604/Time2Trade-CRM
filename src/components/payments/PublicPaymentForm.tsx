@@ -34,11 +34,35 @@ import {
   ArrowRight,
   Lock,
   RotateCcw,
+  User as UserIcon,
+  Phone,
+  Search,
+  Copy,
+  Settings,
+  Table,
+  Link as LinkIcon,
+  CheckSquare,
+  MessageSquare,
+  PhoneCall,
 } from 'lucide-react';
 import { uploadFileToBucket, supabase } from '../../lib/supabase';
 import { formatINR } from '../../lib/formatters';
 import { EmployeeAutocomplete } from './EmployeeAutocomplete';
 import { AllocationCalculator } from './AllocationCalculator';
+import {
+  GOOGLE_FORM_RESPONSE_URL,
+  GOOGLE_FORM_ENTRIES,
+  buildPrefilledGoogleFormUrl,
+  formatSpreadsheetRowTSV,
+  mapPaymentModeForGoogleForm,
+  mapDurationForGoogleForm,
+  dispatchToGoogleSheetsWebhook,
+  getSavedGoogleSheetsWebhookUrl,
+  saveGoogleSheetsWebhookUrl,
+  submitPaymentToGoogleFormDualChannel,
+  GOOGLE_APPS_SCRIPT_SNIPPET,
+  PaymentSubmissionPayload,
+} from '../../lib/googleSheets';
 
 const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -56,11 +80,11 @@ interface PublicPaymentFormProps {
 export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) => {
   const { currentUser, traders, addPayment, users } = useAuth();
 
-  // 1. Client Details State
-  const [traderId, setTraderId] = useState(traders[0]?.id || '');
-  const [isManualClient, setIsManualClient] = useState(traders.length === 0);
-  const [manualClientName, setManualClientName] = useState('');
-  const [manualClientPhone, setManualClientPhone] = useState('');
+  // 1. Client Details State (Defaults to fresh new client, not sample trader)
+  const [clientEntryMode, setClientEntryMode] = useState<'direct' | 'existing'>('direct');
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [selectedTraderId, setSelectedTraderId] = useState<string>('');
 
   // 2. Service Details State (Initially unselected/blank)
   const [serviceCategory, setServiceCategory] = useState<ServiceCategory | ''>('');
@@ -108,6 +132,15 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedRefId, setSubmittedRefId] = useState<string | null>(null);
   const [prefilledGoogleFormUrl, setPrefilledGoogleFormUrl] = useState<string>('');
+  const hiddenGFormRef = useRef<HTMLFormElement | null>(null);
+  const [submitStep, setSubmitStep] = useState<number>(0);
+  const [copiedReceipt, setCopiedReceipt] = useState<boolean>(false);
+  const [copiedSheetRow, setCopiedSheetRow] = useState(false);
+  const [copiedProofUrl, setCopiedProofUrl] = useState(false);
+  const [showWebhookModal, setShowWebhookModal] = useState(false);
+  const [webhookUrlInput, setWebhookUrlInput] = useState(() => getSavedGoogleSheetsWebhookUrl());
+  const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
+  const [lastSubmissionPayload, setLastSubmissionPayload] = useState<PaymentSubmissionPayload | null>(null);
 
   // Confirmation modal state for removing allocated employee
   const [removeConfirmEmp, setRemoveConfirmEmp] = useState<PaymentAllocation | null>(null);
@@ -329,14 +362,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
   };
 
   // Form Validation Checklist
-  const clientName = isManualClient
-    ? manualClientName.trim()
-    : traders.find((t) => t.id === traderId)?.name || '';
-  const clientPhone = isManualClient
-    ? manualClientPhone.trim()
-    : traders.find((t) => t.id === traderId)?.phone || '';
-
-  const isClientValid = Boolean(clientName && clientPhone);
+  const isClientValid = Boolean(clientName.trim().length >= 2 && clientPhone.trim().length >= 10);
   const isPaymentValid = Boolean(totalPaymentAmount > 0 && utr.trim() && screenshotUrl);
   const isFormValid =
     isClientValid &&
@@ -351,6 +377,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
     if (!isFormValid || isSubmitting) return;
 
     setIsSubmitting(true);
+    setSubmitStep(1);
 
     const primaryEmployeeName = effectivePrimaryUser.name;
     const additionalAllocations = allocations.filter((a) => !a.is_primary && a.allocation_amount > 0);
@@ -370,15 +397,13 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
       ? `${remarks.trim()}\nAllocations: ${allocationSummaryRemark}\nService: ${serviceCategory} - ${serviceType} (${subscriptionDuration})\nProof URL: ${screenshotUrl}`
       : `Allocations: ${allocationSummaryRemark}\nService: ${serviceCategory} - ${serviceType} (${subscriptionDuration})\nProof URL: ${screenshotUrl}`;
 
-    const allocationWithProof = screenshotUrl
-      ? `${allocationSummaryRemark}\nProof: ${screenshotUrl}`
-      : allocationSummaryRemark;
-
-    // 1. Save to AuthContext & Supabase DB
-    addPayment({
-      trader_id: traderId || 'manual-client',
-      trader_name: clientName,
-      trader_phone: clientPhone,
+    // 1. Save to AuthContext & Supabase DB (Client & Payment records)
+    await addPayment({
+      trader_id: clientEntryMode === 'existing' && selectedTraderId ? selectedTraderId : 'manual-client',
+      client_name: clientName.trim(),
+      client_phone: clientPhone.trim(),
+      trader_name: clientName.trim(),
+      trader_phone: clientPhone.trim(),
       employee_id: effectivePrimaryUser.id,
       employee_name: primaryEmployeeName,
       amount: totalPaymentAmount,
@@ -395,71 +420,58 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
       is_shared: allocations.length > 1,
     } as any);
 
-    // 2. Map Payment Mode & Duration to Google Form exact options
-    const gFormPaymentMode =
-      paymentMode === 'UPI' ? 'UPI Transfer' :
-      paymentMode === 'Bank Transfer' ? 'Bank Transfer / IMPS' : 'OTHER';
+    setSubmitStep(2);
 
-    const gFormDuration =
-      subscriptionDuration === '3 Months' ? '3 months' :
-      subscriptionDuration === '6 Months' ? '6 months' : 'yearly';
-
+    const refCode = `T2T-PAY-${Math.floor(100000 + Math.random() * 900000)}`;
     const txDate = transactionTime.split('T')[0];
     const effectiveReceiverBank = receiverBank.trim() || 'N/A';
 
-    // 3. Background Sync to Google Form Ledger
+    const payload: PaymentSubmissionPayload = {
+      referenceId: refCode,
+      clientName: clientName.trim(),
+      clientPhone: clientPhone.trim(),
+      serviceCategory: serviceCategory,
+      serviceType: serviceType,
+      subscriptionDuration: subscriptionDuration,
+      primaryEmployeeName: primaryEmployeeName,
+      amount: totalPaymentAmount,
+      paymentMode: paymentMode,
+      utr: utr.trim(),
+      receiverBank: effectiveReceiverBank,
+      transactionDate: txDate,
+      screenshotUrl: screenshotUrl,
+      allocationSummary: allocationSummaryRemark,
+      remarks: remarks.trim(),
+    };
+
+    setLastSubmissionPayload(payload);
+
+    // 2. Generate Pre-filled Google Form URL for record keeping
+    const prefilledUrl = buildPrefilledGoogleFormUrl(payload);
+    setPrefilledGoogleFormUrl(prefilledUrl);
+
+    setSubmitStep(3);
+
+    // 3. Native Hidden Browser Form Submit (carries active Google session silently inside invisible iframe)
     try {
-      const googleFormUrl =
-        'https://docs.google.com/forms/d/e/1FAIpQLSdEPUeP_q3MepAw5j-tgJa23HsD-lixzMoihND9Z1AhdhXxJQ/formResponse';
-
-      const formData = new URLSearchParams();
-      formData.append('entry.296808543', clientName);
-      formData.append('entry.1646904639', clientPhone);
-      formData.append('entry.306110806', serviceCategory);
-      formData.append('entry.1355689734', serviceType);
-      formData.append('entry.492004714', gFormDuration);
-      formData.append('entry.1702720898', primaryEmployeeName);
-      formData.append('entry.1193149425', String(totalPaymentAmount));
-      formData.append('entry.507882490', gFormPaymentMode);
-      formData.append('entry.1903456714', utr.trim());
-      formData.append('entry.1374647109', effectiveReceiverBank);
-      formData.append('entry.1663408271', txDate);
-      formData.append('entry.1552774651', allocationWithProof);
-
-      await fetch(googleFormUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString(),
-      });
+      if (hiddenGFormRef.current) {
+        hiddenGFormRef.current.submit();
+      }
     } catch {
-      // Handled silently
+      // Non-blocking
     }
 
-    // 4. Generate Pre-filled Google Form URL
-    const prefillParams = new URLSearchParams({
-      usp: 'pp_url',
-      'entry.296808543': clientName,
-      'entry.1646904639': clientPhone,
-      'entry.306110806': serviceCategory,
-      'entry.1355689734': serviceType,
-      'entry.492004714': gFormDuration,
-      'entry.1702720898': primaryEmployeeName,
-      'entry.1193149425': String(totalPaymentAmount),
-      'entry.507882490': gFormPaymentMode,
-      'entry.1903456714': utr.trim(),
-      'entry.1374647109': effectiveReceiverBank,
-      'entry.1663408271': txDate,
-      'entry.1552774651': allocationWithProof,
-    });
-    setPrefilledGoogleFormUrl(
-      `https://docs.google.com/forms/d/e/1FAIpQLSdEPUeP_q3MepAw5j-tgJa23HsD-lixzMoihND9Z1AhdhXxJQ/viewform?${prefillParams.toString()}`
-    );
+    // 4. Multi-Channel Background Synchronization to Google Form & Google Sheets
+    // Channel 1: Hidden Iframe HTML Form POST (Standard browser form submit)
+    // Channel 2: Parallel background fetch POST
+    // Channel 3: Direct Webhook Dispatch to Google Sheets / Apps Script (if configured)
+    await submitPaymentToGoogleFormDualChannel(payload);
+
+    // Seamless in-place completion: NO window.open, NO redirecting away from CRM!
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    setSubmitStep(4);
 
     setIsSubmitting(false);
-    const refCode = `T2T-PAY-${Math.floor(100000 + Math.random() * 900000)}`;
     setSubmittedRefId(refCode);
   };
 
@@ -473,33 +485,102 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
   // SUCCESS SCREEN
   if (submittedRefId) {
+    const cleanPhoneDigits = clientPhone.replace(/\D/g, '');
+    const receiptSummaryText = `Time2Trade Payment Submission Receipt
+• Tracking Reference: ${submittedRefId}
+• Client: ${clientName} (${clientPhone})
+• Service: ${serviceCategory} • ${serviceType} (${subscriptionDuration})
+• Amount: ${formatINR(totalPaymentAmount)}
+• Payment Mode: ${paymentMode}
+• UTR / Ref: ${utr}
+• Receiver Bank: ${receiverBank || 'N/A'}
+• Submitting Staff: ${effectivePrimaryUser.name}
+• Staff Allocations: ${allocations.map((a) => `${a.employee_name}: ${formatINR(a.allocation_amount)}`).join('; ')}
+${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
+
     return (
-      <div className="max-w-2xl mx-auto my-8 bg-white border border-brand-primary/20 p-8 md:p-10 rounded-3xl space-y-6 text-center shadow-2xl animate-in zoom-in-95 font-sans">
+      <div className="max-w-2xl mx-auto my-8 bg-white border border-brand-primary/20 p-6 md:p-10 rounded-3xl space-y-6 text-center shadow-2xl animate-in zoom-in-95 font-sans">
         <div className="w-20 h-20 rounded-3xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto shadow-inner">
           <CheckCircle2 className="w-12 h-12" />
         </div>
 
         <div>
           <span className="text-[11px] uppercase tracking-wider font-extrabold text-emerald-700 bg-emerald-100/60 px-3 py-1 rounded-full border border-emerald-200">
-            Submission Acknowledged
+            Submission Confirmed
           </span>
           <h2 className="text-2xl sm:text-3xl font-black text-[#091A2F] mt-2">
-            Payment Submitted Successfully
+            Payment & Proof Stored Successfully
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium max-w-lg mx-auto">
-            Payment details and employee allocations have been routed to the Anti-Fraud Verification Center for administrator review.
+            Payment details, client record, and screenshot proof have been saved and dispatched to the verification desk.
           </p>
         </div>
 
+        {/* Live Synchronization Status Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-left">
+          <div className="bg-emerald-50/80 border border-emerald-200 p-3 rounded-2xl">
+            <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>CRM Database</span>
+            </div>
+            <p className="text-[11px] text-emerald-700 font-medium mt-0.5">Stored & Active Trader linked</p>
+          </div>
+
+          <div className="bg-blue-50/80 border border-blue-200 p-3 rounded-2xl">
+            <div className="flex items-center gap-1.5 text-blue-800 font-bold text-xs">
+              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Google Ledger</span>
+            </div>
+            <p className="text-[11px] text-blue-700 font-medium mt-0.5">Dispatched in background</p>
+          </div>
+
+          <div className="bg-purple-50/80 border border-purple-200 p-3 rounded-2xl">
+            <div className="flex items-center gap-1.5 text-purple-800 font-bold text-xs">
+              <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+              <span>Verification Desk</span>
+            </div>
+            <p className="text-[11px] text-purple-700 font-medium mt-0.5">Pending Admin inspection</p>
+          </div>
+        </div>
+
+        {/* Transaction Summary Card */}
         <div className="bg-[#FAF8F5] p-5 rounded-2xl border border-slate-200 space-y-3 text-xs text-left">
           <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
             <span className="text-slate-500 font-semibold">Reference Tracking ID:</span>
             <span className="font-mono font-bold text-brand-primary text-sm">{submittedRefId}</span>
           </div>
+
+          {/* Interactive Client Row with WhatsApp & Call */}
           <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
-            <span className="text-slate-500 font-semibold">Client Name:</span>
-            <span className="font-bold text-slate-800">{clientName}</span>
+            <span className="text-slate-500 font-semibold">Client Name & Phone:</span>
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <span className="font-bold text-slate-800 block">{clientName}</span>
+                <span className="font-mono text-[11px] text-blue-700 font-bold">{clientPhone}</span>
+              </div>
+              {cleanPhoneDigits.length >= 10 && (
+                <div className="flex items-center gap-1 ml-1">
+                  <a
+                    href={`https://wa.me/91${cleanPhoneDigits.slice(-10)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-colors shadow-2xs"
+                    title="Message Client on WhatsApp"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </a>
+                  <a
+                    href={`tel:+91${cleanPhoneDigits.slice(-10)}`}
+                    className="p-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors shadow-2xs"
+                    title="Call Client"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
+
           <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
             <span className="text-slate-500 font-semibold">Service Details:</span>
             <span className="font-bold text-slate-800">{serviceCategory} • {serviceType} ({subscriptionDuration})</span>
@@ -516,6 +597,44 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
             <span className="text-slate-500 font-semibold">Receiver Bank Holder Name:</span>
             <span className="font-semibold text-slate-700">{receiverBank}</span>
           </div>
+
+          {/* Interactive Screenshot Proof Preview */}
+          {screenshotUrl && (
+            <div className="pt-2 pb-1 border-b border-slate-200/60 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-semibold">Uploaded Payment Proof:</span>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={screenshotUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 text-xs"
+                  >
+                    <span>Open Full Image</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(screenshotUrl);
+                      setCopiedProofUrl(true);
+                      setTimeout(() => setCopiedProofUrl(false), 2000);
+                    }}
+                    className="px-2 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-[10px] cursor-pointer"
+                  >
+                    {copiedProofUrl ? 'Copied!' : 'Copy Link'}
+                  </button>
+                </div>
+              </div>
+              <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-100 max-h-48 flex justify-center items-center">
+                <img
+                  src={screenshotUrl}
+                  alt="Payment Proof"
+                  className="max-h-48 w-auto object-contain rounded-lg"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="pt-2">
             <span className="text-slate-500 font-bold block mb-1.5 uppercase text-[10px] tracking-wider">
@@ -544,25 +663,64 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
           </div>
         </div>
 
-        {prefilledGoogleFormUrl && (
-          <a
-            href={prefilledGoogleFormUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-2.5 px-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-xs transition-all flex items-center justify-center gap-2"
+        {/* Interactive Action Buttons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(receiptSummaryText);
+              setCopiedReceipt(true);
+              setTimeout(() => setCopiedReceipt(false), 2500);
+            }}
+            className="py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-200 shadow-2xs"
           >
-            <ExternalLink className="w-4 h-4" />
-            Open Pre-Filled Google Form
-          </a>
-        )}
+            {copiedReceipt ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
+                <span className="text-emerald-700 font-bold">Receipt Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4 text-slate-600" />
+                <span>Copy Summary Receipt</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (lastSubmissionPayload) {
+                const tsv = formatSpreadsheetRowTSV(lastSubmissionPayload);
+                navigator.clipboard.writeText(tsv);
+                setCopiedSheetRow(true);
+                setTimeout(() => setCopiedSheetRow(false), 2500);
+              }
+            }}
+            className="py-3 px-4 rounded-2xl bg-white hover:bg-slate-50 border border-blue-200 text-blue-900 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+          >
+            {copiedSheetRow ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
+                <span className="text-emerald-700 font-bold">Sheet Row Copied!</span>
+              </>
+            ) : (
+              <>
+                <Table className="w-4 h-4 text-blue-600" />
+                <span>Copy Google Sheet Row</span>
+              </>
+            )}
+          </button>
+        </div>
 
         <button
           type="button"
           onClick={() => {
             setSubmittedRefId(null);
-            setTraderId(traders[0]?.id || '');
-            setManualClientName('');
-            setManualClientPhone('');
+            setClientEntryMode('direct');
+            setClientName('');
+            setClientPhone('');
+            setSelectedTraderId('');
             setServiceCategory('');
             setServiceType('');
             setSubscriptionDuration('');
@@ -573,6 +731,8 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
             setProofFileMeta(null);
             setIsConfirmed(false);
             setAllocations([]);
+            setLastSubmissionPayload(null);
+            setSubmitStep(0);
           }}
           className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/40 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer flex items-center justify-center gap-2"
         >
@@ -617,13 +777,25 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
           </div>
         </div>
 
-        <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-200 text-xs">
-          <div className="text-right">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Submitting Staff</span>
-            <span className="font-bold text-slate-800">{effectivePrimaryUser.name}</span>
-          </div>
-          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-brand-primary to-brand-primaryLight text-white flex items-center justify-center font-bold text-xs shadow-sm">
-            {getInitials(effectivePrimaryUser.name)}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowWebhookModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all cursor-pointer border border-slate-200"
+            title="Configure direct Google Sheets sync"
+          >
+            <Settings className="w-3.5 h-3.5 text-blue-600" />
+            <span className="hidden sm:inline">Spreadsheet Settings</span>
+          </button>
+
+          <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-200 text-xs">
+            <div className="text-right">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Submitting Staff</span>
+              <span className="font-bold text-slate-800">{effectivePrimaryUser.name}</span>
+            </div>
+            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-brand-primary to-brand-primaryLight text-white flex items-center justify-center font-bold text-xs shadow-sm">
+              {getInitials(effectivePrimaryUser.name)}
+            </div>
           </div>
         </div>
       </div>
@@ -633,72 +805,158 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
           {/* LEFT COLUMN: FORM SECTIONS 1 TO 5 */}
           <div className="lg:col-span-8 space-y-6">
             {/* SECTION 1: CLIENT DETAILS */}
-            <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-blue-50 text-blue-700 font-bold text-xs flex items-center justify-center border border-blue-200">
+            <div className="bg-white border border-slate-200 p-6 md:p-7 rounded-3xl shadow-sm space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-7 h-7 rounded-xl bg-blue-50 text-blue-700 font-black text-xs flex items-center justify-center border border-blue-200 shadow-2xs">
                     1
                   </span>
-                  <h3 className="text-base font-black text-slate-800">Client Details</h3>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">Client Information</h3>
+                    <p className="text-[11px] text-slate-500 font-medium">Enter or select the client making this payment</p>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsManualClient(!isManualClient)}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-bold cursor-pointer transition-colors"
-                >
-                  {isManualClient ? '← Select Active Trader' : '+ Enter Prospect Manually'}
-                </button>
+
+                {/* Mode Selector Tabs */}
+                <div className="flex items-center bg-slate-100/90 p-1 rounded-2xl border border-slate-200/80 self-start sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClientEntryMode('direct');
+                      setSelectedTraderId('');
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      clientEntryMode === 'direct'
+                        ? 'bg-white text-blue-700 shadow-sm shadow-blue-500/10'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <UserIcon className="w-3.5 h-3.5" />
+                    <span>Direct / New Client</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClientEntryMode('existing')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      clientEntryMode === 'existing'
+                        ? 'bg-white text-blue-700 shadow-sm shadow-blue-500/10'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Active Trader {traders.length > 0 ? `(${traders.length})` : ''}</span>
+                  </button>
+                </div>
               </div>
 
-              {isManualClient ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Client Full Name <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={manualClientName}
-                      onChange={(e) => setManualClientName(e.target.value)}
-                      placeholder="e.g. Rahul Sharma"
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Client Phone Number <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={manualClientPhone}
-                      onChange={(e) => setManualClientPhone(e.target.value)}
-                      placeholder="+91 98333 44556"
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-800 focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Select Active Client Trader <span className="text-rose-500">*</span>
+              {clientEntryMode === 'existing' && (
+                <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200/90 space-y-3 animate-in fade-in">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Choose Existing Active Trader <span className="text-rose-500">*</span>
                   </label>
-                  <select
-                    value={traderId}
-                    required
-                    onChange={(e) => setTraderId(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                  >
-                    <option value="" disabled>-- Select Active Trader --</option>
-                    {traders.map((trader) => (
-                      <option key={trader.id} value={trader.id}>
-                        {trader.name} ({trader.phone})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={selectedTraderId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedTraderId(id);
+                        const matched = traders.find((t) => t.id === id);
+                        if (matched) {
+                          setClientName(matched.name);
+                          setClientPhone(matched.phone || '');
+                        }
+                      }}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 transition-all cursor-pointer shadow-2xs"
+                    >
+                      <option value="">-- Select Active Trader from Database --</option>
+                      {traders.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} {t.phone ? `(${t.phone})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {selectedTraderId && (
+                    <div className="flex items-center justify-between p-2.5 bg-emerald-50 rounded-xl border border-emerald-200/80 text-xs">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span className="text-emerald-900 font-bold">
+                          Selected: {clientName} ({clientPhone})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTraderId('');
+                          setClientName('');
+                          setClientPhone('');
+                        }}
+                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
+
+              {/* Direct Name & Phone Inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <UserIcon className="w-3.5 h-3.5 text-blue-600" />
+                      Client Full Name <span className="text-rose-500">*</span>
+                    </span>
+                    {clientName.trim().length >= 2 && (
+                      <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5">
+                        <Check className="w-3 h-3 stroke-[3]" /> Verified
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    placeholder="e.g. Rahul Sharma"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 transition-all shadow-2xs"
+                  />
+                  <span className="block text-[10px] text-slate-400 mt-1">Full name as it appears on payment proof</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                      Client Phone Number <span className="text-rose-500">*</span>
+                    </span>
+                    {clientPhone.replace(/\D/g, '').length === 10 && (
+                      <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5">
+                        <Check className="w-3 h-3 stroke-[3]" /> 10-digit Valid
+                      </span>
+                    )}
+                  </label>
+                  <div className="relative flex rounded-xl border border-slate-300 bg-white shadow-2xs focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/20 transition-all">
+                    <span className="inline-flex items-center px-3 text-xs font-bold text-slate-500 bg-slate-50 border-r border-slate-200 rounded-l-xl select-none">
+                      🇮🇳 +91
+                    </span>
+                    <input
+                      type="tel"
+                      required
+                      value={clientPhone}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^\d\s-]/g, '');
+                        setClientPhone(val);
+                      }}
+                      maxLength={14}
+                      placeholder="98765 43210"
+                      className="w-full bg-transparent px-3 py-2 text-xs sm:text-sm font-mono font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                    />
+                  </div>
+                  <span className="block text-[10px] text-slate-400 mt-1">Primary contact for payment verification & KYC</span>
+                </div>
+              </div>
             </div>
 
             {/* SECTION 2: SERVICE DETAILS */}
@@ -1500,10 +1758,16 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                 )}
 
                 {isSubmitting ? (
-                  <>
+                  <div className="flex items-center gap-2.5">
                     <Loader2 className="w-4 h-4 animate-spin text-blue-200 shrink-0" />
-                    <span>Submitting Payment Proof…</span>
-                  </>
+                    <span className="text-xs sm:text-sm">
+                      {submitStep === 1 && 'Securing Payment Proof...'}
+                      {submitStep === 2 && 'Registering in CRM Database...'}
+                      {submitStep === 3 && 'Syncing Ledger in Background...'}
+                      {submitStep >= 4 && 'Complete!'}
+                      {submitStep === 0 && 'Submitting Payment Proof...'}
+                    </span>
+                  </div>
                 ) : !isFormValid ? (
                   <>
                     <Lock className="w-4 h-4 text-slate-400 shrink-0" />
@@ -1570,6 +1834,151 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 shadow-md shadow-rose-500/20 transition-all active:scale-95"
               >
                 Yes, Remove Employee
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Hidden iframe & form for native browser Google Form response submission */}
+      <iframe
+        name="gform_target_iframe"
+        id="gform_target_iframe"
+        style={{ display: 'none', width: 0, height: 0, border: 'none' }}
+        title="Google Form Auto-Submitter"
+      />
+      <form
+        ref={hiddenGFormRef}
+        action={GOOGLE_FORM_RESPONSE_URL}
+        method="POST"
+        target="gform_target_iframe"
+        style={{ display: 'none' }}
+      >
+        <input type="hidden" name={GOOGLE_FORM_ENTRIES.clientName} value={clientName.trim()} />
+        <input type="hidden" name={GOOGLE_FORM_ENTRIES.clientPhone} value={clientPhone.trim()} />
+        <input type="hidden" name={GOOGLE_FORM_ENTRIES.serviceCategory} value={serviceCategory} />
+        <input type="hidden" name={GOOGLE_FORM_ENTRIES.serviceType} value={serviceType} />
+        <input
+          type="hidden"
+          name={GOOGLE_FORM_ENTRIES.subscriptionDuration}
+          value={mapDurationForGoogleForm(subscriptionDuration)}
+        />
+        <input type="hidden" name={GOOGLE_FORM_ENTRIES.primaryEmployee} value={effectivePrimaryUser.name} />
+        <input type="hidden" name={GOOGLE_FORM_ENTRIES.amount} value={String(totalPaymentAmount)} />
+        <input
+          type="hidden"
+          name={GOOGLE_FORM_ENTRIES.paymentMode}
+          value={mapPaymentModeForGoogleForm(paymentMode)}
+        />
+        <input type="hidden" name={GOOGLE_FORM_ENTRIES.utr} value={utr.trim()} />
+        <input type="hidden" name={GOOGLE_FORM_ENTRIES.receiverBank} value={receiverBank.trim() || 'N/A'} />
+        <input type="hidden" name={GOOGLE_FORM_ENTRIES.transactionDate} value={transactionTime.split('T')[0]} />
+        <input
+          type="hidden"
+          name={GOOGLE_FORM_ENTRIES.allocationsAndProof}
+          value={[
+            remarks.trim() ? `Remarks: ${remarks.trim()}` : null,
+            `Allocations: ${allocations.map((a) => `${a.employee_name}: ₹${a.allocation_amount}`).join('; ')}`,
+            screenshotUrl ? `Screenshot Proof: ${screenshotUrl}` : null,
+          ]
+            .filter(Boolean)
+            .join(' | ')}
+        />
+      </form>
+
+      {/* Google Sheets Direct Webhook Configuration Modal */}
+      {showWebhookModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5 animate-in zoom-in-95 font-sans">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
+                  <Table className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Google Sheets Direct Webhook</h3>
+                  <p className="text-[11px] text-slate-500 font-medium">Auto-record submissions straight into your Google Sheet</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWebhookModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs text-slate-600">
+              <p className="leading-relaxed">
+                Connect your Google Spreadsheet directly with Google Apps Script so all payment proofs, client details, and screenshot links are added instantly in real-time.
+              </p>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                  Google Apps Script Webhook URL
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={webhookUrlInput}
+                    onChange={(e) => setWebhookUrlInput(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:border-blue-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      saveGoogleSheetsWebhookUrl(webhookUrlInput);
+                      setWebhookStatus('Webhook URL saved successfully!');
+                      setTimeout(() => setWebhookStatus(null), 3000);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all cursor-pointer shadow-sm"
+                  >
+                    Save
+                  </button>
+                </div>
+                {webhookStatus && (
+                  <p className="text-emerald-600 font-bold text-[11px] mt-1.5 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> {webhookStatus}
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 text-[11px] uppercase tracking-wider">
+                    30-Second Setup Guide:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_SNIPPET);
+                      alert('Google Apps Script code copied to clipboard!');
+                    }}
+                    className="text-blue-600 hover:text-blue-800 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>Copy Code</span>
+                  </button>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
+                  <li>Open your Google Sheet linked to the form</li>
+                  <li>Click <strong>Extensions</strong> → <strong>Apps Script</strong></li>
+                  <li>Replace the editor code with the copied snippet</li>
+                  <li>Click <strong>Deploy</strong> → <strong>New deployment</strong></li>
+                  <li>Select type: <strong>Web app</strong> (Execute as: <em>Me</em>, Access: <em>Anyone</em>)</li>
+                  <li>Click <strong>Deploy</strong> and paste the Web app URL above!</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowWebhookModal(false)}
+                className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Done
               </button>
             </div>
           </div>

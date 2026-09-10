@@ -10,7 +10,9 @@ import {
   X,
   FileSpreadsheet,
   ChevronDown,
-  User as UserIcon
+  User as UserIcon,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { StatusBadge } from '../common/StatusBadge';
 
@@ -23,6 +25,7 @@ export const EmployeeSalesDashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'Equity' | 'Commodity'>('all');
+  const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
 
   // Filter only approved payments
   const approvedPayments = useMemo(() => {
@@ -432,18 +435,50 @@ export const EmployeeSalesDashboard: React.FC = () => {
                                         hour: '2-digit', minute: '2-digit'
                                       })}
                                     </td>
-                                    <td className="py-4 px-4">
-                                      <span className="font-bold text-slate-800 text-sm block">{payment.trader_name}</span>
-                                      {payment.trader_phone && (
-                                        <span className="text-[10px] text-slate-400 font-mono">{payment.trader_phone}</span>
-                                      )}
-                                    </td>
+                                     <td className="py-4 px-4">
+                                       <div className="flex items-center gap-2.5">
+                                         <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 font-black text-xs flex items-center justify-center border border-blue-200/60 shrink-0">
+                                           {(payment.client_name || payment.trader_name || 'C').charAt(0).toUpperCase()}
+                                         </div>
+                                         <div>
+                                           <span className="font-bold text-slate-800 text-xs block leading-tight">
+                                             {payment.client_name || payment.trader_name || 'Client'}
+                                           </span>
+                                           {(payment.client_phone || payment.trader_phone) ? (
+                                             <div className="flex items-center gap-1.5 mt-0.5">
+                                               <span className="text-[11px] text-slate-500 font-mono">
+                                                 {payment.client_phone || payment.trader_phone}
+                                               </span>
+                                               <button
+                                                 type="button"
+                                                 onClick={(e) => {
+                                                   e.stopPropagation();
+                                                   navigator.clipboard.writeText(payment.client_phone || payment.trader_phone || '');
+                                                   setCopiedPhoneId(payment.id);
+                                                   setTimeout(() => setCopiedPhoneId(null), 1800);
+                                                 }}
+                                                 className="text-slate-400 hover:text-blue-600 p-0.5 rounded transition-colors cursor-pointer"
+                                                 title="Copy Phone"
+                                               >
+                                                 {copiedPhoneId === payment.id ? (
+                                                   <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                                                 ) : (
+                                                   <Copy className="w-3 h-3" />
+                                                 )}
+                                               </button>
+                                             </div>
+                                           ) : (
+                                             <span className="text-[10px] text-slate-400 italic">No phone</span>
+                                           )}
+                                         </div>
+                                       </div>
+                                     </td>
                                     <td className="py-4 px-4">
                                       {payment.service_category ? (
                                         <div>
-                                          <span className="font-bold text-slate-800 block">
-                                            {payment.service_category} • {payment.service_type}
-                                          </span>
+                                            <span className="font-bold text-slate-800 block">
+                                              {payment.service_category} • {payment.service_type === 'Future Option' ? 'Option' : payment.service_type}
+                                            </span>
                                           <span className="text-[10px] font-semibold text-teal-600">
                                             {payment.subscription_duration}
                                           </span>

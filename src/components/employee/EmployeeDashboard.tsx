@@ -16,6 +16,9 @@ import {
   X,
   KeyRound,
   ShieldCheck,
+  Copy,
+  Check,
+  MessageSquare,
 } from 'lucide-react';
 import { MetricCard } from '../common/MetricCard';
 import { LeadStatus } from '../../types';
@@ -28,6 +31,7 @@ export const EmployeeDashboard: React.FC = () => {
   const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
   
   // Toast State
+  const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
   const [toast, setToast] = useState<{show: boolean, message: string, type: 'success' | 'error'}>({ show: false, message: '', type: 'success' });
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -376,20 +380,39 @@ export const EmployeeDashboard: React.FC = () => {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-base shadow-inner shrink-0">
-                        {payment.trader_name?.charAt(0) || 'C'}
+                        {(payment.client_name || payment.trader_name)?.charAt(0) || 'C'}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-slate-800 text-sm">{payment.trader_name || 'Client'}</h4>
-                          {payment.trader_phone && (
-                            <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                              {payment.trader_phone}
-                            </span>
+                          <h4 className="font-bold text-slate-800 text-sm">{payment.client_name || payment.trader_name || 'Client'}</h4>
+                          {(payment.client_phone || payment.trader_phone) && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                                {payment.client_phone || payment.trader_phone}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(payment.client_phone || payment.trader_phone || '');
+                                  setCopiedPhoneId(payment.id);
+                                  setTimeout(() => setCopiedPhoneId(null), 1800);
+                                }}
+                                className="text-slate-400 hover:text-blue-600 p-0.5 rounded transition-colors cursor-pointer"
+                                title="Copy Phone"
+                              >
+                                {copiedPhoneId === payment.id ? (
+                                  <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </button>
+                            </div>
                           )}
                         </div>
                         {payment.service_category && (
                           <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
-                            <span className="font-semibold text-slate-700">{payment.service_category} • {payment.service_type}</span>
+                            <span className="font-semibold text-slate-700">{payment.service_category} • {payment.service_type === 'Future Option' ? 'Option' : payment.service_type}</span>
                             <span>•</span>
                             <span className="font-medium text-teal-600">{payment.subscription_duration}</span>
                           </div>

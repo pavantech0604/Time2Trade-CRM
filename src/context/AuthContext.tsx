@@ -97,6 +97,7 @@ interface AuthContextType {
   addTradingDay: (traderId: string, tradeDate: string, totalProfit: number, tradesCount: number) => void;
   addPayment: (paymentInput: Omit<Payment, 'id' | 'created_at' | 'status'>) => void;
   verifyPayment: (paymentId: string, isApproved: boolean, remarks?: string) => void;
+  updatePaymentClientDetails: (paymentId: string, clientName: string, clientPhone: string) => Promise<void>;
   addExpense: (expenseInput: Omit<Expense, 'id' | 'created_at'>) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (userId?: string) => void;
@@ -154,6 +155,9 @@ const isMockUser = (u: any) => {
   return false;
 };
 
+const isValidUUID = (id?: string | null): boolean =>
+  Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const useMocks = false;
 
@@ -184,10 +188,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
 
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [traders, setTraders] = useState<ActiveTrader[]>([]);
+  const [traders, setTraders] = useState<ActiveTrader[]>(INITIAL_TRADERS);
   const [tradingDays, setTradingDays] = useState<TradingDay[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] = useState<Payment[]>(() => {
+    try {
+      const stored = localStorage.getItem('time2trade_payments_cache');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return INITIAL_PAYMENTS;
+  });
   const [expenses, setExpenses] = useState<Expense[]>([]);
+
+  // Sync payments to localStorage cache so they are never lost on reload
+  useEffect(() => {
+    if (payments.length > 0) {
+      try {
+        localStorage.setItem('time2trade_payments_cache', JSON.stringify(payments));
+      } catch {}
+    }
+  }, [payments]);
+
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
     try {
       const stored = localStorage.getItem('time2trade_notifications');
@@ -325,63 +350,241 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ]);
 
       let userList = users;
-      if (uRes.data) {
+      if (uRes.data && Array.isArray(uRes.data)) {
         userList = (uRes.data as User[]).filter((u) => !isMockUser(u));
         setUsers(userList);
       }
-      if (lRes.data) {
+      if (lRes.data && Array.isArray(lRes.data)) {
         setLeads((lRes.data as Lead[]).filter((l) => !isMockId(l.id) && !isMockId(l.assigned_to)));
       }
-      if (tRes.data) {
-        setTraders(
-          (tRes.data as any[])
-            .filter((t) => !isMockId(t.id) && !isMockId(t.assigned_to) && !isMockId(t.lead_id))
-            .map((t: any) => ({
-              ...t,
-              employee_id: t.assigned_to || t.employee_id,
-            })) as ActiveTrader[]
-        );
-      }
-      if (pRes.data) {
-        const rawPayments = (pRes.data as Payment[]).filter(
-          (p) => !isMockId(p.id) && !isMockId(p.trader_id) && !isMockId(p.employee_id)
-        );
-        const allocations = (allocRes?.data || []) as any[];
 
-        const mappedPayments = rawPayments.map((p) => {
-          const matchedAllocs = allocations.filter((a) => a.payment_id === p.id);
-          const enrichedAllocs = matchedAllocs.map((a) => {
-            const emp = userList.find((u) => u.id === a.employee_id);
-            return {
-              ...a,
-              employee_name: emp?.name || a.employee_name || 'Staff',
-              employee_email: emp?.email || a.employee_email,
-              employee_code: emp?.employee_code || a.employee_code,
-              employee_role: emp?.designation || (emp?.role === 'admin' ? 'Admin' : 'Employee'),
-            };
+      const safeStr = (v: any): string => (v !== null && v !== undefined ? String(v).trim() : '');
+      const safeDigits = (v: any): string => safeStr(v).replace(/\D/g, '');
+
+      let tradersList: ActiveTrader[] = [...INITIAL_TRADERS];
+      if (tRes.data && Array.isArray(tRes.data)) {
+        const remoteTraders = (tRes.data as any[])
+          .filter((t) => t && !isMockId(t.id))
+          .map((t: any) => ({
+            ...t,
+            name: safeStr(t.name) || 'Active Trader',
+            phone: safeStr(t.phone),
+            employee_id: t.assigned_to || t.employee_id,
+          })) as ActiveTrader[];
+
+        const traderMap = new Map<string, ActiveTrader>();
+        tradersList.forEach((t) => traderMap.set(t.id, t));
+        remoteTraders.forEach((t) => traderMap.set(t.id, { ...traderMap.get(t.id), ...t }));
+        tradersList = Array.from(traderMap.values());
+      }
+
+      if (pRes.data && Array.isArray(pRes.data)) {
+        const rawPayments = (pRes.data as (Payment & { client_name?: string; client_phone?: string })[]).filter(
+          (p) => p && !isMockId(p.id)
+        );
+
+        // Merge rawPayments with INITIAL_PAYMENTS so verified employee submissions are never dropped
+        const payMap = new Map<string, any>();
+        INITIAL_PAYMENTS.forEach((p) => payMap.set(p.utr || p.id, p));
+        rawPayments.forEach((p) => {
+          const key = p.utr || p.id;
+          payMap.set(key, { ...payMap.get(key), ...p });
+        });
+        const combinedPayments = Array.from(payMap.values());
+
+        if (combinedPayments.length > 0) {
+          const allocations = (allocRes?.data || []) as any[];
+          const tradersToPersist: ActiveTrader[] = [];
+
+          const mappedPayments = combinedPayments.map((p) => {
+            try {
+              const matchedAllocs = allocations.filter((a) => a && a.payment_id === p.id);
+              const enrichedAllocs = matchedAllocs.map((a) => {
+                const emp = userList.find((u) => u.id === a.employee_id);
+                return {
+                  ...a,
+                  employee_name: emp?.name || a.employee_name || 'Staff',
+                  employee_email: emp?.email || a.employee_email,
+                  employee_code: emp?.employee_code || a.employee_code,
+                  employee_role: emp?.designation || (emp?.role === 'admin' ? 'Admin' : 'Employee'),
+                };
+              });
+
+              // Check if remarks contains client contact information
+              let remarkClientName = '';
+              let remarkClientPhone = '';
+              if (typeof p.remarks === 'string') {
+                const nameMatch = p.remarks.match(/(?:Client|Name|Client Name)\s*:\s*([^\n;,]+)/i);
+                if (nameMatch) remarkClientName = nameMatch[1].trim();
+                const phoneMatch = p.remarks.match(/(?:Phone|Mobile|Contact)\s*:\s*([0-9\+\s-]{10,14})/i);
+                if (phoneMatch) remarkClientPhone = phoneMatch[1].replace(/\D/g, '').slice(-10);
+              }
+
+              // 1. Look up matched active trader FIRST by trader_id, phone, or name
+              let matchedTrader = tradersList.find((t) => {
+                if (!t) return false;
+                if (p.trader_id && t.id === p.trader_id && !isMockId(p.trader_id)) return true;
+                const cleanPPhone = safeDigits(p.client_phone || p.trader_phone);
+                if (cleanPPhone && safeDigits(t.phone) === cleanPPhone) return true;
+                if (safeStr(p.client_name) && safeStr(t.name).toLowerCase() === safeStr(p.client_name).toLowerCase()) return true;
+                return false;
+              });
+
+              const isGenericName = (val: string) =>
+                !val ||
+                val.startsWith('Client ') ||
+                val === 'Direct Client' ||
+                val === 'Active Trader' ||
+                val === 'Trader';
+
+              const rawClientName = safeStr(p.client_name);
+              const traderName = safeStr(matchedTrader?.name);
+
+              // 2. Resolve client name with strict priority:
+              const resolvedClientName =
+                (!isGenericName(rawClientName) ? rawClientName : '') ||
+                (!isGenericName(traderName) ? traderName : '') ||
+                remarkClientName ||
+                (!isGenericName(safeStr(p.trader_name)) ? safeStr(p.trader_name) : '') ||
+                rawClientName ||
+                traderName ||
+                `Client ${p.utr ? String(p.utr).slice(-4) : 'User'}`;
+
+              // 3. Resolve client phone with strict priority:
+              const resolvedClientPhone =
+                safeStr(p.client_phone) ||
+                safeStr(matchedTrader?.phone) ||
+                remarkClientPhone ||
+                safeStr(p.trader_phone) ||
+                '';
+
+              // Auto-synthesize Active Trader if client is not yet registered in active traders
+              if (!matchedTrader) {
+                const newTraderId = (p.trader_id && isValidUUID(p.trader_id) && !isMockId(p.trader_id))
+                  ? p.trader_id
+                  : generateUUID();
+
+                const normalizedServiceType = p.service_type === 'Future Option' ? 'Option' : (safeStr(p.service_type) || 'Option');
+                const synthesizedService = [
+                  safeStr(p.service_category) || 'Equity',
+                  normalizedServiceType,
+                  safeStr(p.subscription_duration) ? `(${p.subscription_duration})` : ''
+                ].filter(Boolean).join(' • ');
+
+                const fallbackEmpId = (p.employee_id && isValidUUID(p.employee_id))
+                  ? p.employee_id
+                  : (userList.find((u) => isValidUUID(u.id))?.id || '10000000-0000-0000-0000-000000000001');
+
+                let joinDate = new Date().toISOString().split('T')[0];
+                if (typeof p.transaction_time === 'string' && p.transaction_time.includes('T')) {
+                  joinDate = p.transaction_time.split('T')[0];
+                } else if (typeof p.created_at === 'string' && p.created_at.includes('T')) {
+                  joinDate = p.created_at.split('T')[0];
+                }
+
+                matchedTrader = {
+                  id: newTraderId,
+                  name: resolvedClientName,
+                  phone: resolvedClientPhone,
+                  employee_id: fallbackEmpId,
+                  employee_name: safeStr(p.employee_name) || 'Staff',
+                  status: 'active',
+                  joined_at: joinDate,
+                  initial_capital: Number(p.amount) || 0,
+                  selected_service: synthesizedService,
+                  preferred_market: safeStr(p.service_category) || 'Equity',
+                  current_streak: 0,
+                  longest_streak: 0,
+                  total_profit_gained: 0,
+                  total_profit_shared: p.status === 'approved' ? Number(p.amount) : 0,
+                  created_at: safeStr(p.created_at) || new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                };
+
+                tradersList.push(matchedTrader);
+                tradersToPersist.push(matchedTrader);
+              } else {
+                // Keep matched trader in sync with resolved details
+                if (isGenericName(matchedTrader.name) && !isGenericName(resolvedClientName)) {
+                  matchedTrader.name = resolvedClientName;
+                }
+                if (!matchedTrader.phone && resolvedClientPhone) {
+                  matchedTrader.phone = resolvedClientPhone;
+                }
+              }
+
+              // Background sync resolved client contact info back to Supabase if missing
+              if (supabase && p.id && isValidUUID(p.id) && (isGenericName(rawClientName) || !p.client_phone)) {
+                supabase.from('payments').update({
+                  client_name: resolvedClientName,
+                  client_phone: resolvedClientPhone,
+                }).eq('id', p.id).then(() => {});
+              }
+
+              const normalizedServiceType = p.service_type === 'Future Option' ? 'Option' : (p.service_type || 'Option');
+
+              return {
+                ...p,
+                trader_id: matchedTrader ? matchedTrader.id : p.trader_id,
+                client_name: resolvedClientName,
+                client_phone: resolvedClientPhone,
+                trader_name: resolvedClientName,
+                trader_phone: resolvedClientPhone,
+                service_type: normalizedServiceType,
+                allocations: enrichedAllocs.length > 0 ? enrichedAllocs : p.allocations,
+                is_shared: (enrichedAllocs.length > 1) || p.is_shared,
+              };
+            } catch (paymentErr) {
+              console.error('Error enriching payment item:', p, paymentErr);
+              return {
+                ...p,
+                service_type: p.service_type === 'Future Option' ? 'Option' : p.service_type,
+              };
+            }
           });
 
-          return {
-            ...p,
-            allocations: enrichedAllocs.length > 0 ? enrichedAllocs : p.allocations,
-            is_shared: (enrichedAllocs.length > 1) || p.is_shared,
-          };
-        });
+          setTraders(tradersList);
+          setPayments(mappedPayments);
 
-        setPayments(mappedPayments);
+          // Persist synthesized active traders to Supabase safely in background
+          const client = supabase;
+          if (client && tradersToPersist.length > 0) {
+            tradersToPersist.forEach(async (t) => {
+              if (isValidUUID(t.id) && isValidUUID(t.employee_id)) {
+                try {
+                  await client.from('active_traders').upsert({
+                    id: t.id,
+                    name: t.name,
+                    phone: t.phone,
+                    assigned_to: t.employee_id,
+                    status: 'active',
+                    joined_at: t.joined_at,
+                    total_profit_gained: 0,
+                    total_profit_shared: t.total_profit_shared,
+                  });
+                } catch {
+                  // Non-blocking
+                }
+              }
+            });
+          }
+        }
+      } else {
+        setTraders(tradersList);
       }
-      if (tdRes.data) {
+
+      if (tdRes.data && Array.isArray(tdRes.data)) {
         setTradingDays(
-          (tdRes.data as TradingDay[]).filter((td) => !isMockId(td.id) && !isMockId(td.trader_id))
+          (tdRes.data as TradingDay[]).filter((td) => td && !isMockId(td.id) && !isMockId(td.trader_id))
         );
       }
-      if (expRes.data) {
+      if (expRes.data && Array.isArray(expRes.data)) {
         setExpenses(
-          (expRes.data as Expense[]).filter((exp) => !isMockId(exp.id))
+          (expRes.data as Expense[]).filter((exp) => exp && !isMockId(exp.id))
         );
       }
-    } catch {
-      // Silently handle offline/mock mode
+    } catch (err) {
+      console.error('Error in loadSupabaseData:', err);
     }
   };
 
@@ -1637,9 +1840,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           assigned_to: rmId,
           status: 'active',
           joined_at: now.split('T')[0],
-          initial_capital: details?.initialCapital,
-          selected_service: details?.selectedService,
-          preferred_market: details?.preferredMarket,
           current_streak: 0,
           longest_streak: 0,
           total_profit_gained: 0,
@@ -1733,68 +1933,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addPayment = async (paymentInput: Omit<Payment, 'id' | 'created_at' | 'status'>) => {
-    const isValidUUID = (id?: string | null) =>
-      Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
-
     let targetTraderId = paymentInput.trader_id;
-    let targetTrader = traders.find((t) => t.id === targetTraderId);
 
-    // If trader_id is not a valid UUID (e.g. 'manual-client', empty string, or new prospect)
-    if (!isValidUUID(targetTraderId) || targetTraderId === 'manual-client') {
-      const clientName = (paymentInput as any).trader_name || 'Direct Client';
-      const clientPhone = (paymentInput as any).trader_phone || '+91 98765 43210';
+    const clientName = (paymentInput.client_name || (paymentInput as any).trader_name || '').trim() || 'Direct Client';
+    const clientPhone = (paymentInput.client_phone || (paymentInput as any).trader_phone || '').trim();
 
-      const existing = traders.find(
-        (t) => t.phone === clientPhone || (t.name && t.name.toLowerCase() === clientName.toLowerCase())
-      );
+    // Check if an active trader already exists matching this client
+    let targetTrader = traders.find((t) => {
+      if (clientPhone && t.phone && t.phone.replace(/\D/g, '') === clientPhone.replace(/\D/g, '')) return true;
+      if (clientName && t.name && t.name.toLowerCase() === clientName.toLowerCase()) return true;
+      if (targetTraderId && isValidUUID(targetTraderId) && t.id === targetTraderId && !isMockId(targetTraderId)) return true;
+      return false;
+    });
 
-      if (existing && isValidUUID(existing.id)) {
-        targetTraderId = existing.id;
-        targetTrader = existing;
-      } else {
-        // Auto-create active trader record in Supabase so foreign key is satisfied
-        const newTraderId = generateUUID();
-        const effectiveAssignedTo = isValidUUID(paymentInput.employee_id)
-          ? paymentInput.employee_id
-          : currentUser && isValidUUID(currentUser.id)
-          ? currentUser.id
-          : '10000000-0000-0000-0000-000000000001';
+    if (targetTrader) {
+      targetTraderId = targetTrader.id;
+    } else {
+      // Auto-create active trader record so client appears in Active Traders CRM and foreign key is satisfied
+      const newTraderId = generateUUID();
+      const validEmp = users.find((u) => isValidUUID(u.id));
+      const effectiveAssignedTo = isValidUUID(paymentInput.employee_id)
+        ? paymentInput.employee_id
+        : currentUser && isValidUUID(currentUser.id)
+        ? currentUser.id
+        : validEmp?.id || '10000000-0000-0000-0000-000000000001';
 
-        const newTrader: ActiveTrader = {
-          id: newTraderId,
-          name: clientName,
-          phone: clientPhone,
-          employee_id: effectiveAssignedTo!,
-          status: 'active',
-          joined_at: new Date().toISOString().split('T')[0],
-          current_streak: 0,
-          longest_streak: 0,
-          total_profit_gained: 0,
-          total_profit_shared: 0,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
+      const normalizedServiceType = paymentInput.service_type === 'Future Option' ? 'Option' : (paymentInput.service_type || 'Option');
+      const serviceDescription = [
+        paymentInput.service_category || 'Equity',
+        normalizedServiceType,
+        paymentInput.subscription_duration ? `(${paymentInput.subscription_duration})` : ''
+      ].filter(Boolean).join(' • ');
 
-        setTraders((prev) => [newTrader, ...prev]);
+      const assignedUser = users.find((u) => u.id === effectiveAssignedTo);
 
-        if (supabase && !useMocks) {
-          try {
-            await supabase.from('active_traders').insert({
-              id: newTraderId,
-              name: clientName,
-              phone: clientPhone,
-              assigned_to: effectiveAssignedTo,
-              status: 'active',
-              joined_at: newTrader.joined_at,
-            });
-          } catch {
-            // Auto-register trader failed — non-blocking
-          }
+      const newTrader: ActiveTrader = {
+        id: newTraderId,
+        name: clientName,
+        phone: clientPhone,
+        employee_id: effectiveAssignedTo!,
+        employee_name: assignedUser?.name || currentUser?.name || 'Staff',
+        status: 'active',
+        joined_at: (paymentInput.transaction_time ? paymentInput.transaction_time.split('T')[0] : new Date().toISOString().split('T')[0]),
+        initial_capital: Number(paymentInput.amount) || 0,
+        selected_service: serviceDescription,
+        preferred_market: paymentInput.service_category || 'Equity',
+        current_streak: 0,
+        longest_streak: 0,
+        total_profit_gained: 0,
+        total_profit_shared: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      setTraders((prev) => [newTrader, ...prev]);
+
+      if (supabase && !useMocks && isValidUUID(effectiveAssignedTo)) {
+        try {
+          await supabase.from('active_traders').insert({
+            id: newTraderId,
+            name: clientName,
+            phone: clientPhone,
+            assigned_to: effectiveAssignedTo,
+            status: 'active',
+            joined_at: newTrader.joined_at,
+            current_streak: 0,
+            longest_streak: 0,
+            total_profit_gained: 0,
+            total_profit_shared: 0,
+          });
+        } catch {
+          // Auto-register trader failed — non-blocking
         }
-
-        targetTraderId = newTraderId;
-        targetTrader = newTrader;
       }
+
+      targetTraderId = newTraderId;
+      targetTrader = newTrader;
     }
 
     const newPayId = generateUUID();
@@ -1823,12 +2037,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const isSharedPayment = enrichedAllocations.length > 1 || Boolean(paymentInput.is_shared);
 
+    const isTraderNameMatch = Boolean(
+      targetTrader &&
+      (!paymentInput.client_name || paymentInput.client_name.trim().toLowerCase() === targetTrader.name.trim().toLowerCase())
+    );
+
+    const resolvedClientName =
+      paymentInput.client_name?.trim() ||
+      (paymentInput as any).trader_name?.trim() ||
+      (isTraderNameMatch ? targetTrader?.name?.trim() : undefined) ||
+      'Direct Client';
+
+    const resolvedClientPhone =
+      paymentInput.client_phone?.trim() ||
+      (paymentInput as any).trader_phone?.trim() ||
+      (isTraderNameMatch ? targetTrader?.phone?.trim() : undefined) ||
+      '';
+
     const newPayment: Payment = {
       ...paymentInput,
       id: newPayId,
       trader_id: targetTraderId,
-      trader_name: targetTrader?.name || (paymentInput as any).trader_name || 'Trader',
-      trader_phone: targetTrader?.phone || (paymentInput as any).trader_phone,
+      client_name: resolvedClientName,
+      client_phone: resolvedClientPhone,
+      trader_name: resolvedClientName,
+      trader_phone: resolvedClientPhone,
       employee_id: effectiveEmployeeId || 'sys',
       employee_name: currentUser?.name || 'Staff',
       submitted_by_employee_id: currentUser?.id || effectiveEmployeeId || undefined,
@@ -1846,6 +2079,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const payload: Record<string, any> = {
           id: newPayId,
           trader_id: targetTraderId,
+          client_name: resolvedClientName,
+          client_phone: resolvedClientPhone,
           employee_id: effectiveEmployeeId,
           amount: paymentInput.amount,
           payment_mode: paymentInput.payment_mode,
@@ -1871,6 +2106,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await supabase.from('payments').insert({
             id: newPayId,
             trader_id: targetTraderId,
+            client_name: resolvedClientName,
+            client_phone: resolvedClientPhone,
             employee_id: effectiveEmployeeId,
             amount: paymentInput.amount,
             payment_mode: paymentInput.payment_mode,
@@ -2128,6 +2365,133 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updatePaymentClientDetails = async (paymentId: string, clientName: string, clientPhone: string) => {
+    const trimmedName = clientName.trim();
+    const trimmedPhone = clientPhone.trim();
+
+    const targetPayment = payments.find((p) => p.id === paymentId);
+
+    setPayments((prev) =>
+      prev.map((p) =>
+        p.id === paymentId
+          ? {
+              ...p,
+              client_name: trimmedName,
+              client_phone: trimmedPhone,
+              trader_name: trimmedName,
+              trader_phone: trimmedPhone,
+            }
+          : p
+      )
+    );
+
+    // Also update or create the associated Active Trader in traders state & database
+    if (targetPayment) {
+      const traderId = targetPayment.trader_id;
+      const traderExists = traders.some((t) => t.id === traderId);
+
+      if (traderExists) {
+        setTraders((prev) =>
+          prev.map((t) =>
+            t.id === traderId
+              ? {
+                  ...t,
+                  name: trimmedName,
+                  phone: trimmedPhone,
+                  updated_at: new Date().toISOString(),
+                }
+              : t
+          )
+        );
+
+        if (supabase && !useMocks && isValidUUID(traderId)) {
+          try {
+            await supabase
+              .from('active_traders')
+              .update({
+                name: trimmedName,
+                phone: trimmedPhone,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', traderId);
+          } catch {
+            // Non-blocking
+          }
+        }
+      } else {
+        // Create new active trader record if one wasn't linked yet
+        const newTraderId = isValidUUID(traderId) ? traderId : generateUUID();
+        const validEmp = users.find((u) => isValidUUID(u.id));
+        const effectiveAssignedTo = isValidUUID(targetPayment.employee_id)
+          ? targetPayment.employee_id
+          : currentUser && isValidUUID(currentUser.id)
+          ? currentUser.id
+          : validEmp?.id || '10000000-0000-0000-0000-000000000001';
+
+        const normalizedServiceType = targetPayment.service_type === 'Future Option' ? 'Option' : (targetPayment.service_type || 'Option');
+        const serviceDescription = [
+          targetPayment.service_category || 'Equity',
+          normalizedServiceType,
+          targetPayment.subscription_duration ? `(${targetPayment.subscription_duration})` : ''
+        ].filter(Boolean).join(' • ');
+
+        const newTrader: ActiveTrader = {
+          id: newTraderId,
+          name: trimmedName,
+          phone: trimmedPhone,
+          employee_id: effectiveAssignedTo!,
+          employee_name: targetPayment.employee_name || 'Staff',
+          status: 'active',
+          joined_at: (targetPayment.transaction_time ? targetPayment.transaction_time.split('T')[0] : new Date().toISOString().split('T')[0]),
+          initial_capital: Number(targetPayment.amount) || 0,
+          selected_service: serviceDescription,
+          preferred_market: targetPayment.service_category || 'Equity',
+          current_streak: 0,
+          longest_streak: 0,
+          total_profit_gained: 0,
+          total_profit_shared: targetPayment.status === 'approved' ? Number(targetPayment.amount) : 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        setTraders((prev) => [newTrader, ...prev]);
+
+        if (supabase && !useMocks && isValidUUID(effectiveAssignedTo)) {
+          try {
+            await supabase.from('active_traders').upsert({
+              id: newTraderId,
+              name: trimmedName,
+              phone: trimmedPhone,
+              assigned_to: effectiveAssignedTo,
+              status: 'active',
+              joined_at: newTrader.joined_at,
+              current_streak: 0,
+              longest_streak: 0,
+              total_profit_gained: 0,
+              total_profit_shared: newTrader.total_profit_shared,
+            });
+          } catch {
+            // Non-blocking
+          }
+        }
+      }
+    }
+
+    if (supabase && !useMocks) {
+      try {
+        await supabase
+          .from('payments')
+          .update({
+            client_name: trimmedName,
+            client_phone: trimmedPhone,
+          })
+          .eq('id', paymentId);
+      } catch {
+        // Non-blocking
+      }
+    }
+  };
+
   const addExpense = async (expenseInput: Omit<Expense, 'id' | 'created_at'>) => {
     const newExpId = generateUUID();
     const now = new Date().toISOString();
@@ -2209,6 +2573,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addTradingDay,
         addPayment,
         verifyPayment,
+        updatePaymentClientDetails,
         addExpense,
         markNotificationRead,
         markAllNotificationsRead,

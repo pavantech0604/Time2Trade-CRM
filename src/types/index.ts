@@ -180,6 +180,8 @@ export interface Payment {
   trader_id: string;
   trader_name?: string;
   trader_phone?: string;
+  client_name?: string;
+  client_phone?: string;
   employee_id?: string;
   employee_name?: string;
   submitted_by_employee_id?: string;
