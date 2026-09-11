@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Payment } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   ZoomIn,
   CheckSquare,
-  Lock,
   X,
   Copy,
   Check,
@@ -21,59 +20,79 @@ import {
   Save,
   Search,
   Loader2,
-  Sparkles,
-  User as UserIcon,
-  FileSpreadsheet,
-  ExternalLink,
+  Clock,
+  RotateCcw,
+  Users,
+  Wallet,
+  ChevronDown,
+  Trash2,
 } from 'lucide-react';
-import {
-  formatPaymentsBatchTSV,
-  getSavedGoogleSheetsWebhookUrl,
-  saveGoogleSheetsWebhookUrl,
-  sendTestRowToGoogleSheets,
-  GOOGLE_APPS_SCRIPT_SNIPPET,
-  GOOGLE_FORM_VIEW_URL,
-} from '../../lib/googleSheets';
 
 export const PaymentVerification: React.FC = () => {
-  const { payments, verifyPayment, updatePaymentClientDetails } = useAuth();
+  const { payments, verifyPayment, updatePaymentClientDetails, traders, deletePayment, clearAllPayments } = useAuth();
 
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [isZoomed, setIsZoomed] = useState(false);
   const [rejectionRemarks, setRejectionRemarks] = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
+  const [copiedUtrId, setCopiedUtrId] = useState<string | null>(null);
 
-  // Google Sheets / Form Sync Modal State
-  const [showSyncModal, setShowSyncModal] = useState(false);
-  const [copiedBatchTSV, setCopiedBatchTSV] = useState(false);
-  const [webhookUrlInput, setWebhookUrlInput] = useState(() => getSavedGoogleSheetsWebhookUrl());
-  const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
-  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  // Multi-tier client name and phone resolution
+  const resolveClientContact = (payment: Payment) => {
+    let name = (payment.client_name || payment.trader_name || '').trim();
+    let phone = (payment.client_phone || payment.trader_phone || '').trim();
 
-  const handleCopyAllToSpreadsheet = () => {
-    const tsvData = formatPaymentsBatchTSV(payments);
-    navigator.clipboard.writeText(tsvData);
-    setCopiedBatchTSV(true);
-    setTimeout(() => setCopiedBatchTSV(false), 3500);
+    const isGeneric = (val: string) =>
+      !val ||
+      val.toLowerCase() === 'client' ||
+      val.toLowerCase() === 'direct client' ||
+      val.toLowerCase() === 'active trader' ||
+      val.toLowerCase() === 'trader' ||
+      val.startsWith('Client ');
+
+    // 1. Cross-reference traders list
+    if (isGeneric(name) || !phone) {
+      const matched = traders.find((t) => {
+        if (payment.trader_id && t.id === payment.trader_id) return true;
+        const pDigits = phone.replace(/\D/g, '');
+        if (pDigits && t.phone && t.phone.replace(/\D/g, '') === pDigits) return true;
+        if (name && !isGeneric(name) && t.name.toLowerCase() === name.toLowerCase()) return true;
+        return false;
+      });
+      if (matched) {
+        if (isGeneric(name) && matched.name) name = matched.name.trim();
+        if (!phone && matched.phone) phone = matched.phone.trim();
+      }
+    }
+
+    // 2. Parse remarks
+    if ((isGeneric(name) || !phone) && typeof payment.remarks === 'string') {
+      if (isGeneric(name)) {
+        const nameMatch = payment.remarks.match(/(?:Client|Name|Client Name)\s*:\s*([^\n;,]+)/i);
+        if (nameMatch && nameMatch[1].trim()) name = nameMatch[1].trim();
+      }
+      if (!phone) {
+        const phoneMatch = payment.remarks.match(/(?:Phone|Mobile|Contact)\s*:\s*([0-9\+\s-]{10,14})/i);
+        if (phoneMatch) phone = phoneMatch[1].replace(/\D/g, '').slice(-10);
+      }
+    }
+
+    const finalName = !isGeneric(name) ? name : (name || 'Client');
+    const hasSpecificName = !isGeneric(name);
+
+    return {
+      name: finalName,
+      phone,
+      hasSpecificName,
+      hasPhone: Boolean(phone && phone.replace(/\D/g, '').length >= 10),
+    };
   };
 
-  const handleTestWebhook = async () => {
-    if (!webhookUrlInput.trim()) {
-      setTestResult({ success: false, message: 'Please enter a Webhook URL first.' });
-      return;
-    }
-    setIsTestingWebhook(true);
-    setTestResult(null);
-    try {
-      saveGoogleSheetsWebhookUrl(webhookUrlInput.trim());
-      const res = await sendTestRowToGoogleSheets(webhookUrlInput.trim());
-      setTestResult(res);
-    } finally {
-      setIsTestingWebhook(false);
-    }
-  };
+  // Interactive Filter and Search States
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending_verification' | 'approved' | 'rejected' | 'shared'>('all');
+  const [modeFilter, setModeFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Table Row Inline Client Edit State
   const [inlineEditPaymentId, setInlineEditPaymentId] = useState<string | null>(null);
@@ -81,7 +100,6 @@ export const PaymentVerification: React.FC = () => {
   const [inlinePhone, setInlinePhone] = useState('');
   const [isInlineSaving, setIsInlineSaving] = useState(false);
   const [inlineSuccessId, setInlineSuccessId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
 
   // Inline Client Edit state in Drawer
   const [isEditingClient, setIsEditingClient] = useState(false);
@@ -100,8 +118,9 @@ export const PaymentVerification: React.FC = () => {
 
   const handleOpenDrawer = (payment: Payment) => {
     setSelectedPayment(payment);
-    setEditClientName(payment.client_name || payment.trader_name || '');
-    setEditClientPhone(payment.client_phone || payment.trader_phone || '');
+    const resolved = resolveClientContact(payment);
+    setEditClientName(resolved.hasSpecificName ? resolved.name : (payment.client_name || payment.trader_name || ''));
+    setEditClientPhone(resolved.phone);
     setIsEditingClient(false);
     setClientSaveSuccess(null);
     setChecklist({ utrVerified: false, amountMatches: false, timeMatches: false, senderMatches: false });
@@ -146,8 +165,9 @@ export const PaymentVerification: React.FC = () => {
   const handleStartInlineEdit = (payment: Payment, e: React.MouseEvent) => {
     e.stopPropagation();
     setInlineEditPaymentId(payment.id);
-    setInlineName(payment.client_name || payment.trader_name || '');
-    setInlinePhone(payment.client_phone || payment.trader_phone || '');
+    const resolved = resolveClientContact(payment);
+    setInlineName(resolved.hasSpecificName ? resolved.name : (payment.client_name || payment.trader_name || ''));
+    setInlinePhone(resolved.phone);
   };
 
   const handleSaveInlineEdit = async (paymentId: string, e: React.MouseEvent) => {
@@ -169,136 +189,319 @@ export const PaymentVerification: React.FC = () => {
     setInlineEditPaymentId(null);
   };
 
-  const filteredPayments = payments.filter((payment) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    const name = (payment.client_name || payment.trader_name || '').toLowerCase();
-    const phone = (payment.client_phone || payment.trader_phone || '').toLowerCase();
-    const utr = (payment.utr || '').toLowerCase();
-    const emp = (payment.employee_name || '').toLowerCase();
-    const mode = (payment.payment_mode || '').toLowerCase();
-    return name.includes(q) || phone.includes(q) || utr.includes(q) || emp.includes(q) || mode.includes(q);
-  });
+  // Memoized KPI metrics
+  const stats = useMemo(() => {
+    const totalCount = payments.length;
+    const totalAmount = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const pending = payments.filter((p) => p.status === 'pending_verification');
+    const approved = payments.filter((p) => p.status === 'approved');
+    const rejected = payments.filter((p) => p.status === 'rejected');
+    const shared = payments.filter((p) => Boolean(p.is_shared || (p.allocations && p.allocations.length > 1)));
+
+    return {
+      totalCount,
+      totalAmount,
+      pendingCount: pending.length,
+      pendingAmount: pending.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+      approvedCount: approved.length,
+      approvedAmount: approved.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+      rejectedCount: rejected.length,
+      rejectedAmount: rejected.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+      sharedCount: shared.length,
+      sharedAmount: shared.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+    };
+  }, [payments]);
+
+  // Memoized filtered payments based on interactive filters and search
+  const filteredPayments = useMemo(() => {
+    return payments.filter((payment) => {
+      // 1. Status Filter
+      if (statusFilter === 'shared') {
+        const isShared = Boolean(payment.is_shared || (payment.allocations && payment.allocations.length > 1));
+        if (!isShared) return false;
+      } else if (statusFilter !== 'all' && payment.status !== statusFilter) {
+        return false;
+      }
+
+      // 2. Payment Mode Filter
+      if (modeFilter !== 'all' && payment.payment_mode !== modeFilter) {
+        return false;
+      }
+
+      // 3. Search Query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const resolved = resolveClientContact(payment);
+        const name = resolved.name.toLowerCase();
+        const phone = resolved.phone.toLowerCase();
+        const utr = (payment.utr || '').toLowerCase();
+        const emp = (payment.employee_name || '').toLowerCase();
+        const mode = (payment.payment_mode || '').toLowerCase();
+        const cat = (payment.service_category || '').toLowerCase();
+        const srv = (payment.service_type || '').toLowerCase();
+        const amt = String(payment.amount || '');
+
+        return (
+          name.includes(q) ||
+          phone.includes(q) ||
+          utr.includes(q) ||
+          emp.includes(q) ||
+          mode.includes(q) ||
+          cat.includes(q) ||
+          srv.includes(q) ||
+          amt.includes(q)
+        );
+      }
+
+      return true;
+    });
+  }, [payments, statusFilter, modeFilter, searchQuery, traders]);
 
   const allChecklistPassed =
     checklist.utrVerified && checklist.amountMatches && checklist.timeMatches && checklist.senderMatches;
 
+  const selectedClientInfo = selectedPayment ? resolveClientContact(selectedPayment) : null;
+  const drawerName = selectedClientInfo ? selectedClientInfo.name : '';
+  const drawerPhone = selectedClientInfo ? selectedClientInfo.phone : '';
+  const cleanDrawerDigits = drawerPhone.replace(/\D/g, '');
+
+  const hasActiveFilters = statusFilter !== 'all' || modeFilter !== 'all' || searchQuery.trim() !== '';
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300 font-sans">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Header Bar - Harmonized with CRM Design Language */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 font-sans">
         <div>
-          <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Payment Verification & Anti-Fraud Center</h2>
+          <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200/80 text-emerald-600 flex items-center justify-center shrink-0 shadow-xs">
+              <ShieldCheck className="w-5 h-5 text-emerald-600 stroke-[2.5]" />
+            </div>
+            <span>Payment Verification & Anti-Fraud</span>
+          </h2>
           <p className="text-sm text-slate-500 mt-1 font-medium">
-            Verify and authenticate employee-submitted payment proofs before reflecting in the CRM.
+            Verify bank UTR references, inspect employee payment proofs, and approve revenue credits.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleCopyAllToSpreadsheet}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-sm transition-all cursor-pointer ${
-              copiedBatchTSV
-                ? 'bg-emerald-700 text-white'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-            }`}
-            title="Copy all payments as tab-separated values to paste into Google Sheets (Ctrl+V)"
-          >
-            {copiedBatchTSV ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedBatchTSV ? 'Copied to Clipboard!' : 'Copy to Google Sheets (TSV)'}</span>
-          </button>
 
-          <button
-            type="button"
-            onClick={() => setShowSyncModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-slate-300 hover:border-blue-500 text-slate-700 hover:text-blue-600 font-bold text-xs shadow-xs transition-all cursor-pointer"
-            title="Configure Google Sheets Webhook and check Google Form permissions"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Google Sync Setup</span>
-          </button>
+        {/* Dynamic Verification Queue Status Widget & Reset to Scratch */}
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          {payments.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Are you sure you want to remove all payment records and reset the portal to scratch? This will delete all current test payments.')) {
+                  clearAllPayments();
+                  setSelectedPayment(null);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 hover:border-rose-300 transition-all cursor-pointer shadow-xs"
+              title="Remove all test payments and start fresh"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>Reset to Scratch</span>
+            </button>
+          )}
 
-          <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
-            {filteredPayments.length} Records Found
-          </span>
+          {stats.pendingCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => setStatusFilter('pending_verification')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-all cursor-pointer shadow-xs group"
+              title="Click to filter pending reviews"
+            >
+              <span className="flex h-2 w-2 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+              </span>
+              <span>{stats.pendingCount} Needs Review</span>
+              <span className="text-[10px] text-amber-600 group-hover:translate-x-0.5 transition-transform font-bold">→</span>
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>All Proofs Verified</span>
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Security Guidance Prompt */}
-      <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3">
-        <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-        <div className="text-xs text-amber-900 leading-relaxed font-medium">
-          <span className="font-bold block text-amber-800">Strict Anti-Fraud Security Directive:</span>
-          Never approve a payment based solely on the submitted screenshot. Always verify the UTR reference number,
-          exact amount, and timestamp directly inside your bank app (HDFC/ICICI/SBI UPI statement).
-        </div>
+      {/* Security Quick Tip */}
+      <div className="bg-amber-50/70 border border-amber-200/80 px-3.5 py-2 rounded-xl flex items-center gap-2.5 text-xs text-amber-900 shadow-2xs">
+        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+        <span className="text-[11px] font-semibold leading-tight">
+          <strong>Anti-Fraud Tip:</strong> Cross-verify UTR & amount in bank app statement before approving proofs.
+        </span>
       </div>
 
-      {/* Interactive Search and Filter Bar */}
-      <div className="bg-white border border-slate-200 p-3.5 rounded-2xl shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-96">
+      {/* Interactive Search & Filter Command Bar */}
+      <div className="bg-white border border-slate-200/90 p-2.5 sm:p-3 rounded-2xl shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+        {/* Search Input */}
+        <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by client name, phone, UTR..."
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 transition-all"
+            placeholder="Search client, phone, UTR, staff..."
+            className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-600/20 transition-all"
           />
           {searchQuery && (
             <button
+              type="button"
               onClick={() => setSearchQuery('')}
-              className="text-xs font-bold text-slate-400 hover:text-slate-600 absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer"
+              className="text-xs font-bold text-slate-400 hover:text-slate-600 absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded cursor-pointer"
             >
-              ✕
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
 
+        {/* Filters Group: Status Dropdown + Mode Dropdown + Reset */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 shrink-0">
+          {/* Status Dropdown with Live Counts */}
+          <div className="relative flex-1 sm:flex-initial">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className={`w-full sm:w-auto appearance-none rounded-xl pl-3 pr-8 py-2.5 text-xs font-bold cursor-pointer transition-all shadow-2xs border ${
+                statusFilter !== 'all'
+                  ? 'bg-blue-50/80 border-blue-300 text-blue-900 ring-1 ring-blue-400/20'
+                  : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
+              }`}
+            >
+              <option value="all">All ({stats.totalCount})</option>
+              <option value="pending_verification">Needs Review ({stats.pendingCount})</option>
+              <option value="approved">Approved ({stats.approvedCount})</option>
+              <option value="rejected">Rejected ({stats.rejectedCount})</option>
+              <option value="shared">Shared Splits ({stats.sharedCount})</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          {/* Payment Mode Selector */}
+          <div className="relative flex-1 sm:flex-initial">
+            <select
+              value={modeFilter}
+              onChange={(e) => setModeFilter(e.target.value)}
+              className={`w-full sm:w-auto appearance-none rounded-xl pl-3 pr-8 py-2.5 text-xs font-bold cursor-pointer transition-all shadow-2xs border ${
+                modeFilter !== 'all'
+                  ? 'bg-blue-50/80 border-blue-300 text-blue-900 ring-1 ring-blue-400/20'
+                  : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
+              }`}
+            >
+              <option value="all">All Modes</option>
+              <option value="UPI">UPI</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Net Banking">Net Banking</option>
+              <option value="Cheque">Cheque</option>
+              <option value="Cash">Cash</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          {/* 1-Click Reset Button */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter('all');
+                setModeFilter('all');
+                setSearchQuery('');
+              }}
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0"
+              title="Reset all filters"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Mobile View: Payments Card Stack */}
       <div className="md:hidden block space-y-3 font-sans">
         {filteredPayments.length === 0 ? (
-          <div className="bg-white border border-slate-200 p-8 rounded-2xl text-center text-slate-500 shadow-sm space-y-2">
-            <ShieldCheck className="w-8 h-8 text-slate-300 mx-auto" />
-            <p className="font-bold text-sm text-slate-700">No matching payments found.</p>
-            <p className="text-xs text-slate-400">Employee-submitted payment proofs will appear here automatically.</p>
+          <div className="bg-white border border-slate-200 p-8 rounded-2xl text-center text-slate-500 shadow-sm space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="font-black text-sm text-slate-800">
+                {hasActiveFilters ? 'No matching payment records found' : 'No payment records found'}
+              </p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {hasActiveFilters
+                  ? 'Try adjusting your search query, status tab, or payment mode.'
+                  : 'Employee-submitted payment proofs will appear here automatically.'}
+              </p>
+            </div>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter('all');
+                  setModeFilter('all');
+                  setSearchQuery('');
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold hover:bg-blue-100 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Clear All Filters</span>
+              </button>
+            )}
           </div>
         ) : (
           filteredPayments.map((payment) => {
-            const displayName = payment.client_name || payment.trader_name || 'Client';
-            const displayPhone = payment.client_phone || payment.trader_phone || '';
+            const clientInfo = resolveClientContact(payment);
+            const displayName = clientInfo.name;
+            const displayPhone = clientInfo.phone;
             const cleanPhoneDigits = displayPhone.replace(/\D/g, '');
             const isEditing = inlineEditPaymentId === payment.id;
 
             return (
               <div
                 key={payment.id}
-                className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-sm hover:border-blue-300 transition-colors"
+                className="bg-white border border-slate-200/90 rounded-3xl p-4 space-y-3.5 shadow-sm hover:shadow-md hover:border-blue-200 transition-all font-sans"
               >
-                {/* Client Header in Card */}
+                {/* Card Top: Amount & Status Badge */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xl font-black text-slate-900 tracking-tight">
+                      {formatINR(payment.amount)}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                      {payment.payment_mode}
+                    </span>
+                  </div>
+                  <StatusBadge status={payment.status} />
+                </div>
+
+                {/* Client Profile Row with 1-Tap Quick Actions */}
                 {isEditing ? (
-                  <div className="bg-blue-50/80 p-3 rounded-xl border border-blue-200 space-y-2">
-                    <span className="text-[10px] font-bold text-blue-900 uppercase">Quick Edit Client</span>
+                  /* Inline Edit Form */
+                  <div className="bg-blue-50/90 p-3 rounded-2xl border border-blue-200 space-y-2">
+                    <span className="text-[10px] font-bold text-blue-900 uppercase tracking-wider block">
+                      Edit Client Information
+                    </span>
                     <input
                       type="text"
                       value={inlineName}
                       onChange={(e) => setInlineName(e.target.value)}
-                      placeholder="Client Name"
-                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      placeholder="Client Full Name"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600"
                     />
                     <input
                       type="tel"
                       value={inlinePhone}
                       onChange={(e) => setInlinePhone(e.target.value)}
-                      placeholder="Phone (e.g. 9876543210)"
-                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      placeholder="Client Phone (10 digits)"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-600"
                     />
                     <div className="flex justify-end gap-2 pt-1">
                       <button
                         type="button"
                         onClick={handleCancelInlineEdit}
-                        className="px-2.5 py-1 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg"
+                        className="px-3 py-1 rounded-xl text-xs font-semibold text-slate-600 bg-white border border-slate-200"
                       >
                         Cancel
                       </button>
@@ -306,7 +509,7 @@ export const PaymentVerification: React.FC = () => {
                         type="button"
                         disabled={isInlineSaving || !inlineName.trim()}
                         onClick={(e) => handleSaveInlineEdit(payment.id, e)}
-                        className="px-3 py-1 text-xs font-bold text-white bg-blue-600 rounded-lg flex items-center gap-1 shadow-sm"
+                        className="px-3.5 py-1 rounded-xl text-xs font-bold text-white bg-blue-600 flex items-center gap-1 shadow-sm"
                       >
                         {isInlineSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                         <span>Save</span>
@@ -314,90 +517,169 @@ export const PaymentVerification: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
-                        {displayName.charAt(0).toUpperCase()}
+                  <div className="flex items-center justify-between bg-slate-50/80 p-3 rounded-2xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/20">
+                        {(displayName || 'C').charAt(0).toUpperCase()}
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <h4 className="text-xs font-black text-slate-900">{displayName}</h4>
+                          <h4 className={`text-xs font-black leading-tight ${clientInfo.hasSpecificName ? 'text-slate-900' : 'text-amber-800'}`}>
+                            {displayName}
+                          </h4>
                           <button
                             type="button"
                             onClick={(e) => handleStartInlineEdit(payment, e)}
                             className="text-slate-400 hover:text-blue-600 p-0.5 rounded cursor-pointer"
-                            title="Edit client name & phone"
+                            title="Edit Client"
                           >
                             <Edit3 className="w-3 h-3" />
                           </button>
                         </div>
-                        {displayPhone ? (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-[11px] text-slate-600 font-mono font-semibold">{displayPhone}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(displayPhone);
-                                setCopiedPhoneId(payment.id);
-                                setTimeout(() => setCopiedPhoneId(null), 1800);
-                              }}
-                              className="text-slate-400 hover:text-blue-600 p-0.5 rounded"
-                              title="Copy phone"
-                            >
-                              {copiedPhoneId === payment.id ? <Check className="w-3 h-3 text-emerald-600 stroke-[3]" /> : <Copy className="w-3 h-3" />}
-                            </button>
-                            {cleanPhoneDigits.length >= 10 && (
-                              <a
-                                href={`https://wa.me/91${cleanPhoneDigits.slice(-10)}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-emerald-600 hover:text-emerald-700 p-0.5 rounded"
-                                title="WhatsApp"
-                              >
-                                <MessageSquare className="w-3 h-3" />
-                              </a>
-                            )}
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => handleStartInlineEdit(payment, e)}
-                            className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mt-0.5 cursor-pointer"
-                          >
-                            + Add Phone
-                          </button>
-                        )}
+                        <span className="text-[11px] font-mono font-bold text-slate-600 block mt-0.5">
+                          {displayPhone || 'No phone recorded'}
+                        </span>
                       </div>
                     </div>
-                    <StatusBadge status={payment.status} />
+
+                    <div className="flex items-center gap-1.5">
+                      {cleanPhoneDigits.length >= 10 && (
+                        <>
+                          <a
+                            href={`https://wa.me/91${cleanPhoneDigits.slice(-10)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors shadow-2xs"
+                            title="WhatsApp Client"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                          </a>
+                          <a
+                            href={`tel:+91${cleanPhoneDigits.slice(-10)}`}
+                            className="p-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors shadow-2xs"
+                            title="Call Client"
+                          >
+                            <PhoneCall className="w-3.5 h-3.5" />
+                          </a>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <div>
-                    <span className="text-slate-400 uppercase tracking-wider block text-[8.5px] font-bold">Amount</span>
-                    <span className="font-black text-emerald-700 block mt-0.5">{formatINR(payment.amount)}</span>
+                {/* Transaction Data Strip with 1-Tap UTR Copy */}
+                <div className="space-y-2 bg-slate-50/60 p-3 rounded-2xl border border-slate-100 text-xs">
+                  {/* UTR Reference with instant copy button */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">UTR / Ref Number</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(payment.utr);
+                        setCopiedUtrId(payment.id);
+                        setTimeout(() => setCopiedUtrId(null), 1800);
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white border border-slate-200 hover:border-blue-300 font-mono text-[11px] font-bold text-slate-800 cursor-pointer shadow-2xs"
+                      title="Click to copy UTR to paste into bank app"
+                    >
+                      <span>{payment.utr}</span>
+                      {copiedUtrId === payment.id ? (
+                        <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                      ) : (
+                        <Copy className="w-3 h-3 text-slate-400" />
+                      )}
+                    </button>
                   </div>
-                  <div>
-                    <span className="text-slate-400 uppercase tracking-wider block text-[8.5px] font-bold">Payment Mode</span>
-                    <span className="font-bold text-slate-700 block mt-0.5">{payment.payment_mode}</span>
+
+                  {/* Staff Allocation */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[11px]">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Staff Assigned</span>
+                    <span className="font-bold text-slate-700">
+                      {payment.employee_name || 'Staff Member'}
+                      {Boolean(payment.is_shared || (payment.allocations && payment.allocations.length > 1)) && (
+                        <span className="ml-1 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          Shared
+                        </span>
+                      )}
+                    </span>
                   </div>
-                  <div className="col-span-2 pt-1 border-t border-slate-200">
-                    <span className="text-slate-400 uppercase tracking-wider block text-[8.5px] font-bold">UTR Reference</span>
-                    <span className="font-mono font-bold text-slate-800 block mt-0.5">{payment.utr}</span>
+
+                  {/* Service Package & Duration if available */}
+                  {payment.service_category && (
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[11px]">
+                      <span className="text-[10px] uppercase font-bold text-slate-400">Package</span>
+                      <span className="font-semibold text-slate-800">
+                        {payment.service_category} {payment.subscription_duration ? `• ${payment.subscription_duration}` : ''}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Submitted Date/Time */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[11px]">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Submitted</span>
+                    <span className="text-slate-500 font-medium">
+                      {new Date(payment.transaction_time).toLocaleString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
                   </div>
                 </div>
 
-                <button
-                  onClick={() => handleOpenDrawer(payment)}
-                  className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer shadow-sm active:scale-95 ${
-                    payment.status === 'pending_verification'
-                      ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100/50 animate-pulse'
-                      : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
-                  }`}
-                >
-                  {payment.status === 'pending_verification' ? 'Verify Now' : 'Inspect Details'}
-                </button>
+                {/* Screenshot Proof Preview Thumbnail */}
+                {payment.screenshot_url && (
+                  <div
+                    onClick={() => handleOpenDrawer(payment)}
+                    className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 h-28 flex items-center justify-center cursor-pointer group"
+                  >
+                    <img
+                      src={payment.screenshot_url}
+                      alt="Proof"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px] flex items-center justify-center gap-1.5 text-white font-bold text-xs opacity-90 group-hover:opacity-100 transition-opacity">
+                      <ZoomIn className="w-4 h-4" />
+                      <span>Tap to Inspect Proof</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Big Prominent Action Button */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDrawer(payment)}
+                    className={`flex-1 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98 ${
+                      payment.status === 'pending_verification'
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/25 ring-2 ring-amber-400/30'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                    }`}
+                  >
+                    {payment.status === 'pending_verification' ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Verify & Approve</span>
+                      </>
+                    ) : (
+                      <span>Inspect Log</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Delete payment record for "${displayName}" (${payment.utr})?`)) {
+                        deletePayment(payment.id);
+                      }
+                    }}
+                    className="p-3 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition-colors cursor-pointer"
+                    title="Delete Payment Record"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             );
           })
@@ -422,18 +704,43 @@ export const PaymentVerification: React.FC = () => {
             <tbody className="divide-y divide-slate-100/80">
               {filteredPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <ShieldCheck className="w-8 h-8 text-slate-300" />
-                      <span className="font-semibold text-sm">No payment records found.</span>
-                      <span className="text-xs text-slate-400">Employee-submitted payment proofs will appear here automatically.</span>
+                  <td colSpan={7} className="py-14 text-center text-slate-400">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
+                        <ShieldCheck className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <span className="font-black text-sm text-slate-800 block">
+                          {hasActiveFilters ? 'No matching payment records found' : 'No payment records found'}
+                        </span>
+                        <span className="text-xs text-slate-400 block mt-0.5">
+                          {hasActiveFilters
+                            ? 'Try adjusting your search query, status tab, or payment mode.'
+                            : 'Employee-submitted payment proofs will appear here automatically.'}
+                        </span>
+                      </div>
+                      {hasActiveFilters && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatusFilter('all');
+                            setModeFilter('all');
+                            setSearchQuery('');
+                          }}
+                          className="mt-1 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold hover:bg-blue-100 transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Clear All Filters</span>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
               ) : (
                 filteredPayments.map((payment) => {
-                  const displayName = payment.client_name || payment.trader_name || 'Client';
-                  const displayPhone = payment.client_phone || payment.trader_phone || '';
+                  const clientInfo = resolveClientContact(payment);
+                  const displayName = clientInfo.name;
+                  const displayPhone = clientInfo.phone;
                   const cleanPhoneDigits = displayPhone.replace(/\D/g, '');
                   const isEditingThisRow = inlineEditPaymentId === payment.id;
                   const isSuccessThisRow = inlineSuccessId === payment.id;
@@ -503,21 +810,30 @@ export const PaymentVerification: React.FC = () => {
                           /* Interactive Display with Quick Actions */
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-md shadow-blue-500/15 group-hover:scale-105 transition-transform">
-                              {displayName.charAt(0).toUpperCase()}
+                              {(displayName || 'C').charAt(0).toUpperCase()}
                             </div>
                             <div>
                               <div className="flex items-center gap-1.5">
-                                <span className="font-bold text-slate-900 block text-xs leading-tight">
+                                <span className={`font-bold block text-xs leading-tight ${clientInfo.hasSpecificName ? 'text-slate-900' : 'text-amber-800'}`}>
                                   {displayName}
                                 </span>
                                 <button
                                   type="button"
                                   onClick={(e) => handleStartInlineEdit(payment, e)}
-                                  className="text-slate-300 hover:text-blue-600 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                  className="text-slate-400 hover:text-blue-600 p-0.5 rounded cursor-pointer transition-colors"
                                   title="Quick edit client details"
                                 >
-                                  <Edit3 className="w-3 h-3" />
+                                  <Edit3 className="w-3.5 h-3.5" />
                                 </button>
+                                {!clientInfo.hasSpecificName && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleStartInlineEdit(payment, e)}
+                                    className="text-[9px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-1.5 py-0.2 rounded cursor-pointer"
+                                  >
+                                    + Set Name
+                                  </button>
+                                )}
                                 {isSuccessThisRow && (
                                   <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 animate-in fade-in">
                                     Saved!
@@ -619,16 +935,31 @@ export const PaymentVerification: React.FC = () => {
                         <StatusBadge status={payment.status} />
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => handleOpenDrawer(payment)}
-                          className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer shadow-sm ${
-                            payment.status === 'pending_verification'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100/50 animate-pulse'
-                              : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
-                          }`}
-                        >
-                          {payment.status === 'pending_verification' ? 'Verify Now' : 'Inspect'}
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleOpenDrawer(payment)}
+                            className={`px-3 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer shadow-sm ${
+                              payment.status === 'pending_verification'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100/50 animate-pulse'
+                                : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
+                            }`}
+                          >
+                            {payment.status === 'pending_verification' ? 'Verify Now' : 'Inspect'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Delete payment record for "${displayName}" (${payment.utr})?`)) {
+                                deletePayment(payment.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all cursor-pointer"
+                            title="Delete Payment Record"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -642,60 +973,73 @@ export const PaymentVerification: React.FC = () => {
       {/* Anti-Fraud Inspection Drawer */}
       {selectedPayment && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-end font-sans">
-          <div className="w-full max-w-xl bg-white h-full border-l border-slate-200 p-4 sm:p-6 overflow-y-auto space-y-6 animate-in slide-in-from-right duration-250 z-50 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <h3 className="text-lg font-black text-[#091A2F]">Payment Verification Drawer</h3>
-                <p className="text-xs text-slate-500 font-medium">Ref / UTR: {selectedPayment.utr}</p>
-              </div>
-              <button onClick={() => setSelectedPayment(null)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-50 p-1.5 rounded-lg transition-colors cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Interactive Client Information Banner with Inline Edit */}
-            <div className="bg-gradient-to-br from-blue-50/80 to-indigo-50/40 border border-blue-200/80 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-md shadow-blue-600/20">
-                    {(selectedPayment.client_name || selectedPayment.trader_name || 'C').charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-slate-900 leading-tight">
-                      {selectedPayment.client_name || selectedPayment.trader_name || 'Client Name'}
-                    </h4>
-                    <span className="text-xs font-mono font-bold text-blue-700 block mt-0.5">
-                      {selectedPayment.client_phone || selectedPayment.trader_phone || 'No phone recorded'}
-                    </span>
-                  </div>
+            <div className="w-full max-w-xl bg-white h-full border-l border-slate-200 p-4 sm:p-6 overflow-y-auto space-y-6 animate-in slide-in-from-right duration-250 z-50 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="text-lg font-black text-[#091A2F]">Payment Verification Drawer</h3>
+                  <p className="text-xs text-slate-500 font-medium">Ref / UTR: {selectedPayment.utr}</p>
                 </div>
+                <button onClick={() => setSelectedPayment(null)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-50 p-1.5 rounded-lg transition-colors cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-                <div className="flex items-center gap-1.5">
-                  {(selectedPayment.client_phone || selectedPayment.trader_phone) && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(selectedPayment.client_phone || selectedPayment.trader_phone || '');
-                          setCopiedPhoneId(selectedPayment.id);
-                          setTimeout(() => setCopiedPhoneId(null), 1800);
-                        }}
-                        className="p-2 rounded-xl bg-white border border-slate-200 hover:border-blue-300 text-slate-600 hover:text-blue-600 transition-all cursor-pointer shadow-2xs"
-                        title="Copy Phone"
-                      >
-                        {copiedPhoneId === selectedPayment.id ? <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                      <a
-                        href={`https://wa.me/91${(selectedPayment.client_phone || selectedPayment.trader_phone || '').replace(/\D/g, '').slice(-10)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-all shadow-2xs"
-                        title="WhatsApp Client"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                      </a>
-                    </>
-                  )}
+              {/* Interactive Client Information Banner with Inline Edit */}
+              <div className="bg-gradient-to-br from-blue-50/80 to-indigo-50/40 border border-blue-200/80 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-md shadow-blue-600/20">
+                      {(drawerName || 'C').charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <h4 className={`text-sm font-black leading-tight ${selectedClientInfo?.hasSpecificName ? 'text-slate-900' : 'text-amber-800'}`}>
+                          {drawerName}
+                        </h4>
+                        {!selectedClientInfo?.hasSpecificName && !isEditingClient && (
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingClient(true)}
+                            className="text-[9px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded cursor-pointer"
+                          >
+                            + Set Name
+                          </button>
+                        )}
+                      </div>
+                      <span className="text-xs font-mono font-bold text-blue-700 block mt-0.5">
+                        {drawerPhone || 'No phone recorded'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {drawerPhone && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(drawerPhone);
+                            setCopiedPhoneId(selectedPayment.id);
+                            setTimeout(() => setCopiedPhoneId(null), 1800);
+                          }}
+                          className="p-2 rounded-xl bg-white border border-slate-200 hover:border-blue-300 text-slate-600 hover:text-blue-600 transition-all cursor-pointer shadow-2xs"
+                          title="Copy Phone"
+                        >
+                          {copiedPhoneId === selectedPayment.id ? <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                        {cleanDrawerDigits.length >= 10 && (
+                          <a
+                            href={`https://wa.me/91${cleanDrawerDigits.slice(-10)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-all shadow-2xs"
+                            title="WhatsApp Client"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </>
+                    )}
                   <button
                     type="button"
                     onClick={() => setIsEditingClient(!isEditingClient)}
@@ -980,185 +1324,31 @@ export const PaymentVerification: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-700">
-                <span className="text-slate-500 block font-bold mb-1">Admin Verification Remarks:</span>
-                <p className="text-slate-800 italic font-medium">{selectedPayment.admin_remarks || 'No remarks provided.'}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      {/* Google Sheets & Forms Synchronization Setup Modal */}
-      {showSyncModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
-                  <FileSpreadsheet className="w-5 h-5" />
+              <div className="space-y-3">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-700">
+                  <span className="text-slate-500 block font-bold mb-1">Admin Verification Remarks:</span>
+                  <p className="text-slate-800 italic font-medium">{selectedPayment.admin_remarks || 'No remarks provided.'}</p>
                 </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900">Google Sheets & Form Synchronization</h3>
-                  <p className="text-[11px] text-slate-500 font-medium">Auto-record payment proofs & recover un-reflected responses</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSyncModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition-colors cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
 
-            {/* Critical Root Cause Explanation & Fix */}
-            <div className="bg-rose-50/80 border border-rose-200 p-4 rounded-2xl space-y-2.5 text-xs text-rose-900">
-              <div className="flex items-center gap-2 font-bold text-rose-800 text-sm">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>Why Form Responses and Rows Are Not Appearing</span>
-              </div>
-              <p className="leading-relaxed">
-                We inspected your Google Form in the browser: <strong>Question #13 (&ldquo;Upload Payment Screenshot Proof&rdquo;) is set to &ldquo;File upload&rdquo;</strong>. When any Google Form has a file upload question, Google strictly blocks all external submissions with HTTP 401.
-              </p>
-              <div className="bg-white/90 p-3 rounded-xl border border-rose-200/90 space-y-1.5 text-[11px]">
-                <span className="font-bold text-rose-900 uppercase tracking-wider block">Choose Either Solution:</span>
-                <ul className="list-disc list-inside space-y-1.5 text-slate-700 font-medium">
-                  <li><strong>Solution A (Change Question 13 in Google Form):</strong> Click Question 13 in your form editor &rarr; Change dropdown from <em>&ldquo;File upload&rdquo;</em> to <em>&ldquo;Short answer&rdquo;</em> or <em>&ldquo;Paragraph&rdquo;</em>. (The CRM automatically uploads the image and passes the link!). Also in Settings &rarr; Responses, turn off &ldquo;Limit to 1 response&rdquo;.</li>
-                  <li><strong>Solution B (Recommended - Google Apps Script Webhook):</strong> Deploy the script below on your Google Sheet. It connects directly with zero login, writes rows in real-time, and auto-saves screenshots into a Google Drive folder!</li>
-                </ul>
-              </div>
-              <div className="pt-1 flex items-center justify-between">
-                <a
-                  href={GOOGLE_FORM_VIEW_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-bold underline cursor-pointer"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Form to Edit Question 13</span>
-                </a>
-              </div>
-            </div>
-
-            {/* 1-Click Historical TSV Export / Sync */}
-            <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl space-y-2.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-emerald-900 text-sm flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Instant 1-Click Sync to Google Sheets</span>
-                </span>
                 <button
                   type="button"
-                  onClick={handleCopyAllToSpreadsheet}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 cursor-pointer shadow-xs"
+                  onClick={() => {
+                    if (window.confirm(`Delete payment record for "${drawerName}" (${selectedPayment.utr})?`)) {
+                      deletePayment(selectedPayment.id);
+                      setSelectedPayment(null);
+                    }
+                  }}
+                  className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  {copiedBatchTSV ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedBatchTSV ? 'Copied All to Clipboard!' : `Copy All ${payments.length} Payments`}</span>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Payment Record</span>
                 </button>
               </div>
-              <p className="text-slate-600 leading-relaxed text-[11px]">
-                Click the button above, open your Google Sheet, click on cell <strong>A2</strong> (or the first blank row), and press <strong>Ctrl + V</strong>. All payment proofs, client details, employee allocations, and screenshot URLs will instantly paste with perfect columns!
-              </p>
-            </div>
-
-            {/* Google Apps Script Webhook */}
-            <div className="space-y-3 text-xs text-slate-600">
-              <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
-                Automated Google Sheets Webhook (Recommended)
-              </h4>
-              <p className="text-[11px] leading-relaxed">
-                Add this 15-line script to your Google Sheet to auto-record every employee payment proof without requiring any Google sign-in.
-              </p>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                  Google Apps Script Webhook URL
-                </label>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="url"
-                    value={webhookUrlInput}
-                    onChange={(e) => setWebhookUrlInput(e.target.value)}
-                    placeholder="https://script.google.com/macros/s/.../exec"
-                    className="flex-1 min-w-[260px] bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:border-blue-600"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      saveGoogleSheetsWebhookUrl(webhookUrlInput);
-                      setWebhookStatus('Webhook URL saved!');
-                      setTimeout(() => setWebhookStatus(null), 3000);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all cursor-pointer shadow-sm"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isTestingWebhook || !webhookUrlInput.trim()}
-                    onClick={handleTestWebhook}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                    title="Send an immediate live test row into your Google Sheet to verify sync"
-                  >
-                    {isTestingWebhook ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                    <span>{isTestingWebhook ? 'Sending Test Row...' : 'Send Live Test Row'}</span>
-                  </button>
-                </div>
-                {webhookStatus && (
-                  <p className="text-emerald-600 font-bold text-[11px] mt-1.5 flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5" /> {webhookStatus}
-                  </p>
-                )}
-                {testResult && (
-                  <div className={`p-3 rounded-xl border text-xs font-semibold mt-2 flex items-start gap-2 ${
-                    testResult.success
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-rose-50 border-rose-200 text-rose-800'
-                  }`}>
-                    {testResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" /> : <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />}
-                    <span>{testResult.message}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2 text-[11px]">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-800 uppercase tracking-wider">
-                    Apps Script Code Snippet:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_SNIPPET);
-                      alert('Google Apps Script code copied to clipboard!');
-                    }}
-                    className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Copy className="w-3 h-3" />
-                    <span>Copy Code</span>
-                  </button>
-                </div>
-                <ol className="list-decimal list-inside space-y-1 text-slate-600">
-                  <li>In Google Sheets, go to <strong>Extensions &rarr; Apps Script</strong>.</li>
-                  <li>Paste the code, click <strong>Deploy &rarr; New deployment</strong>.</li>
-                  <li>Type: <strong>Web app</strong> (Execute as: <em>Me</em>, Access: <em>Anyone</em>).</li>
-                  <li>Copy Web app URL and paste it above!</li>
-                </ol>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowSyncModal(false)}
-                className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
-              >
-                Done
-              </button>
-            </div>
+            )}
           </div>
         </div>
       )}
     </div>
   );
 };
+

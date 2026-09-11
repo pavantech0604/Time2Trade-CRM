@@ -74,9 +74,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     return users.find((u) => u.id === activeTargetUserId) || null;
   }, [isAdmin, activeTargetUserId, users]);
 
-  // User-filtered notifications (with fallback to sample notifications if empty)
+  // User-filtered notifications
   const userFilteredNotifications = useMemo(() => {
-    const list = notifications.filter((n) => {
+    return notifications.filter((n) => {
       if (!isAdmin) {
         return n.user_id === currentUser?.id;
       }
@@ -85,73 +85,6 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       }
       return n.user_id === activeTargetUserId;
     });
-
-    // If active user has no notifications, provide initial sample notifications
-    if (list.length === 0 && currentUser) {
-      const now = new Date();
-      const subMins = (m: number) => new Date(now.getTime() - m * 60 * 1000).toISOString();
-      const subHours = (h: number) => new Date(now.getTime() - h * 60 * 60 * 1000).toISOString();
-
-      return [
-        {
-          id: 'sample-1',
-          user_id: currentUser.id,
-          user_name: currentUser.name,
-          title: 'Payment Credited',
-          message: 'Payment proof of ₹25,000 for client Rahul Sharma verified. Your 10% commission of ₹2,500 has been credited.',
-          type: 'success',
-          category: 'sales',
-          amount: 2500,
-          share_percentage: 10,
-          client_name: 'Rahul Sharma',
-          action_tab: 'employee-dashboard',
-          action_label: 'View Credit',
-          is_read: false,
-          created_at: subMins(12),
-        },
-        {
-          id: 'sample-2',
-          user_id: currentUser.id,
-          user_name: currentUser.name,
-          title: 'New Lead Assigned',
-          message: 'High-intent trader lead Priya Patel (₹5,00,000 capital) assigned to your desk.',
-          type: 'info',
-          category: 'leads',
-          client_name: 'Priya Patel',
-          action_tab: 'employee-dashboard',
-          action_label: 'View Lead',
-          is_read: false,
-          created_at: subHours(1),
-        },
-        {
-          id: 'sample-3',
-          user_id: currentUser.id,
-          user_name: currentUser.name,
-          title: 'Target Milestone Reached',
-          message: 'Trader Vikram Malhotra achieved daily profit target with 4 winning trades today.',
-          type: 'success',
-          category: 'sales',
-          client_name: 'Vikram Malhotra',
-          action_tab: 'active-traders',
-          action_label: 'View Trader',
-          is_read: true,
-          created_at: subHours(3),
-        },
-        {
-          id: 'sample-4',
-          user_id: currentUser.id,
-          user_name: currentUser.name,
-          title: 'Daily Attendance Logged',
-          message: 'Morning shift login recorded at 09:15 AM. You are currently marked Online.',
-          type: 'info',
-          category: 'system',
-          is_read: true,
-          created_at: subHours(5),
-        },
-      ] as NotificationItem[];
-    }
-
-    return list;
   }, [notifications, isAdmin, currentUser, activeTargetUserId]);
 
   // Category filter

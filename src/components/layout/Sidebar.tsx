@@ -62,7 +62,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
   const navItems = getNavItems();
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200/80 flex flex-col h-screen sticky top-0 font-sans shadow-sm">
+    <aside
+      role="navigation"
+      aria-label="Main sidebar navigation"
+      className="w-64 bg-white border-r border-slate-200/80 flex flex-col h-screen sticky top-0 font-sans shadow-sm"
+    >
       {/* Scrollable Navigation Area */}
       <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
         {/* Brand Header */}
@@ -132,6 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
 
         <button
           onClick={logout}
+          aria-label="Sign Out"
           className="w-full flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold text-rose-500 hover:bg-rose-50 rounded-xl transition-all cursor-pointer border-none"
         >
           <LogOut className="w-3.5 h-3.5" />

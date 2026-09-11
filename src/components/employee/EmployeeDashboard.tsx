@@ -38,6 +38,38 @@ export const EmployeeDashboard: React.FC = () => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast(prev => ({ ...prev, show: false })), 4000);
   };
+
+  const resolveClientContact = (payment: any) => {
+    let name = (payment.client_name || payment.trader_name || '').trim();
+    let phone = (payment.client_phone || payment.trader_phone || '').trim();
+
+    if ((!name || name.toLowerCase() === 'client' || name.toLowerCase() === 'direct client') || !phone) {
+      const matched = traders.find((t) => 
+        (payment.trader_id && t.id === payment.trader_id) ||
+        (phone && t.phone && t.phone.replace(/\D/g, '') === phone.replace(/\D/g, ''))
+      );
+      if (matched) {
+        if (!name || name.toLowerCase() === 'client' || name.toLowerCase() === 'direct client') name = matched.name;
+        if (!phone) phone = matched.phone;
+      }
+    }
+
+    if ((!name || !phone) && typeof payment.remarks === 'string') {
+      if (!name) {
+        const nameMatch = payment.remarks.match(/(?:Client|Name|Client Name)\s*:\s*([^\n;,]+)/i);
+        if (nameMatch) name = nameMatch[1].trim();
+      }
+      if (!phone) {
+        const phoneMatch = payment.remarks.match(/(?:Phone|Mobile|Contact)\s*:\s*([0-9\+\s-]{10,14})/i);
+        if (phoneMatch) phone = phoneMatch[1].replace(/\D/g, '').slice(-10);
+      }
+    }
+
+    return {
+      displayName: name || 'Client',
+      displayPhone: phone,
+    };
+  };
   
   const [newLeadData, setNewLeadData] = useState({
     name: '',
@@ -77,11 +109,15 @@ export const EmployeeDashboard: React.FC = () => {
     t.phone.includes(searchQuery)
   );
 
-  const filteredPayments = myPayments.filter(p => 
-    p.trader_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.trader_phone?.includes(searchQuery) ||
-    p.utr.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredPayments = myPayments.filter(p => {
+    const { displayName, displayPhone } = resolveClientContact(p);
+    const q = searchQuery.toLowerCase();
+    return (
+      displayName.toLowerCase().includes(q) || 
+      displayPhone.includes(q) ||
+      p.utr.toLowerCase().includes(q)
+    );
+  });
 
   const getMyCreditedAmount = (p: typeof payments[0]) => {
     if (p.allocations && p.allocations.length > 0) {
@@ -158,7 +194,7 @@ export const EmployeeDashboard: React.FC = () => {
   };
 
   return (
-    <div className="p-3.5 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500 font-sans">
       {/* Interactive Temporary Password Alert Banner */}
       {Boolean(currentUser?.must_reset_password || mustResetPassword) && (
         <div className="bg-gradient-to-r from-amber-500/15 via-blue-500/10 to-indigo-500/10 border border-amber-300 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-amber-500/5 animate-in slide-in-from-top-2">
@@ -250,7 +286,7 @@ export const EmployeeDashboard: React.FC = () => {
       <div className="bg-white border border-slate-200/60 rounded-3xl shadow-sm overflow-hidden flex flex-col min-h-[520px]">
         {/* Navigation Tabs and Search */}
         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-1.5 bg-slate-100/70 p-1 rounded-2xl">
+          <div className="flex items-center gap-1.5 bg-slate-100/70 p-1 rounded-2xl overflow-x-auto no-scrollbar whitespace-nowrap max-w-full">
             <button
               onClick={() => setActiveTab('leads')}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -374,27 +410,28 @@ export const EmployeeDashboard: React.FC = () => {
               const otherEmployeesCount = payment.allocations
                 ? payment.allocations.filter((a) => a.employee_id !== currentUser.id && a.allocation_amount > 0).length
                 : 0;
+              const { displayName, displayPhone } = resolveClientContact(payment);
 
               return (
                 <div key={payment.id} className="bg-white p-5 rounded-2xl border border-slate-200/80 hover:border-indigo-300 shadow-sm transition-all space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-base shadow-inner shrink-0">
-                        {(payment.client_name || payment.trader_name)?.charAt(0) || 'C'}
+                        {(displayName || 'C').charAt(0).toUpperCase()}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-slate-800 text-sm">{payment.client_name || payment.trader_name || 'Client'}</h4>
-                          {(payment.client_phone || payment.trader_phone) && (
+                          <h4 className="font-bold text-slate-800 text-sm">{displayName}</h4>
+                          {displayPhone && (
                             <div className="flex items-center gap-1">
                               <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                                {payment.client_phone || payment.trader_phone}
+                                {displayPhone}
                               </span>
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigator.clipboard.writeText(payment.client_phone || payment.trader_phone || '');
+                                  navigator.clipboard.writeText(displayPhone);
                                   setCopiedPhoneId(payment.id);
                                   setTimeout(() => setCopiedPhoneId(null), 1800);
                                 }}
@@ -626,7 +663,7 @@ export const EmployeeDashboard: React.FC = () => {
 
       {/* Toast Notification */}
       {toast.show && (
-        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+        <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
           <div className={`flex items-center gap-3 px-5 py-4 rounded-2xl shadow-xl border ${
             toast.type === 'success' 
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'

@@ -78,6 +78,7 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="absolute top-4 right-4 z-50">
               <button
                 onClick={() => setIsMobileMenuOpen(false)}
+                aria-label="Close menu"
                 className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 transition-all cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -111,7 +112,7 @@ export const Layout: React.FC<LayoutProps> = ({
         </main>
 
         {/* Mobile-First Native Bottom Navigation Bar */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-slate-200/90 py-1.5 px-2 flex items-center justify-around shadow-2xl safe-area-bottom">
+        <nav aria-label="Mobile bottom navigation" className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-slate-200/90 py-1.5 px-2 flex items-center justify-around shadow-2xl safe-area-bottom">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;
             const isMenuTrigger = item.id === 'mobile-menu';
@@ -121,6 +122,7 @@ export const Layout: React.FC<LayoutProps> = ({
               <button
                 key={item.id}
                 type="button"
+                aria-label={item.label}
                 onClick={() => {
                   if (isMenuTrigger) {
                     setIsMobileMenuOpen(true);

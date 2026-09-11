@@ -127,6 +127,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
   } | null>(null);
   const [remarks, setRemarks] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // 6. Review & Confirmation State
   const [isConfirmed, setIsConfirmed] = useState(false);
@@ -212,9 +213,11 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setUploadError(null);
+
     // Check file type
     if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
-      alert('Please upload a valid JPG, JPEG, or PNG payment screenshot.');
+      setUploadError('Please upload a valid JPG, JPEG, or PNG payment screenshot.');
       return;
     }
 
@@ -230,7 +233,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
     setIsUploading(false);
 
     if (res.error) {
-      alert(`Error uploading file: ${res.error.message || 'Please check storage bucket permissions.'}`);
+      setUploadError(`Error uploading file: ${res.error.message || 'Please check storage bucket permissions.'}`);
       return;
     }
 
@@ -399,7 +402,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
     // 1. Save to AuthContext & Supabase DB (Client & Payment records)
     await addPayment({
-      trader_id: clientEntryMode === 'existing' && selectedTraderId ? selectedTraderId : 'manual-client',
+      trader_id: clientEntryMode === 'existing' && selectedTraderId ? selectedTraderId : undefined,
       client_name: clientName.trim(),
       client_phone: clientPhone.trim(),
       trader_name: clientName.trim(),
@@ -1545,6 +1548,12 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
                 </span>
               </div>
 
+              {uploadError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 font-medium">
+                  {uploadError}
+                </div>
+              )}
+
               {/* Uploaded File Details */}
               {screenshotUrl && (
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 text-xs">
@@ -1896,7 +1905,7 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
                     type="button"
                     onClick={() => {
                       navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_SNIPPET);
-                      alert('Google Apps Script code copied to clipboard!');
+                      setWebhookStatus('Google Apps Script code copied to clipboard!');
                     }}
                     className="text-blue-600 hover:text-blue-800 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
                   >

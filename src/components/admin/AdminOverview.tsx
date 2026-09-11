@@ -103,8 +103,6 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
           title="Total Advisory Leads"
           value={kpis.totalLeads}
           isCurrency={false}
-          change={14.2}
-          changeLabel="vs last week"
           icon={Users}
           variant="info"
           onClick={() => onNavigate('employee-scorecards')}
@@ -114,8 +112,6 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
           title="Active Traders"
           value={kpis.activeTraders}
           isCurrency={false}
-          change={8.5}
-          changeLabel="high streak"
           icon={TrendingUp}
           variant="positive"
           onClick={() => onNavigate('active-traders')}
@@ -124,8 +120,6 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
         <MetricCard
           title="Total Profit Shared"
           value={kpis.totalProfitShared}
-          change={22.4}
-          changeLabel="this month"
           icon={CreditCard}
           variant="positive"
         />
@@ -133,8 +127,6 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
         <MetricCard
           title="Net Business Profit"
           value={kpis.netProfit}
-          change={18.1}
-          changeLabel="after expenses"
           icon={DollarSign}
           variant="positive"
         />
@@ -284,21 +276,41 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {traders.map((trader) => (
-                <tr key={trader.id} className="hover:bg-slate-50/50 transition-all border-b border-slate-100/40">
-                  <td className="py-3 px-4 font-bold text-slate-800">{trader.name}</td>
-                  <td className="py-3 px-4 text-slate-500">{trader.employee_name || 'RM'}</td>
-                  <td className="py-3 px-4 font-bold text-emerald-700">{formatINR(trader.total_profit_gained)}</td>
-                  <td className="py-3 px-4 font-bold text-blue-700">{formatINR(trader.total_profit_shared)}</td>
-                  <td className="py-3 px-4">
-                    <StreakBadge streak={trader.current_streak} />
+              {traders.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-6 text-center text-slate-400">
+                    No active traders registered.
                   </td>
-                  <td className="py-3 px-4 text-slate-500 font-mono">{trader.joined_at}</td>
                 </tr>
-              ))}
+              ) : (
+                traders.slice(0, 5).map((trader) => (
+                  <tr key={trader.id} className="hover:bg-slate-50/50 transition-all border-b border-slate-100/40">
+                    <td className="py-3 px-4 font-bold text-slate-800">{trader.name}</td>
+                    <td className="py-3 px-4 text-slate-500">{trader.employee_name || 'RM'}</td>
+                    <td className="py-3 px-4 font-bold text-emerald-700">{formatINR(trader.total_profit_gained)}</td>
+                    <td className="py-3 px-4 font-bold text-blue-700">{formatINR(trader.total_profit_shared)}</td>
+                    <td className="py-3 px-4">
+                      <StreakBadge streak={trader.current_streak} />
+                    </td>
+                    <td className="py-3 px-4 text-slate-500 font-mono">{trader.joined_at}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+
+        {traders.length > 5 && (
+          <div className="pt-2 flex justify-end">
+            <button
+              onClick={() => onNavigate('active-traders')}
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              <span>View all {traders.length} active traders</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

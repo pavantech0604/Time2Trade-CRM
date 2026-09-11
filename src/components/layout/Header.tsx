@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Bell,
   CreditCard,
@@ -48,6 +48,28 @@ export const Header: React.FC<HeaderProps> = ({
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const [statusToast, setStatusToast] = useState<string | null>(null);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close status dropdown on click outside or Escape
+  useEffect(() => {
+    if (!isStatusOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
+        setIsStatusOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsStatusOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isStatusOpen]);
 
   const statusConfig: Record<
     UserPresenceStatus,
@@ -123,6 +145,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onToggleMobileMenu}
+            aria-label="Open Sidebar Navigation"
             className="md:hidden p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
             title="Open Sidebar Navigation"
           >
@@ -167,10 +190,12 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-2 md:gap-4">
         {/* Real-time Employee Presence Status Dropdown (Hidden for Admin) */}
         {currentUser?.role !== 'admin' && (
-          <div className="relative">
+          <div className="relative" ref={statusDropdownRef}>
             <button
               type="button"
               onClick={() => setIsStatusOpen(!isStatusOpen)}
+              aria-label="Toggle presence work status"
+              aria-expanded={isStatusOpen}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${currentConfig.bg} ${currentConfig.text}`}
             >
               <span className={`w-2 h-2 rounded-full ${currentConfig.dot} animate-pulse`} />
@@ -258,6 +283,8 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="relative">
           <button
             onClick={() => setIsNotifOpen(!isNotifOpen)}
+            aria-label="Trading Desk Alerts"
+            aria-expanded={isNotifOpen}
             className={`relative p-2 rounded-xl border transition-all cursor-pointer ${
               isNotifOpen
                 ? 'bg-sky-50 border-sky-300 text-[#0EA5E9] shadow-xs ring-2 ring-sky-400/20'
@@ -283,6 +310,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Mobile-Only Logout Button */}
         <button
           onClick={logout}
+          aria-label="Sign Out"
           title="Sign Out"
           className="md:hidden p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-500 hover:text-rose-600 transition-colors cursor-pointer hover:bg-rose-100"
         >

@@ -5,10 +5,9 @@ export function exportToCSV<T extends Record<string, any>>(
   data: T[],
   filename: string,
   headers?: { key: keyof T; label: string }[]
-) {
+): boolean {
   if (!data || data.length === 0) {
-    alert('No data available to export.');
-    return;
+    return false;
   }
 
   let csvContent = '';
@@ -52,4 +51,7 @@ export function exportToCSV<T extends Record<string, any>>(
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  return true;
 }
+

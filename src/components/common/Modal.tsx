@@ -49,13 +49,16 @@ export const Modal: React.FC<ModalProps> = ({
       className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200 font-sans"
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
         className={`w-full ${widthClass} bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[90vh]`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
           <div className="min-w-0 pr-2">
-            <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug truncate">{title}</h3>
+            <h3 id="modal-title" className="text-sm sm:text-base font-bold text-slate-900 leading-snug truncate">{title}</h3>
             {subtitle && <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">{subtitle}</p>}
           </div>
           <button

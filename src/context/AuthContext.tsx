@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   User,
   UserRole,
@@ -98,6 +98,8 @@ interface AuthContextType {
   addPayment: (paymentInput: Omit<Payment, 'id' | 'created_at' | 'status'>) => void;
   verifyPayment: (paymentId: string, isApproved: boolean, remarks?: string) => void;
   updatePaymentClientDetails: (paymentId: string, clientName: string, clientPhone: string) => Promise<void>;
+  deletePayment: (paymentId: string) => Promise<void>;
+  clearAllPayments: () => Promise<void>;
   addExpense: (expenseInput: Omit<Expense, 'id' | 'created_at'>) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (userId?: string) => void;
@@ -196,7 +198,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          // Filter out user's requested test data to reset from scratch
+          const filtered = parsed.filter((p) => {
+            const name = (p.client_name || p.trader_name || '').toLowerCase().trim();
+            const utr = (p.utr || '').toLowerCase().trim();
+            const phone = (p.client_phone || p.trader_phone || '').replace(/\D/g, '');
+            if (name.includes('gayathri') || name.includes('pavan kumar')) return false;
+            if (utr.includes('7702749867') || utr === '32145678901') return false;
+            if (phone === '7702749867' || phone === '7989628479') return false;
+            return true;
+          });
+
+          // Sync back the cleaned list immediately
+          if (filtered.length > 0) {
+            localStorage.setItem('time2trade_payments_cache', JSON.stringify(filtered));
+          } else {
+            localStorage.removeItem('time2trade_payments_cache');
+          }
+
+          return filtered.map((p) => {
+            const rawName = p.client_name || p.trader_name || '';
+            const rawPhone = p.client_phone || p.trader_phone || '';
+            return {
+              ...p,
+              client_name: rawName || 'Client',
+              client_phone: rawPhone,
+              trader_name: rawName || 'Client',
+              trader_phone: rawPhone,
+            };
+          });
         }
       }
     } catch {}
@@ -206,11 +236,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Sync payments to localStorage cache so they are never lost on reload
   useEffect(() => {
-    if (payments.length > 0) {
-      try {
+    try {
+      if (payments.length > 0) {
         localStorage.setItem('time2trade_payments_cache', JSON.stringify(payments));
-      } catch {}
-    }
+      } else {
+        localStorage.removeItem('time2trade_payments_cache');
+      }
+    } catch {}
   }, [payments]);
 
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
@@ -242,9 +274,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [notifications]);
 
-  // Seed helpful sample notifications for active user if empty
+  const seededUsersRef = useRef<Set<string>>(new Set());
+
+  // Seed helpful sample notifications for active user if empty (only once per session)
   useEffect(() => {
     if (!currentUser) return;
+    if (seededUsersRef.current.has(currentUser.id)) return;
+    seededUsersRef.current.add(currentUser.id);
+
     const userNotifs = notifications.filter((n) => n.user_id === currentUser.id);
     if (userNotifs.length === 0) {
       const now = new Date();
@@ -313,7 +350,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentUser]);
 
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
   const [filters, setFilters] = useState<FilterState>({
     dateFilter: 'all',
@@ -364,7 +401,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let tradersList: ActiveTrader[] = [...INITIAL_TRADERS];
       if (tRes.data && Array.isArray(tRes.data)) {
         const remoteTraders = (tRes.data as any[])
-          .filter((t) => t && !isMockId(t.id))
+          .filter((t) => {
+            if (!t || isMockId(t.id)) return false;
+            const name = (t.name || '').toLowerCase().trim();
+            const phone = (t.phone || '').replace(/\D/g, '');
+            if (name.includes('gayathri') || name.includes('pavan kumar')) return false;
+            if (phone === '7702749867' || phone === '7989628479') return false;
+            return true;
+          })
           .map((t: any) => ({
             ...t,
             name: safeStr(t.name) || 'Active Trader',
@@ -380,7 +424,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (pRes.data && Array.isArray(pRes.data)) {
         const rawPayments = (pRes.data as (Payment & { client_name?: string; client_phone?: string })[]).filter(
-          (p) => p && !isMockId(p.id)
+          (p) => {
+            if (!p || isMockId(p.id)) return false;
+            const name = (p.client_name || p.trader_name || '').toLowerCase().trim();
+            const utr = (p.utr || '').toLowerCase().trim();
+            const phone = (p.client_phone || p.trader_phone || '').replace(/\D/g, '');
+            if (name.includes('gayathri') || name.includes('pavan kumar')) return false;
+            if (utr.includes('7702749867') || utr === '32145678901') return false;
+            if (phone === '7702749867' || phone === '7989628479') return false;
+            return true;
+          }
         );
 
         // Merge rawPayments with INITIAL_PAYMENTS so verified employee submissions are never dropped
@@ -534,8 +587,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 allocations: enrichedAllocs.length > 0 ? enrichedAllocs : p.allocations,
                 is_shared: (enrichedAllocs.length > 1) || p.is_shared,
               };
-            } catch (paymentErr) {
-              console.error('Error enriching payment item:', p, paymentErr);
+            } catch {
               return {
                 ...p,
                 service_type: p.service_type === 'Future Option' ? 'Option' : p.service_type,
@@ -583,8 +635,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           (expRes.data as Expense[]).filter((exp) => exp && !isMockId(exp.id))
         );
       }
-    } catch (err) {
-      console.error('Error in loadSupabaseData:', err);
+    } catch {
+      // Non-blocking data fetch error handled safely
     }
   };
 
@@ -664,6 +716,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else {
             localStorage.removeItem('time2trade_auth_user');
           }
+        } else if (supabase && !useMocks) {
+          // If no stored session, load initial public dataset once
+          await loadSupabaseData();
         }
       } catch {
         // Silent fallback to local stored session
@@ -673,25 +728,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     checkSession();
-
-    // Fetch staff list from Supabase if connected
-    if (supabase && !useMocks) {
-      supabase.from('users').select('*').then(
-        ({ data }) => {
-          if (data && data.length > 0) {
-            setUsers((prev) => {
-              const map = new Map<string, User>();
-              prev.forEach((u) => map.set(u.email.toLowerCase(), u));
-              (data as User[]).filter((u) => !isMockUser(u)).forEach((u) => map.set(u.email.toLowerCase(), u));
-              return Array.from(map.values());
-            });
-          }
-        },
-        () => {
-          // Silent fallback
-        }
-      );
-    }
   }, []);
 
   // Presence updater helper
@@ -1316,7 +1352,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Silent signout
     } finally {
       setCurrentUser(null);
+      setMustResetPassword(false);
       localStorage.removeItem('time2trade_auth_user');
+      localStorage.removeItem('time2trade_must_reset_active');
+      setFilters({ dateFilter: 'all', statusFilter: 'all' });
     }
   };
 
@@ -1933,7 +1972,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addPayment = async (paymentInput: Omit<Payment, 'id' | 'created_at' | 'status'>) => {
-    let targetTraderId = paymentInput.trader_id;
+    let targetTraderId: string | null = paymentInput.trader_id || null;
 
     const clientName = (paymentInput.client_name || (paymentInput as any).trader_name || '').trim() || 'Direct Client';
     const clientPhone = (paymentInput.client_phone || (paymentInput as any).trader_phone || '').trim();
@@ -1946,7 +1985,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return false;
     });
 
-    if (targetTrader) {
+    if (targetTrader && isValidUUID(targetTrader.id) && !isMockId(targetTrader.id)) {
       targetTraderId = targetTrader.id;
     } else {
       // Auto-create active trader record so client appears in Active Traders CRM and foreign key is satisfied
@@ -1988,9 +2027,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setTraders((prev) => [newTrader, ...prev]);
 
+      let traderInsertedInSupabase = false;
       if (supabase && !useMocks && isValidUUID(effectiveAssignedTo)) {
         try {
-          await supabase.from('active_traders').insert({
+          const { error: tErr } = await supabase.from('active_traders').insert({
             id: newTraderId,
             name: clientName,
             phone: clientPhone,
@@ -2002,12 +2042,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             total_profit_gained: 0,
             total_profit_shared: 0,
           });
+          if (!tErr) traderInsertedInSupabase = true;
         } catch {
-          // Auto-register trader failed — non-blocking
+          traderInsertedInSupabase = false;
         }
       }
 
-      targetTraderId = newTraderId;
+      targetTraderId = traderInsertedInSupabase ? newTraderId : null;
       targetTrader = newTrader;
     }
 
@@ -2057,7 +2098,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newPayment: Payment = {
       ...paymentInput,
       id: newPayId,
-      trader_id: targetTraderId,
+      trader_id: targetTraderId || 'manual-client',
       client_name: resolvedClientName,
       client_phone: resolvedClientPhone,
       trader_name: resolvedClientName,
@@ -2076,12 +2117,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (supabase && !useMocks) {
       try {
+        const sanitizedTraderId = targetTraderId && isValidUUID(targetTraderId) && !isMockId(targetTraderId)
+          ? targetTraderId
+          : null;
+
         const payload: Record<string, any> = {
           id: newPayId,
-          trader_id: targetTraderId,
+          trader_id: sanitizedTraderId,
           client_name: resolvedClientName,
           client_phone: resolvedClientPhone,
-          employee_id: effectiveEmployeeId,
+          employee_id: isValidUUID(effectiveEmployeeId) ? effectiveEmployeeId : null,
           amount: paymentInput.amount,
           payment_mode: paymentInput.payment_mode,
           utr: paymentInput.utr,
@@ -2090,25 +2135,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           status: 'pending_verification',
         };
 
+        const validDurations = ['3 Months', '6 Months', 'Yearly'];
+        if (paymentInput.subscription_duration && validDurations.includes(paymentInput.subscription_duration)) {
+          payload.subscription_duration = paymentInput.subscription_duration;
+        }
         if (paymentInput.service_category) payload.service_category = paymentInput.service_category;
         if (paymentInput.service_type) payload.service_type = paymentInput.service_type;
-        if (paymentInput.subscription_duration) payload.subscription_duration = paymentInput.subscription_duration;
         if (paymentInput.receiver_bank_name) payload.receiver_bank_name = paymentInput.receiver_bank_name;
         if (paymentInput.remarks) payload.remarks = paymentInput.remarks;
-        if (currentUser?.id) payload.submitted_by_employee_id = currentUser.id;
+        if (currentUser?.id && isValidUUID(currentUser.id)) payload.submitted_by_employee_id = currentUser.id;
         payload.is_shared = isSharedPayment;
 
         const { error } = await supabase.from('payments').insert(payload);
 
         if (error) {
-          // Extended payment columns not available — falling back to base columns
-          // Fallback to basic columns if migration columns aren't added yet
           await supabase.from('payments').insert({
             id: newPayId,
-            trader_id: targetTraderId,
+            trader_id: sanitizedTraderId,
             client_name: resolvedClientName,
             client_phone: resolvedClientPhone,
-            employee_id: effectiveEmployeeId,
+            employee_id: isValidUUID(effectiveEmployeeId) ? effectiveEmployeeId : null,
             amount: paymentInput.amount,
             payment_mode: paymentInput.payment_mode,
             utr: paymentInput.utr,
@@ -2492,6 +2538,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const deletePayment = async (paymentId: string) => {
+    const target = payments.find((p) => p.id === paymentId);
+    setPayments((prev) => {
+      const updated = prev.filter((p) => p.id !== paymentId);
+      try {
+        if (updated.length > 0) {
+          localStorage.setItem('time2trade_payments_cache', JSON.stringify(updated));
+        } else {
+          localStorage.removeItem('time2trade_payments_cache');
+        }
+      } catch {}
+      return updated;
+    });
+
+    if (target?.trader_id) {
+      const remainingWithTrader = payments.filter((p) => p.trader_id === target.trader_id && p.id !== paymentId);
+      if (remainingWithTrader.length === 0) {
+        setTraders((prev) => prev.filter((t) => t.id !== target.trader_id));
+        if (supabase && !useMocks && isValidUUID(target.trader_id)) {
+          try {
+            await supabase.from('active_traders').delete().eq('id', target.trader_id);
+          } catch {}
+        }
+      }
+    }
+
+    if (supabase && !useMocks) {
+      try {
+        await supabase.from('payment_allocations').delete().eq('payment_id', paymentId);
+        await supabase.from('payments').delete().eq('id', paymentId);
+      } catch {
+        // Non-blocking
+      }
+    }
+  };
+
+  const clearAllPayments = async () => {
+    setPayments([]);
+    setTraders((prev) => prev.filter((t) => isMockId(t.id)));
+    try {
+      localStorage.removeItem('time2trade_payments_cache');
+    } catch {}
+
+    if (supabase && !useMocks) {
+      try {
+        await supabase.from('payment_allocations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('payments').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch {
+        // Non-blocking
+      }
+    }
+  };
+
   const addExpense = async (expenseInput: Omit<Expense, 'id' | 'created_at'>) => {
     const newExpId = generateUUID();
     const now = new Date().toISOString();
@@ -2574,6 +2673,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addPayment,
         verifyPayment,
         updatePaymentClientDetails,
+        deletePayment,
+        clearAllPayments,
         addExpense,
         markNotificationRead,
         markAllNotificationsRead,

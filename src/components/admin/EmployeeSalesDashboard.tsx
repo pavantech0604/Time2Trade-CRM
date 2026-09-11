@@ -17,8 +17,40 @@ import {
 import { StatusBadge } from '../common/StatusBadge';
 
 export const EmployeeSalesDashboard: React.FC = () => {
-  const { payments: contextPayments, users } = useAuth();
+  const { payments: contextPayments, users, traders } = useAuth();
   const payments = contextPayments;
+
+  const resolveClientContact = (payment: any) => {
+    let name = (payment.client_name || payment.trader_name || '').trim();
+    let phone = (payment.client_phone || payment.trader_phone || '').trim();
+
+    if ((!name || name.toLowerCase() === 'client' || name.toLowerCase() === 'direct client') || !phone) {
+      const matched = traders.find((t) => 
+        (payment.trader_id && t.id === payment.trader_id) ||
+        (phone && t.phone && t.phone.replace(/\D/g, '') === phone.replace(/\D/g, ''))
+      );
+      if (matched) {
+        if (!name || name.toLowerCase() === 'client' || name.toLowerCase() === 'direct client') name = matched.name;
+        if (!phone) phone = matched.phone;
+      }
+    }
+
+    if ((!name || !phone) && typeof payment.remarks === 'string') {
+      if (!name) {
+        const nameMatch = payment.remarks.match(/(?:Client|Name|Client Name)\s*:\s*([^\n;,]+)/i);
+        if (nameMatch) name = nameMatch[1].trim();
+      }
+      if (!phone) {
+        const phoneMatch = payment.remarks.match(/(?:Phone|Mobile|Contact)\s*:\s*([0-9\+\s-]{10,14})/i);
+        if (phoneMatch) phone = phoneMatch[1].replace(/\D/g, '').slice(-10);
+      }
+    }
+
+    return {
+      displayName: name || 'Client',
+      displayPhone: phone,
+    };
+  };
 
   
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
@@ -289,8 +321,10 @@ export const EmployeeSalesDashboard: React.FC = () => {
             const filteredCardPayments = stat.payments.filter(({ payment }) => {
               if (!searchQuery) return true;
               const q = searchQuery.toLowerCase();
+              const { displayName, displayPhone } = resolveClientContact(payment);
               return (
-                payment.trader_name?.toLowerCase().includes(q) ||
+                displayName.toLowerCase().includes(q) ||
+                displayPhone.toLowerCase().includes(q) ||
                 payment.utr.toLowerCase().includes(q) ||
                 payment.payment_mode.toLowerCase().includes(q) ||
                 (payment.service_category && payment.service_category.toLowerCase().includes(q))
@@ -435,44 +469,49 @@ export const EmployeeSalesDashboard: React.FC = () => {
                                         hour: '2-digit', minute: '2-digit'
                                       })}
                                     </td>
-                                     <td className="py-4 px-4">
-                                       <div className="flex items-center gap-2.5">
-                                         <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 font-black text-xs flex items-center justify-center border border-blue-200/60 shrink-0">
-                                           {(payment.client_name || payment.trader_name || 'C').charAt(0).toUpperCase()}
-                                         </div>
-                                         <div>
-                                           <span className="font-bold text-slate-800 text-xs block leading-tight">
-                                             {payment.client_name || payment.trader_name || 'Client'}
-                                           </span>
-                                           {(payment.client_phone || payment.trader_phone) ? (
-                                             <div className="flex items-center gap-1.5 mt-0.5">
-                                               <span className="text-[11px] text-slate-500 font-mono">
-                                                 {payment.client_phone || payment.trader_phone}
-                                               </span>
-                                               <button
-                                                 type="button"
-                                                 onClick={(e) => {
-                                                   e.stopPropagation();
-                                                   navigator.clipboard.writeText(payment.client_phone || payment.trader_phone || '');
-                                                   setCopiedPhoneId(payment.id);
-                                                   setTimeout(() => setCopiedPhoneId(null), 1800);
-                                                 }}
-                                                 className="text-slate-400 hover:text-blue-600 p-0.5 rounded transition-colors cursor-pointer"
-                                                 title="Copy Phone"
-                                               >
-                                                 {copiedPhoneId === payment.id ? (
-                                                   <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
-                                                 ) : (
-                                                   <Copy className="w-3 h-3" />
-                                                 )}
-                                               </button>
-                                             </div>
-                                           ) : (
-                                             <span className="text-[10px] text-slate-400 italic">No phone</span>
-                                           )}
-                                         </div>
-                                       </div>
-                                     </td>
+                                    <td className="py-4 px-4">
+                                      {(() => {
+                                        const { displayName, displayPhone } = resolveClientContact(payment);
+                                        return (
+                                          <div className="flex items-center gap-2.5">
+                                            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 font-black text-xs flex items-center justify-center border border-blue-200/60 shrink-0">
+                                              {(displayName || 'C').charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                              <span className="font-bold text-slate-800 text-xs block leading-tight">
+                                                {displayName}
+                                              </span>
+                                              {displayPhone ? (
+                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                  <span className="text-[11px] text-slate-500 font-mono">
+                                                    {displayPhone}
+                                                  </span>
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      navigator.clipboard.writeText(displayPhone);
+                                                      setCopiedPhoneId(payment.id);
+                                                      setTimeout(() => setCopiedPhoneId(null), 1800);
+                                                    }}
+                                                    className="text-slate-400 hover:text-blue-600 p-0.5 rounded transition-colors cursor-pointer"
+                                                    title="Copy Phone"
+                                                  >
+                                                    {copiedPhoneId === payment.id ? (
+                                                      <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                                                    ) : (
+                                                      <Copy className="w-3 h-3" />
+                                                    )}
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <span className="text-[10px] text-slate-400 italic">No phone</span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })()}
+                                    </td>
                                     <td className="py-4 px-4">
                                       {payment.service_category ? (
                                         <div>
