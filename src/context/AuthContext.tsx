@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import {
   User,
   UserRole,
@@ -119,6 +119,10 @@ interface AuthContextType {
   // Visual Theme
   isDarkMode: boolean;
   toggleDarkMode: () => void;
+
+  // Live Sync Actions
+  refreshLivePayments: () => Promise<void>;
+  isLiveSyncing: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -373,8 +377,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     : null;
 
-  const loadSupabaseData = async () => {
+  // Live synchronization state
+  const [isLiveSyncing, setIsLiveSyncing] = useState<boolean>(false);
+  const isFetchingDataRef = useRef<boolean>(false);
+  const lastFetchTimeRef = useRef<number>(0);
+  const isPurgingDuplicatesRef = useRef<boolean>(false);
+
+  const loadSupabaseData = useCallback(async (force = false) => {
     if (!supabase) return;
+    const now = Date.now();
+    if (isFetchingDataRef.current) return;
+    if (!force && now - lastFetchTimeRef.current < 4000) return;
+
+    isFetchingDataRef.current = true;
+    lastFetchTimeRef.current = now;
+    setIsLiveSyncing(true);
     try {
       const [uRes, lRes, tRes, pRes, tdRes, expRes, allocRes] = await Promise.all([
         supabase.from('users').select('*'),
@@ -436,12 +453,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         );
 
-        // Merge rawPayments with INITIAL_PAYMENTS so verified employee submissions are never dropped
+        // Merge rawPayments with INITIAL_PAYMENTS using payment primary key ID so each distinct submission is preserved
         const payMap = new Map<string, any>();
-        INITIAL_PAYMENTS.forEach((p) => payMap.set(p.utr || p.id, p));
+        INITIAL_PAYMENTS.forEach((p) => payMap.set(p.id, p));
         rawPayments.forEach((p) => {
-          const key = p.utr || p.id;
-          payMap.set(key, { ...payMap.get(key), ...p });
+          payMap.set(p.id, { ...payMap.get(p.id), ...p });
         });
         const combinedPayments = Array.from(payMap.values());
 
@@ -576,6 +592,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
               const normalizedServiceType = p.service_type === 'Future Option' ? 'Option' : (p.service_type || 'Option');
 
+              // Multi-tier Employee Name resolution
+              const primaryAlloc = enrichedAllocs.find((a) => a.is_primary) || enrichedAllocs[0];
+              const empFromAlloc = primaryAlloc?.employee_name && primaryAlloc.employee_name !== 'Staff' && primaryAlloc.employee_name !== 'Staff Member'
+                ? primaryAlloc.employee_name
+                : (primaryAlloc?.employee_id ? userList.find((u) => u.id === primaryAlloc.employee_id)?.name : null);
+
+              const empFromDirectId = p.employee_id ? userList.find((u) => u.id === p.employee_id)?.name : null;
+              const empFromSubmitter = p.submitted_by_employee_id ? userList.find((u) => u.id === p.submitted_by_employee_id)?.name : null;
+              const empFromTrader = matchedTrader?.employee_name && matchedTrader.employee_name !== 'Staff' && matchedTrader.employee_name !== 'Staff Member'
+                ? matchedTrader.employee_name
+                : (matchedTrader?.employee_id ? userList.find((u) => u.id === matchedTrader.employee_id)?.name : null);
+
+              let empFromRemarks = '';
+              if (typeof p.remarks === 'string') {
+                const allocMatch = p.remarks.match(/Allocations:\s*([^:\(\n,]+)/i);
+                if (allocMatch && allocMatch[1].trim()) empFromRemarks = allocMatch[1].trim();
+                if (!empFromRemarks) {
+                  const staffMatch = p.remarks.match(/(?:Staff|Employee|Executive|Agent|Submitted by)\s*:\s*([^\n;,]+)/i);
+                  if (staffMatch && staffMatch[1].trim()) empFromRemarks = staffMatch[1].trim();
+                }
+              }
+
+              const resolvedEmpName =
+                (p.employee_name && p.employee_name !== 'Staff' && p.employee_name !== 'Staff Member' ? p.employee_name : '') ||
+                empFromAlloc ||
+                empFromDirectId ||
+                empFromSubmitter ||
+                empFromTrader ||
+                empFromRemarks ||
+                (p.submitted_by_employee_name && p.submitted_by_employee_name !== 'Staff' && p.submitted_by_employee_name !== 'Staff Member' ? p.submitted_by_employee_name : '') ||
+                '';
+
+              const resolvedSubmitterName =
+                empFromSubmitter ||
+                (p.submitted_by_employee_name && p.submitted_by_employee_name !== 'Staff' ? p.submitted_by_employee_name : '') ||
+                resolvedEmpName;
+
               return {
                 ...p,
                 trader_id: matchedTrader ? matchedTrader.id : p.trader_id,
@@ -583,6 +636,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 client_phone: resolvedClientPhone,
                 trader_name: resolvedClientName,
                 trader_phone: resolvedClientPhone,
+                employee_name: resolvedEmpName || p.employee_name,
+                submitted_by_employee_name: resolvedSubmitterName || p.submitted_by_employee_name,
                 service_type: normalizedServiceType,
                 allocations: enrichedAllocs.length > 0 ? enrichedAllocs : p.allocations,
                 is_shared: (enrichedAllocs.length > 1) || p.is_shared,
@@ -595,8 +650,73 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           });
 
+          // Deduplicate payments by normalized UTR to eliminate duplicate submissions
+          const utrPaymentMap = new Map<string, any>();
+          const deduplicatedPayments: any[] = [];
+          const duplicateIdsToPurge: string[] = [];
+
+          mappedPayments.forEach((p) => {
+            const normUtr = (p.utr || '').trim().toLowerCase();
+            if (!normUtr || normUtr === 'manual' || normUtr === 'cash' || normUtr === 'n/a') {
+              deduplicatedPayments.push(p);
+              return;
+            }
+
+            if (!utrPaymentMap.has(normUtr)) {
+              utrPaymentMap.set(normUtr, p);
+              deduplicatedPayments.push(p);
+            } else {
+              const existing = utrPaymentMap.get(normUtr);
+              const existingIsApproved = existing.status === 'approved';
+              const currentIsApproved = p.status === 'approved';
+
+              let keepCurrent = false;
+              if (!existingIsApproved && currentIsApproved) {
+                keepCurrent = true;
+              } else if (existingIsApproved === currentIsApproved) {
+                const existingTime = new Date(existing.created_at || existing.transaction_time || 0).getTime();
+                const currentTime = new Date(p.created_at || p.transaction_time || 0).getTime();
+                // If current submission is earlier, keep current. Otherwise keep existing (the 11th over the 15th)
+                if (currentTime > 0 && existingTime > 0 && currentTime < existingTime) {
+                  keepCurrent = true;
+                }
+              }
+
+              if (keepCurrent) {
+                const idx = deduplicatedPayments.findIndex((item) => item.id === existing.id);
+                if (idx !== -1) deduplicatedPayments[idx] = p;
+                utrPaymentMap.set(normUtr, p);
+                if (existing.id && isValidUUID(existing.id) && !isMockId(existing.id)) {
+                  duplicateIdsToPurge.push(existing.id);
+                }
+              } else {
+                if (p.id && isValidUUID(p.id) && !isMockId(p.id)) {
+                  duplicateIdsToPurge.push(p.id);
+                }
+              }
+            }
+          });
+
           setTraders(tradersList);
-          setPayments(mappedPayments);
+          setPayments(deduplicatedPayments);
+
+          // Permanently purge redundant duplicate uploads from Supabase
+          if (supabase && duplicateIdsToPurge.length > 0 && !isPurgingDuplicatesRef.current) {
+            isPurgingDuplicatesRef.current = true;
+            (async () => {
+              try {
+                console.log(`[Auto-Deduplication] Purging ${duplicateIdsToPurge.length} duplicate payment records from Supabase:`, duplicateIdsToPurge);
+                await supabase.from('payment_allocations').delete().in('payment_id', duplicateIdsToPurge);
+                await supabase.from('payments').delete().in('id', duplicateIdsToPurge);
+              } catch (delErr) {
+                console.error('Failed to purge duplicate records from Supabase:', delErr);
+              } finally {
+                setTimeout(() => {
+                  isPurgingDuplicatesRef.current = false;
+                }, 15000);
+              }
+            })();
+          }
 
           // Persist synthesized active traders to Supabase safely in background
           const client = supabase;
@@ -637,8 +757,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch {
       // Non-blocking data fetch error handled safely
+    } finally {
+      isFetchingDataRef.current = false;
+      setIsLiveSyncing(false);
     }
-  };
+  }, []);
 
   // Check initial session
   useEffect(() => {
@@ -728,6 +851,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     checkSession();
+  }, []);
+
+  // Live Supabase Realtime & Auto-Sync Listener for Payments & Allocations
+  useEffect(() => {
+    if (!supabase) return;
+
+    // 1. Subscribe to Postgres changes on payments and allocations
+    const paymentsChannel = supabase
+      .channel('realtime-payments-channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payments' },
+        (payload) => {
+          console.log('[Realtime] Live payment change detected:', payload.eventType);
+          loadSupabaseData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payment_allocations' },
+        (payload) => {
+          console.log('[Realtime] Live allocation change detected:', payload.eventType);
+          loadSupabaseData();
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] Payments channel status:', status);
+      });
+
+    // 2. High-reliability background sync every 10 seconds
+    const pollInterval = setInterval(() => {
+      loadSupabaseData();
+    }, 10000);
+
+    // 3. Tab Visibility & Window Focus Auto-Sync
+    const handleSyncOnFocus = () => {
+      if (document.visibilityState === 'visible') {
+        loadSupabaseData();
+      }
+    };
+
+    window.addEventListener('focus', handleSyncOnFocus);
+    document.addEventListener('visibilitychange', handleSyncOnFocus);
+
+    return () => {
+      supabase?.removeChannel(paymentsChannel);
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleSyncOnFocus);
+      document.removeEventListener('visibilitychange', handleSyncOnFocus);
+    };
   }, []);
 
   // Presence updater helper
@@ -1972,6 +2145,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addPayment = async (paymentInput: Omit<Payment, 'id' | 'created_at' | 'status'>) => {
+    // 0. Anti-duplicate safeguard: strictly reject submission if UTR has already been submitted
+    const normalizedUtr = (paymentInput.utr || '').trim().toLowerCase();
+    if (normalizedUtr && normalizedUtr !== 'manual' && normalizedUtr !== 'cash' && normalizedUtr !== 'n/a') {
+      const localDuplicate = payments.find(
+        (p) => (p.utr || '').trim().toLowerCase() === normalizedUtr
+      );
+      if (localDuplicate) {
+        const errorMsg = `Duplicate transaction rejected: UTR "${paymentInput.utr}" has already been uploaded for client "${localDuplicate.client_name || 'Client'}". You cannot submit the same transaction twice.`;
+        console.warn(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      if (supabase && !useMocks) {
+        const { data: remoteDups } = await supabase
+          .from('payments')
+          .select('id, utr, client_name, amount')
+          .ilike('utr', paymentInput.utr.trim())
+          .limit(1);
+
+        if (remoteDups && remoteDups.length > 0) {
+          const errorMsg = `Duplicate transaction rejected: UTR "${paymentInput.utr}" already exists in the database. You cannot submit the same transaction twice.`;
+          console.warn(errorMsg);
+          throw new Error(errorMsg);
+        }
+      }
+    }
+
     let targetTraderId: string | null = paymentInput.trader_id || null;
 
     const clientName = (paymentInput.client_name || (paymentInput as any).trader_name || '').trim() || 'Direct Client';
@@ -2187,6 +2387,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
         }
+
+        // Immediately refresh state with latest database records and allocations
+        await loadSupabaseData();
       } catch {
         // Network error inserting payment — non-blocking
       }
@@ -2687,6 +2890,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         adminResetEmployeePassword,
         isDarkMode,
         toggleDarkMode,
+        refreshLivePayments: loadSupabaseData,
+        isLiveSyncing,
       }}
     >
       {children}

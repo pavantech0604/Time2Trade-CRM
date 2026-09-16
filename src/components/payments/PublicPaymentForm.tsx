@@ -44,6 +44,7 @@ import {
   CheckSquare,
   MessageSquare,
   PhoneCall,
+  AlertTriangle,
 } from 'lucide-react';
 import { uploadFileToBucket, supabase } from '../../lib/supabase';
 import { formatINR } from '../../lib/formatters';
@@ -79,7 +80,7 @@ interface PublicPaymentFormProps {
 }
 
 export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) => {
-  const { currentUser, traders, addPayment, users } = useAuth();
+  const { currentUser, traders, addPayment, users, payments } = useAuth();
 
   // 1. Client Details State (Defaults to fresh new client, not sample trader)
   const [clientEntryMode, setClientEntryMode] = useState<'direct' | 'existing'>('direct');
@@ -145,6 +146,87 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
   // Confirmation modal state for removing allocated employee
   const [removeConfirmEmp, setRemoveConfirmEmp] = useState<PaymentAllocation | null>(null);
+
+  // Anti-duplicate transaction state
+  const [duplicateCheck, setDuplicateCheck] = useState<{
+    isDuplicate: boolean;
+    message: string;
+    existingRecord?: any;
+  } | null>(null);
+  const [isCheckingUtr, setIsCheckingUtr] = useState(false);
+  const paymentsRef = useRef(payments);
+  useEffect(() => {
+    paymentsRef.current = payments;
+  }, [payments]);
+
+  // Real-time check for duplicate transaction reference (UTR)
+  useEffect(() => {
+    const cleanUtr = utr.trim().toLowerCase();
+    if (!cleanUtr || cleanUtr.length < 4 || cleanUtr === 'manual' || cleanUtr === 'cash' || cleanUtr === 'n/a') {
+      setDuplicateCheck(null);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const performDuplicateCheck = async () => {
+      // 1. Check in-memory payments
+      const localMatch = (paymentsRef.current || []).find(
+        (p) => (p.utr || '').trim().toLowerCase() === cleanUtr
+      );
+
+      if (localMatch) {
+        const txDate = localMatch.transaction_time
+          ? new Date(localMatch.transaction_time).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+          : (localMatch.created_at ? new Date(localMatch.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Earlier date');
+        setDuplicateCheck({
+          isDuplicate: true,
+          message: `This transaction (UTR: ${localMatch.utr}) was already submitted on ${txDate} for client "${localMatch.client_name || 'Client'}" (Amount: ${formatINR(localMatch.amount)})${localMatch.employee_name ? ` by staff member ${localMatch.employee_name}` : ''}.`,
+          existingRecord: localMatch,
+        });
+        return;
+      }
+
+      // 2. Async check in Supabase database
+      if (supabase) {
+        setIsCheckingUtr(true);
+        try {
+          const { data } = await supabase
+            .from('payments')
+            .select('id, utr, amount, client_name, transaction_time, created_at, employee_name, status')
+            .ilike('utr', utr.trim())
+            .limit(1);
+
+          if (!isCancelled && data && data.length > 0) {
+            const remote = data[0];
+            const txDate = remote.transaction_time
+              ? new Date(remote.transaction_time).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+              : (remote.created_at ? new Date(remote.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Earlier date');
+            setDuplicateCheck({
+              isDuplicate: true,
+              message: `This transaction (UTR: ${remote.utr}) was already submitted on ${txDate} for client "${remote.client_name || 'Client'}" (Amount: ${formatINR(remote.amount)})${remote.employee_name ? ` by staff member ${remote.employee_name}` : ''}.`,
+              existingRecord: remote,
+            });
+            return;
+          }
+        } catch {
+          // Ignore network errors in local/offline
+        } finally {
+          if (!isCancelled) setIsCheckingUtr(false);
+        }
+      }
+
+      if (!isCancelled) {
+        setDuplicateCheck(null);
+      }
+    };
+
+    const timer = setTimeout(performDuplicateCheck, 400);
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [utr]);
 
   // Category change side-effect: ensure serviceType belongs to category, or clear if mismatched
   useEffect(() => {
@@ -366,17 +448,22 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
   // Form Validation Checklist
   const isClientValid = Boolean(clientName.trim().length >= 2 && clientPhone.trim().length >= 10);
-  const isPaymentValid = Boolean(totalPaymentAmount > 0 && utr.trim() && screenshotUrl);
+  const isPaymentValid = Boolean(totalPaymentAmount > 0 && utr.trim() && screenshotUrl && !duplicateCheck?.isDuplicate);
   const isFormValid =
     isClientValid &&
     Boolean(serviceCategory && serviceType && subscriptionDuration) &&
     isPaymentValid &&
     isAllocationValid &&
-    isConfirmed;
+    isConfirmed &&
+    !duplicateCheck?.isDuplicate;
 
   // Form Submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (duplicateCheck?.isDuplicate) {
+      alert(`Submission Blocked: ${duplicateCheck.message}\nDuplicate transactions cannot be uploaded again.`);
+      return;
+    }
     if (!isFormValid || isSubmitting) return;
 
     setIsSubmitting(true);
@@ -1324,17 +1411,52 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    UTR / Reference Number <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      UTR / Reference Number <span className="text-rose-500">*</span>
+                    </label>
+                    {isCheckingUtr && (
+                      <span className="text-[10px] text-blue-600 font-semibold flex items-center gap-1">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin" /> Verifying UTR...
+                      </span>
+                    )}
+                    {duplicateCheck?.isDuplicate && (
+                      <span className="text-[10px] text-rose-600 font-bold flex items-center gap-1">
+                        <AlertTriangle className="w-2.5 h-2.5" /> Duplicate
+                      </span>
+                    )}
+                    {!duplicateCheck?.isDuplicate && !isCheckingUtr && utr.trim().length >= 6 && (
+                      <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" /> Unique UTR
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="text"
                     required
                     value={utr}
                     onChange={(e) => setUtr(e.target.value)}
                     placeholder="e.g. UTR123456789"
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-800 focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all uppercase"
+                    className={`w-full bg-white border rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-800 focus:outline-none transition-all uppercase ${
+                      duplicateCheck?.isDuplicate
+                        ? 'border-rose-400 bg-rose-50/40 text-rose-900 ring-2 ring-rose-500/20'
+                        : 'border-slate-300 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20'
+                    }`}
                   />
+                  {duplicateCheck?.isDuplicate && (
+                    <div className="mt-2 p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-800 space-y-1 animate-in fade-in">
+                      <div className="flex items-center gap-1.5 font-bold text-rose-900">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>Duplicate Transaction Detected</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        {duplicateCheck.message}
+                      </p>
+                      <p className="text-[11px] font-bold text-rose-700">
+                        ❌ This transaction has already been recorded in the CRM. You cannot submit it again.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div>

@@ -19,12 +19,24 @@ import {
   Copy,
   Check,
   MessageSquare,
+  RefreshCw,
 } from 'lucide-react';
 import { MetricCard } from '../common/MetricCard';
 import { LeadStatus } from '../../types';
 
 export const EmployeeDashboard: React.FC = () => {
-  const { currentUser, leads, traders, payments, addLead, convertLeadToTrader, mustResetPassword, setMustResetPassword } = useAuth();
+  const {
+    currentUser,
+    leads,
+    traders,
+    payments,
+    addLead,
+    convertLeadToTrader,
+    mustResetPassword,
+    setMustResetPassword,
+    refreshLivePayments,
+    isLiveSyncing,
+  } = useAuth();
   const [activeTab, setActiveTab] = useState<'leads' | 'traders' | 'payments'>('leads');
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
@@ -313,15 +325,30 @@ export const EmployeeDashboard: React.FC = () => {
             </button>
           </div>
 
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, phone, UTR..."
-              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
-            />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => refreshLivePayments()}
+              disabled={isLiveSyncing}
+              className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center gap-1.5 transition-all cursor-pointer shadow-xs shrink-0 disabled:opacity-60"
+              title="Refresh live data from Supabase"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isLiveSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline text-[11px] font-semibold">
+                {isLiveSyncing ? 'Syncing...' : 'Sync Live'}
+              </span>
+            </button>
+
+            <div className="relative flex-1 sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name, phone, UTR..."
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
+              />
+            </div>
           </div>
         </div>
 
