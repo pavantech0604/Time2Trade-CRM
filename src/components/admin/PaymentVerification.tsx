@@ -26,6 +26,7 @@ import {
   Wallet,
   ChevronDown,
   Calendar,
+  Trash2,
 } from 'lucide-react';
 
 export const PaymentVerification: React.FC = () => {
@@ -33,11 +34,15 @@ export const PaymentVerification: React.FC = () => {
     payments,
     verifyPayment,
     updatePaymentClientDetails,
+    deletePayment,
     traders,
     users,
     leads,
     refreshLivePayments,
   } = useAuth();
+
+  const [paymentToDelete, setPaymentToDelete] = useState<Payment | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Automatically refresh payments on mount and periodically in the background
   useEffect(() => {
@@ -1029,11 +1034,11 @@ export const PaymentVerification: React.FC = () => {
                 )}
 
                 {/* Actions */}
-                <div className="pt-2 border-t border-slate-100">
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => handleOpenDrawer(payment)}
-                    className={`w-full py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98 ${
+                    className={`flex-1 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98 ${
                       payment.status === 'pending_verification'
                         ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/25 ring-2 ring-amber-400/30'
                         : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
@@ -1048,6 +1053,14 @@ export const PaymentVerification: React.FC = () => {
                       <span>Inspect Log</span>
                     )}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentToDelete(payment)}
+                    className="p-3 rounded-2xl bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                    title="Delete Transaction"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             );
@@ -1055,48 +1068,50 @@ export const PaymentVerification: React.FC = () => {
         )}
       </div>
 
-      {/* Desktop View: Heavy Table */}
+      {/* Desktop View: Heavy Table with guaranteed widths to prevent column overriding */}
       <div className="hidden md:block bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="w-full overflow-hidden">
-          <table className="w-full table-fixed text-left text-xs">
+        <div className="w-full overflow-x-auto">
+          <table className="w-full min-w-[1080px] text-left text-xs">
             <colgroup>
-              <col className="w-[19%]" />
-              <col className="w-[14%]" />
-              <col className="w-[11%]" />
-              <col className="w-[14%]" />
-              <col className="w-[12%]" />
-              <col className="w-[13%]" />
-              <col className="w-[9%]" />
-              <col className="w-[8%]" />
+              <col className="w-[18%] min-w-[160px]" />
+              <col className="w-[13%] min-w-[125px]" />
+              <col className="w-[11%] min-w-[95px]" />
+              <col className="w-[12%] min-w-[110px]" />
+              <col className="w-[12%] min-w-[110px]" />
+              <col className="w-[11%] min-w-[105px]" />
+              <col className="w-[10%] min-w-[105px]" />
+              <col className="w-[8%] min-w-[85px]" />
+              <col className="w-[5%] min-w-[55px]" />
             </colgroup>
             <thead>
               <tr className="border-b border-slate-100 text-slate-600 uppercase text-[10px] tracking-wider bg-[#091A2F]/5">
-                <th className="py-2.5 px-2.5 text-slate-500 truncate">Client</th>
-                <th className="py-2.5 px-2 text-slate-500 truncate">Employee</th>
-                <th className="py-2.5 px-2 text-slate-500 truncate">Amount</th>
-                <th className="py-2.5 px-2 text-slate-500 truncate">Service</th>
-                <th className="py-2.5 px-2 text-slate-500 truncate">Mode / UTR</th>
+                <th className="py-3 px-3 text-slate-500 font-bold">Client</th>
+                <th className="py-3 px-2 text-slate-500 font-bold">Employee</th>
+                <th className="py-3 px-2 text-slate-500 font-bold">Amount</th>
+                <th className="py-3 px-2 text-slate-500 font-bold">Service</th>
+                <th className="py-3 px-2 text-slate-500 font-bold">Mode / UTR</th>
                 <th
-                  className="py-2.5 px-2 text-slate-600 cursor-pointer hover:bg-slate-100/70 transition-colors select-none"
+                  className="py-3 px-2 text-slate-600 cursor-pointer hover:bg-slate-100/70 transition-colors select-none font-bold"
                   onClick={() => setDateSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
                   title={`Click to sort by date (${dateSortOrder === 'asc' ? 'Ascending' : 'Descending'})`}
                 >
                   <div className="flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                    <span className="font-bold text-slate-700">Date</span>
+                    <span className="text-slate-700">Date</span>
                     <span className="text-xs text-blue-600 font-black">
                       {dateSortOrder === 'asc' ? '↑' : '↓'}
                     </span>
                   </div>
                 </th>
-                <th className="py-2.5 px-2 text-slate-500 truncate">Status</th>
-                <th className="py-2.5 px-2.5 text-right text-slate-500 truncate">Action</th>
+                <th className="py-3 px-2 text-center text-slate-500 font-bold">Status</th>
+                <th className="py-3 px-2 text-center text-slate-500 font-bold">Action</th>
+                <th className="py-3 px-1.5 text-center text-slate-500 font-bold text-[9px] uppercase tracking-wider">Delete</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80">
               {filteredPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-14 text-center text-slate-400">
+                  <td colSpan={9} className="py-14 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
                         <ShieldCheck className="w-6 h-6" />
@@ -1380,37 +1395,52 @@ export const PaymentVerification: React.FC = () => {
                           );
                         })()}
                       </td>
-                      <td className="py-2.5 px-2">
-                        <div className="min-w-0">
+                      <td className="py-3 px-2 text-center whitespace-nowrap">
+                        <div className="inline-flex items-center justify-center">
                           {payment.status === 'pending_verification' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
-                              <AlertTriangle className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs whitespace-nowrap">
+                              <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
                               <span>Pending</span>
                             </span>
                           ) : payment.status === 'approved' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
-                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs whitespace-nowrap">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
                               <span>Approved</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap">
-                              <XCircle className="w-2.5 h-2.5 text-rose-600 shrink-0" />
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs whitespace-nowrap">
+                              <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
                               <span>Rejected</span>
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="py-2.5 px-2.5 text-right">
-                        <div className="flex items-center justify-end">
+                      <td className="py-3 px-2 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center">
                           <button
                             onClick={() => handleOpenDrawer(payment)}
-                            className={`px-2.5 py-1 rounded-lg font-extrabold text-xs transition-all cursor-pointer shadow-xs whitespace-nowrap ${
+                            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer shadow-xs whitespace-nowrap ${
                               payment.status === 'pending_verification'
-                                ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/20 shadow-sm animate-pulse'
-                                : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
+                                ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-amber-500/20 shadow-sm'
+                                : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 hover:text-slate-900'
                             }`}
                           >
                             {payment.status === 'pending_verification' ? 'Verify' : 'Inspect'}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-3 px-1.5 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPaymentToDelete(payment);
+                            }}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all cursor-pointer"
+                            title="Delete transaction (Admin & Google Sheets)"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -1821,6 +1851,105 @@ export const PaymentVerification: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Admin Delete Action in Drawer */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400 font-medium">Record Management</span>
+              <button
+                type="button"
+                onClick={() => setPaymentToDelete(selectedPayment)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Transaction</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Delete Confirmation Modal */}
+      {paymentToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 font-sans animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6 stroke-[2.5]" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">Delete Payment Record?</h3>
+                <p className="text-xs text-slate-500 font-medium">Permanent Admin Action</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Client:</span>
+                <span className="font-bold text-slate-900">{paymentToDelete.client_name || paymentToDelete.trader_name || 'Client'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Amount:</span>
+                <span className="font-extrabold text-emerald-700">{formatINR(paymentToDelete.amount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">UTR Reference:</span>
+                <span className="font-mono font-bold text-slate-700">{paymentToDelete.utr}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Staff Assigned:</span>
+                <span className="font-semibold text-slate-800">{paymentToDelete.employee_name || 'Direct / Head Office'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Status:</span>
+                <span className="font-semibold capitalize text-slate-700">{paymentToDelete.status.replace(/_/g, ' ')}</span>
+              </div>
+            </div>
+
+            <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-3 text-[11px] text-emerald-900 flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Google Sheets & Form Responses Sync:</strong> Deletion will automatically dispatch a signal to remove the row from your Google Sheet and delete the response from your linked Google Form (UTR: <code className="font-mono font-bold text-emerald-800">{paymentToDelete.utr}</code>) to eliminate duplicates.
+              </span>
+            </div>
+
+            <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-900 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Warning:</strong> Deleting this payment will permanently remove it from the verification queue and any associated sales allocations.
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setPaymentToDelete(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  if (!paymentToDelete) return;
+                  setIsDeleting(true);
+                  try {
+                    await deletePayment(paymentToDelete.id);
+                    if (selectedPayment?.id === paymentToDelete.id) {
+                      setSelectedPayment(null);
+                    }
+                    setPaymentToDelete(null);
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 flex items-center gap-1.5 shadow-md shadow-rose-600/20 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>Confirm Delete</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

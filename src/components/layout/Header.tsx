@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   Menu,
   KeyRound,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { UserPresenceStatus } from '../../types';
@@ -276,6 +277,19 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
             <span>Submit Payment</span>
+          </button>
+        )}
+
+        {/* Quick Team Chat Action */}
+        {onNavigate && (
+          <button
+            type="button"
+            onClick={() => onNavigate('team-chat')}
+            aria-label="Open Team Chat & Sales Celebrations"
+            className="relative p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200 transition-all cursor-pointer"
+            title="Open Team Chat & Sales Celebrations"
+          >
+            <MessageSquare className="w-4 h-4" />
           </button>
         )}
 

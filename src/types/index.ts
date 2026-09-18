@@ -265,3 +265,34 @@ export interface DashboardKPIs {
   pendingVerificationCount: number;
   totalExpenses: number;
 }
+
+export type ChatMessageType = 'text' | 'payment_submitted' | 'payment_verified' | 'celebration' | 'urgent';
+
+export interface ChatMessage {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: UserRole;
+  sender_avatar?: string;
+  recipient_id?: string; // If set, direct message to this user. If omitted, sent to channel.
+  channel_id: 'sales-celebrations' | 'payment-queries' | 'general-desk' | string;
+  message: string;
+  message_type?: ChatMessageType;
+  payment_meta?: {
+    payment_id?: string;
+    amount?: number;
+    client_name?: string;
+    client_phone?: string;
+    utr?: string;
+    service_category?: string;
+    subscription_duration?: string;
+    allocations?: {
+      employee_id: string;
+      employee_name: string;
+      amount: number;
+      percentage: number;
+    }[];
+  };
+  reactions?: { [emoji: string]: string[] }; // emoji -> array of user_ids
+  created_at: string;
+}

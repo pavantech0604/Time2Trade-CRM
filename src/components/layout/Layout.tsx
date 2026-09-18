@@ -9,6 +9,7 @@ import {
   FileSpreadsheet,
   Menu,
   X,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BackgroundEffects } from '../common/BackgroundEffects';
@@ -39,12 +40,14 @@ export const Layout: React.FC<LayoutProps> = ({
     if (role === 'employee') {
       items = [
         { id: 'employee-dashboard', label: 'My Desk', icon: LayoutDashboard },
+        { id: 'team-chat', label: 'Chat', icon: MessageSquare },
         { id: 'public-payment-form', label: 'Submit Pay', icon: CreditCard },
       ];
     } else {
       // Admin default
       items = [
         { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+        { id: 'team-chat', label: 'Chat', icon: MessageSquare },
         { id: 'employee-sales', label: 'Emp Sales', icon: FileSpreadsheet },
         { id: 'employee-management', label: 'Staff', icon: UserCog },
         { id: 'admin-attendance', label: 'Shifts', icon: Clock },

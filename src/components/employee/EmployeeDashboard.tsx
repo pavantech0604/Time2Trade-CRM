@@ -101,15 +101,27 @@ export const EmployeeDashboard: React.FC = () => {
 
   if (!currentUser) return null;
 
+  // Robust Employee Matching across ID, Name, or Email
+  const isEmployeeMatch = (empId?: string, empName?: string, empEmail?: string) => {
+    if (!currentUser) return false;
+    if (empId && empId === currentUser.id) return true;
+    if (empName && currentUser.name && empName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) return true;
+    if (empEmail && currentUser.email && empEmail.trim().toLowerCase() === currentUser.email.trim().toLowerCase()) return true;
+    return false;
+  };
+
   // Derived Data: All payments where current employee is primary, submitting, or shared recipient
   const myLeads = leads.filter(l => l.assigned_to === currentUser.id && l.status !== 'active_trader');
   const myTraders = traders.filter(t => t.employee_id === currentUser.id);
 
   const myPayments = payments.filter(p => {
-    const isDirect = p.employee_id === currentUser.id || p.submitted_by_employee_id === currentUser.id;
-    const isAllocated = p.allocations?.some(a => a.employee_id === currentUser.id);
+    const isDirect = isEmployeeMatch(p.employee_id, p.employee_name) ||
+                     isEmployeeMatch(p.submitted_by_employee_id, p.submitted_by_employee_name);
+    const isAllocated = p.allocations?.some(a => isEmployeeMatch(a.employee_id, a.employee_name, a.employee_email));
     return isDirect || isAllocated;
   });
+
+  const [paymentSubFilter, setPaymentSubFilter] = useState<'all' | 'direct' | 'shared' | 'approved' | 'pending'>('all');
 
   const filteredLeads = myLeads.filter(l => 
     l.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -121,23 +133,40 @@ export const EmployeeDashboard: React.FC = () => {
     t.phone.includes(searchQuery)
   );
 
+  const getMyCreditedAmount = (p: typeof payments[0]) => {
+    if (p.allocations && p.allocations.length > 0) {
+      const myAlloc = p.allocations.find(a => isEmployeeMatch(a.employee_id, a.employee_name, a.employee_email));
+      if (myAlloc) return Number(myAlloc.allocation_amount) || 0;
+    }
+    const isDirect = isEmployeeMatch(p.employee_id, p.employee_name) ||
+                     isEmployeeMatch(p.submitted_by_employee_id, p.submitted_by_employee_name);
+    return isDirect ? (Number(p.amount) || 0) : 0;
+  };
+
   const filteredPayments = myPayments.filter(p => {
+    // 1. Sub-filter
+    if (paymentSubFilter === 'approved' && p.status !== 'approved') return false;
+    if (paymentSubFilter === 'pending' && p.status !== 'pending_verification') return false;
+    if (paymentSubFilter === 'shared') {
+      const isShared = Boolean(p.is_shared || (p.allocations && p.allocations.length > 1));
+      if (!isShared) return false;
+    }
+    if (paymentSubFilter === 'direct') {
+      const isShared = Boolean(p.is_shared || (p.allocations && p.allocations.length > 1));
+      if (isShared) return false;
+    }
+
+    // 2. Search query
     const { displayName, displayPhone } = resolveClientContact(p);
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
     return (
       displayName.toLowerCase().includes(q) || 
       displayPhone.includes(q) ||
-      p.utr.toLowerCase().includes(q)
+      p.utr.toLowerCase().includes(q) ||
+      (p.service_category || '').toLowerCase().includes(q)
     );
   });
-
-  const getMyCreditedAmount = (p: typeof payments[0]) => {
-    if (p.allocations && p.allocations.length > 0) {
-      const myAlloc = p.allocations.find(a => a.employee_id === currentUser.id);
-      return myAlloc ? Number(myAlloc.allocation_amount) : 0;
-    }
-    return p.employee_id === currentUser.id ? Number(p.amount) : 0;
-  };
 
   const totalProfit = myTraders.reduce((sum, t) => sum + (Number(t.total_profit_shared) || 0), 0);
   const approvedPayments = myPayments.filter(p => p.status === 'approved');
@@ -431,110 +460,201 @@ export const EmployeeDashboard: React.FC = () => {
           )}
 
           {activeTab === 'payments' && (
-            filteredPayments.length > 0 ? filteredPayments.map((payment) => {
-              const myCredited = getMyCreditedAmount(payment);
-              const isShared = Boolean(payment.is_shared || (payment.allocations && payment.allocations.length > 1));
-              const otherEmployeesCount = payment.allocations
-                ? payment.allocations.filter((a) => a.employee_id !== currentUser.id && a.allocation_amount > 0).length
-                : 0;
-              const { displayName, displayPhone } = resolveClientContact(payment);
+            <div className="space-y-4">
+              {/* Payment Sub-Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                <button
+                  type="button"
+                  onClick={() => setPaymentSubFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    paymentSubFilter === 'all'
+                      ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  All My Sales ({myPayments.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentSubFilter('direct')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    paymentSubFilter === 'direct'
+                      ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  Direct Submissions ({myPayments.filter(p => !p.is_shared && (!p.allocations || p.allocations.length <= 1)).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentSubFilter('shared')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    paymentSubFilter === 'shared'
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  Shared Payments ({myPayments.filter(p => p.is_shared || (p.allocations && p.allocations.length > 1)).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentSubFilter('approved')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    paymentSubFilter === 'approved'
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-500/20'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  Approved ({myPayments.filter(p => p.status === 'approved').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentSubFilter('pending')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    paymentSubFilter === 'pending'
+                      ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  Under Review ({myPayments.filter(p => p.status === 'pending_verification').length})
+                </button>
+              </div>
 
-              return (
-                <div key={payment.id} className="bg-white p-5 rounded-2xl border border-slate-200/80 hover:border-indigo-300 shadow-sm transition-all space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-base shadow-inner shrink-0">
-                        {(displayName || 'C').charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-slate-800 text-sm">{displayName}</h4>
-                          {displayPhone && (
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                                {displayPhone}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigator.clipboard.writeText(displayPhone);
-                                  setCopiedPhoneId(payment.id);
-                                  setTimeout(() => setCopiedPhoneId(null), 1800);
-                                }}
-                                className="text-slate-400 hover:text-blue-600 p-0.5 rounded transition-colors cursor-pointer"
-                                title="Copy Phone"
-                              >
-                                {copiedPhoneId === payment.id ? (
-                                  <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
-                                ) : (
-                                  <Copy className="w-3 h-3" />
-                                )}
-                              </button>
+              {filteredPayments.length > 0 ? (
+                filteredPayments.map((payment) => {
+                  const myCredited = getMyCreditedAmount(payment);
+                  const isShared = Boolean(payment.is_shared || (payment.allocations && payment.allocations.length > 1));
+                  const otherEmployeesCount = payment.allocations
+                    ? payment.allocations.filter((a) => !isEmployeeMatch(a.employee_id, a.employee_name, a.employee_email) && a.allocation_amount > 0).length
+                    : 0;
+                  const { displayName, displayPhone } = resolveClientContact(payment);
+
+                  return (
+                    <div key={payment.id} className="bg-white p-5 rounded-2xl border border-slate-200/80 hover:border-indigo-300 shadow-sm transition-all space-y-3.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-base shadow-sm shrink-0">
+                            {(displayName || 'C').charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-black text-slate-800 text-sm">{displayName}</h4>
+                              {displayPhone && (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                                    {displayPhone}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigator.clipboard.writeText(displayPhone);
+                                      setCopiedPhoneId(payment.id);
+                                      setTimeout(() => setCopiedPhoneId(null), 1800);
+                                    }}
+                                    className="text-slate-400 hover:text-blue-600 p-0.5 rounded transition-colors cursor-pointer"
+                                    title="Copy Phone"
+                                  >
+                                    {copiedPhoneId === payment.id ? (
+                                      <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                                    ) : (
+                                      <Copy className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                </div>
+                              )}
                             </div>
+                            {payment.service_category && (
+                              <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
+                                <span className="font-semibold text-slate-700">{payment.service_category} • {payment.service_type === 'Future Option' ? 'Option' : payment.service_type}</span>
+                                <span>•</span>
+                                <span className="font-medium text-teal-600">{payment.subscription_duration}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider font-mono ${
+                            payment.status === 'approved' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                            payment.status === 'pending_verification' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
+                            'bg-rose-100 text-rose-800 border border-rose-300'
+                          }`}>
+                            {payment.status === 'approved' ? '✅ Verified' : payment.status === 'pending_verification' ? '⏳ Under Review' : '❌ Rejected'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Detailed Sharing and Amount Breakdown */}
+                      <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/70 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Payment Total</span>
+                          <span className="font-mono font-bold text-slate-700 text-sm mt-0.5 block">
+                            ₹{payment.amount.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">My Credited Amount</span>
+                          <span className={`font-mono font-black text-base mt-0.5 block ${payment.status === 'approved' ? 'text-emerald-700' : 'text-slate-700'}`}>
+                            ₹{myCredited.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Sharing Status</span>
+                          {isShared ? (
+                            <span className="font-bold text-indigo-700 block mt-0.5">
+                              Shared ({payment.allocations?.length || 2} Staff)
+                            </span>
+                          ) : (
+                            <span className="font-medium text-slate-500 block mt-0.5">Direct Submission (100%)</span>
                           )}
                         </div>
-                        {payment.service_category && (
-                          <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
-                            <span className="font-semibold text-slate-700">{payment.service_category} • {payment.service_type === 'Future Option' ? 'Option' : payment.service_type}</span>
-                            <span>•</span>
-                            <span className="font-medium text-teal-600">{payment.subscription_duration}</span>
+                      </div>
+
+                      {/* Multi-Employee Split Partners Breakdown Tags */}
+                      {isShared && payment.allocations && payment.allocations.length > 0 && (
+                        <div className="p-2.5 rounded-xl bg-indigo-50/60 border border-indigo-100 text-[11px] space-y-1.5">
+                          <span className="text-[10px] font-extrabold text-indigo-900 uppercase tracking-wider block">
+                            Shared Allocation Breakdown:
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {payment.allocations.map((alloc, idx) => {
+                              const isMe = isEmployeeMatch(alloc.employee_id, alloc.employee_name, alloc.employee_email);
+                              return (
+                                <span
+                                  key={idx}
+                                  className={`px-2.5 py-1 rounded-lg font-mono font-semibold text-xs flex items-center gap-1.5 border ${
+                                    isMe
+                                      ? 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold'
+                                      : 'bg-white text-slate-700 border-slate-200'
+                                  }`}
+                                >
+                                  <span>{alloc.employee_name || 'Staff'}{isMe ? ' (You)' : ''}:</span>
+                                  <span className="font-black text-slate-900">₹{Number(alloc.allocation_amount).toLocaleString('en-IN')}</span>
+                                  <span className="text-[10px] text-slate-400">({alloc.allocation_percentage || 0}%)</span>
+                                </span>
+                              );
+                            })}
                           </div>
-                        )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-100">
+                        <span className="font-mono">UTR: {payment.utr} • Mode: {payment.payment_mode}</span>
+                        <span>Date: {new Date(payment.transaction_time || payment.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2 self-end sm:self-center">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono ${
-                        payment.status === 'approved' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                        payment.status === 'pending_verification' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
-                        'bg-rose-100 text-rose-800 border border-rose-200'
-                      }`}>
-                        {payment.status === 'pending_verification' ? 'Under Review' : payment.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Detailed Sharing and Amount Breakdown */}
-                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/70 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Payment Total</span>
-                      <span className="font-mono font-bold text-slate-700 text-sm mt-0.5 block">
-                        ₹{payment.amount.toLocaleString('en-IN')}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block">My Credited Amount</span>
-                      <span className="font-mono font-black text-emerald-700 text-base mt-0.5 block">
-                        ₹{myCredited.toLocaleString('en-IN')}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Sharing Status</span>
-                      {isShared ? (
-                        <span className="font-semibold text-blue-700 block mt-0.5">
-                          Shared with {otherEmployeesCount} other {otherEmployeesCount === 1 ? 'employee' : 'employees'}
-                        </span>
-                      ) : (
-                        <span className="font-medium text-slate-500 block mt-0.5">Single employee (100%)</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-100">
-                    <span className="font-mono">UTR: {payment.utr} • Mode: {payment.payment_mode}</span>
-                    <span>Submitted: {new Date(payment.created_at).toLocaleDateString()}</span>
-                  </div>
+                  );
+                })
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3 py-12">
+                  <Wallet className="w-12 h-12 text-slate-200" />
+                  <p className="font-medium">No payments matching this filter.</p>
                 </div>
-              );
-            }) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3 py-12">
-                <Wallet className="w-12 h-12 text-slate-200" />
-                <p className="font-medium">No payment records found.</p>
-              </div>
-            )
+              )}
+            </div>
           )}
         </div>
       </div>

@@ -12,6 +12,8 @@ import { ReportsModule } from './components/admin/ReportsModule';
 import { EmployeeDashboard } from './components/employee/EmployeeDashboard';
 import { EmployeeSalesDashboard } from './components/admin/EmployeeSalesDashboard';
 import { PublicPaymentForm } from './components/payments/PublicPaymentForm';
+import { TeamChat } from './components/chat/TeamChat';
+import { FloatingChatWidget } from './components/chat/FloatingChatWidget';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
 import { PendingApprovalPage } from './components/auth/PendingApprovalPage';
@@ -98,6 +100,14 @@ const MainApp: React.FC = () => {
       case 'employee-dashboard':
         return <EmployeeDashboard />;
 
+      // Team Chat & Sales Celebrations
+      case 'team-chat':
+        return (
+          <TeamChat
+            onOpenPaymentForm={() => setActiveTab('public-payment-form')}
+          />
+        );
+
       // Payment Submission Portal
       case 'public-payment-form':
         return (
@@ -126,6 +136,7 @@ const MainApp: React.FC = () => {
       >
         {renderContent()}
       </Layout>
+      <FloatingChatWidget onOpenFullChat={() => setActiveTab('team-chat')} />
       {isPasswordResetRequired && <PasswordResetModal />}
     </>
   );

@@ -344,6 +344,52 @@ export async function dispatchToGoogleSheetsWebhook(
   }
 }
 
+export interface DeletePaymentPayload {
+  utr: string;
+  referenceId?: string;
+  clientName?: string;
+  clientPhone?: string;
+  amount?: number;
+}
+
+/**
+ * Dispatch automated deletion signal to Google Sheets Webhook and linked Google Form responses
+ */
+export async function dispatchDeletePaymentFromGoogleSheets(
+  payload: DeletePaymentPayload,
+  customWebhookUrl?: string
+): Promise<{ success: boolean; message?: string }> {
+  const webhookUrl = customWebhookUrl || getSavedGoogleSheetsWebhookUrl();
+  if (!webhookUrl) {
+    return { success: false, message: 'No Google Sheets webhook URL configured' };
+  }
+
+  try {
+    const postBody = {
+      action: 'delete',
+      timestamp: new Date().toISOString(),
+      reference_id: payload.referenceId || '',
+      utr: (payload.utr || '').trim(),
+      client_name: (payload.clientName || '').trim(),
+      client_phone: (payload.clientPhone || '').trim(),
+      amount: payload.amount || 0,
+    };
+
+    await fetch(webhookUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(postBody),
+    });
+
+    return { success: true, message: 'Delete signal dispatched to Google Sheets & Form Responses' };
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'Failed to dispatch deletion to Google Sheets' };
+  }
+}
+
 /**
  * Send a test transaction row to Google Sheets to verify webhook connectivity in real-time
  */
@@ -455,6 +501,61 @@ export const GOOGLE_APPS_SCRIPT_SNIPPET = `function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getActiveSheet();
+
+    // 0. Automatic Deletion Handler: Remove row from Google Sheet and linked Google Form responses
+    if (data.action === 'delete') {
+      var targetUtr = (data.utr || '').toString().trim().toLowerCase();
+      var targetRef = (data.reference_id || '').toString().trim().toLowerCase();
+      var deletedRows = 0;
+
+      // Delete matching row from Google Sheet
+      var dataRange = sheet.getDataRange();
+      var values = dataRange.getValues();
+      for (var r = values.length - 1; r >= 1; r--) {
+        var row = values[r];
+        var rowUtr = (row[9] || '').toString().trim().toLowerCase(); // Column J: UTR
+        var rowRef = (row[14] || '').toString().trim().toLowerCase(); // Column O: Reference ID
+        if ((targetUtr && rowUtr === targetUtr) || (targetRef && rowRef === targetRef)) {
+          sheet.deleteRow(r + 1);
+          deletedRows++;
+        }
+      }
+
+      // Delete matching response from linked Google Form (if form exists)
+      var deletedFormResponses = 0;
+      try {
+        var formUrl = ss.getFormUrl();
+        if (formUrl) {
+          var form = FormApp.openByUrl(formUrl);
+          var responses = form.getResponses();
+          for (var i = responses.length - 1; i >= 0; i--) {
+            var resp = responses[i];
+            var itemResponses = resp.getItemResponses();
+            var matches = false;
+            for (var j = 0; j < itemResponses.length; j++) {
+              var val = (itemResponses[j].getResponse() || '').toString().trim().toLowerCase();
+              if ((targetUtr && val === targetUtr) || (targetRef && val === targetRef)) {
+                matches = true;
+                break;
+              }
+            }
+            if (matches) {
+              resp.deleteResponse();
+              deletedFormResponses++;
+            }
+          }
+        }
+      } catch (formErr) {
+        // Continue if form response deletion is not supported
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        action: "deleted",
+        deleted_rows: deletedRows,
+        deleted_form_responses: deletedFormResponses
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
     
     // 1. Programmatically record response in linked Google Form (increments Form Response count)
     try {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   PaymentMode,
@@ -45,6 +45,8 @@ import {
   MessageSquare,
   PhoneCall,
   AlertTriangle,
+  X,
+  Users,
 } from 'lucide-react';
 import { uploadFileToBucket, supabase } from '../../lib/supabase';
 import { formatINR } from '../../lib/formatters';
@@ -146,6 +148,57 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
 
   // Confirmation modal state for removing allocated employee
   const [removeConfirmEmp, setRemoveConfirmEmp] = useState<PaymentAllocation | null>(null);
+
+  // Pre-submission duplicate check drawer state
+  const [showDuplicateCheckDrawer, setShowDuplicateCheckDrawer] = useState(false);
+  const [duplicateDrawerTab, setDuplicateDrawerTab] = useState<'my-submissions' | 'shared' | 'search'>('my-submissions');
+  const [duplicateSearchQuery, setDuplicateSearchQuery] = useState('');
+
+  // Derived submissions for current staff member
+  const mySubmissions = useMemo(() => {
+    const userId = currentUser?.id || effectivePrimaryUser.id;
+    const userName = (currentUser?.name || effectivePrimaryUser.name || '').trim().toLowerCase();
+    return payments.filter((p) => {
+      return (
+        p.employee_id === userId ||
+        p.submitted_by_employee_id === userId ||
+        (p.employee_name && p.employee_name.toLowerCase() === userName) ||
+        (p.submitted_by_employee_name && p.submitted_by_employee_name.toLowerCase() === userName)
+      );
+    });
+  }, [payments, currentUser, effectivePrimaryUser]);
+
+  const mySharedPayments = useMemo(() => {
+    const userId = currentUser?.id || effectivePrimaryUser.id;
+    const userName = (currentUser?.name || effectivePrimaryUser.name || '').trim().toLowerCase();
+    return payments.filter((p) => {
+      return p.allocations?.some((a) => {
+        return (a.employee_id === userId || (a.employee_name && a.employee_name.toLowerCase() === userName)) && !a.is_primary;
+      });
+    });
+  }, [payments, currentUser, effectivePrimaryUser]);
+
+  // Real-time duplicate phone matching
+  const phoneCleanDigits = clientPhone.replace(/\D/g, '').slice(-10);
+  const phoneDuplicateMatches = useMemo(() => {
+    if (phoneCleanDigits.length < 10) return [];
+    return payments.filter((p) => {
+      const pPhone = (p.client_phone || p.trader_phone || '').replace(/\D/g, '').slice(-10);
+      return pPhone === phoneCleanDigits;
+    });
+  }, [phoneCleanDigits, payments]);
+
+  const searchedDuplicatePayments = useMemo(() => {
+    const q = duplicateSearchQuery.toLowerCase().trim();
+    if (!q) return payments.slice(0, 25);
+    return payments.filter((p) => {
+      const name = (p.client_name || p.trader_name || '').toLowerCase();
+      const phone = (p.client_phone || p.trader_phone || '');
+      const u = (p.utr || '').toLowerCase();
+      const emp = (p.employee_name || '').toLowerCase();
+      return name.includes(q) || phone.includes(q) || u.includes(q) || emp.includes(q);
+    });
+  }, [payments, duplicateSearchQuery]);
 
   // Anti-duplicate transaction state
   const [duplicateCheck, setDuplicateCheck] = useState<{
@@ -855,7 +908,20 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+          <button
+            type="button"
+            onClick={() => setShowDuplicateCheckDrawer(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition-all cursor-pointer border border-indigo-200/80 shadow-2xs group"
+            title="Check past sales, shared payments, and team records to prevent duplicates"
+          >
+            <Search className="w-3.5 h-3.5 text-indigo-600 group-hover:scale-110 transition-transform" />
+            <span>Check Past Transactions</span>
+            <span className="px-1.5 py-0.2 rounded-md bg-indigo-200/60 text-indigo-900 font-mono text-[10px]">
+              {mySubmissions.length}
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowWebhookModal(true)}
@@ -1033,6 +1099,33 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
                     />
                   </div>
                   <span className="block text-[10px] text-slate-400 mt-1">Primary contact for payment verification & KYC</span>
+                  {phoneDuplicateMatches.length > 0 && (
+                    <div className="mt-2.5 p-3 bg-amber-50 border border-amber-300 rounded-2xl text-xs text-amber-900 space-y-1.5 animate-in fade-in">
+                      <div className="flex items-center justify-between font-bold text-amber-900">
+                        <div className="flex items-center gap-1.5">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>Existing Record Found for this Phone ({phoneDuplicateMatches.length})</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowDuplicateCheckDrawer(true);
+                            setDuplicateDrawerTab('search');
+                            setDuplicateSearchQuery(phoneCleanDigits);
+                          }}
+                          className="text-[10px] text-amber-800 underline font-extrabold hover:text-amber-950 cursor-pointer"
+                        >
+                          Inspect →
+                        </button>
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        Previous payment of <strong className="text-slate-900">{formatINR(phoneDuplicateMatches[0].amount)}</strong> was recorded for client <strong className="text-slate-900">"{phoneDuplicateMatches[0].client_name || phoneDuplicateMatches[0].trader_name || 'Client'}"</strong> on {new Date(phoneDuplicateMatches[0].transaction_time || phoneDuplicateMatches[0].created_at).toLocaleDateString()} by {phoneDuplicateMatches[0].employee_name || 'Staff'} (Status: {phoneDuplicateMatches[0].status}).
+                      </p>
+                      <p className="text-[10px] text-amber-700 font-semibold">
+                        💡 If this is a repeat service or separate renewal, ensure the UTR and proof screenshot are unique.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2053,6 +2146,198 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
                 className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pre-Submission Duplicate Check & Past Transactions Drawer */}
+      {showDuplicateCheckDrawer && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-end font-sans animate-in fade-in duration-200">
+          <div className="w-full max-w-xl bg-white h-full border-l border-slate-200 p-4 sm:p-6 overflow-y-auto space-y-5 z-50 shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center font-bold">
+                  <Search className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-[#091A2F]">Duplicate Prevention & History</h3>
+                  <p className="text-xs text-slate-500 font-medium">Verify submissions before uploading proofs</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDuplicateCheckDrawer(false)}
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Drawer Tabs */}
+            <div className="flex items-center bg-slate-100/90 p-1 rounded-2xl border border-slate-200/80 gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setDuplicateDrawerTab('my-submissions')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
+                  duplicateDrawerTab === 'my-submissions'
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                My Submissions ({mySubmissions.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDuplicateDrawerTab('shared')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
+                  duplicateDrawerTab === 'shared'
+                    ? 'bg-white text-indigo-700 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Shared ({mySharedPayments.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setDuplicateDrawerTab('search')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
+                  duplicateDrawerTab === 'search'
+                    ? 'bg-white text-emerald-700 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Team Search ({payments.length})
+              </button>
+            </div>
+
+            {/* Quick Search Bar */}
+            <div className="relative shrink-0">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={duplicateSearchQuery}
+                onChange={(e) => setDuplicateSearchQuery(e.target.value)}
+                placeholder="Quick search client name, phone (10 digits), or UTR..."
+                className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
+              />
+              {duplicateSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setDuplicateSearchQuery('')}
+                  className="text-xs font-bold text-slate-400 hover:text-slate-600 absolute right-2.5 top-1/2 -translate-y-1/2 p-1"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Drawer Body List */}
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {duplicateDrawerTab === 'my-submissions' && (
+                mySubmissions.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 space-y-2">
+                    <CheckSquare className="w-10 h-10 mx-auto text-slate-300" />
+                    <p className="text-xs font-bold text-slate-600">No submissions found for your account yet.</p>
+                    <p className="text-[11px]">When you submit payment proofs, they will appear here with live verification status.</p>
+                  </div>
+                ) : (
+                  mySubmissions.map((p: any) => (
+                    <div key={p.id} className="p-3.5 rounded-2xl border border-slate-200 bg-white hover:border-blue-300 transition-all space-y-2 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-sm text-slate-900">{p.client_name || p.trader_name || 'Client'}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
+                          p.status === 'approved' ? 'bg-emerald-100 text-emerald-800' :
+                          p.status === 'pending_verification' ? 'bg-amber-100 text-amber-800' :
+                          'bg-rose-100 text-rose-800'
+                        }`}>
+                          {p.status === 'approved' ? 'Approved' : p.status === 'pending_verification' ? 'Under Review' : 'Rejected'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-black text-emerald-700">{formatINR(p.amount)}</span>
+                        <span className="font-mono text-slate-500 text-[11px]">{p.client_phone || p.trader_phone || 'No phone'}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-100">
+                        <span className="font-mono text-[10px]">UTR: {p.utr}</span>
+                        <span>{new Date(p.transaction_time || p.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
+
+              {duplicateDrawerTab === 'shared' && (
+                mySharedPayments.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 space-y-2">
+                    <Users className="w-10 h-10 mx-auto text-slate-300" />
+                    <p className="text-xs font-bold text-slate-600">No shared allocations assigned yet.</p>
+                    <p className="text-[11px]">Payments where other colleagues added you as a split partner will appear here.</p>
+                  </div>
+                ) : (
+                  mySharedPayments.map((p: any) => {
+                    const myAlloc = p.allocations?.find((a: any) => (a.employee_id === currentUser?.id || a.employee_name?.toLowerCase() === currentUser?.name?.toLowerCase()));
+                    return (
+                      <div key={p.id} className="p-3.5 rounded-2xl border border-indigo-100 bg-indigo-50/30 hover:border-indigo-300 transition-all space-y-2 shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-sm text-slate-900">{p.client_name || p.trader_name || 'Client'}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                            Shared ({p.allocations?.length || 2} staff)
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block">Total: {formatINR(p.amount)}</span>
+                            <span className="font-black text-emerald-700">Your Share: {formatINR(myAlloc?.allocation_amount || 0)} ({myAlloc?.allocation_percentage || 0}%)</span>
+                          </div>
+                          <span className="font-mono text-slate-600 text-[11px]">{p.client_phone || 'No phone'}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-100">
+                          <span className="font-mono text-[10px]">UTR: {p.utr}</span>
+                          <span>Submitted by: {p.employee_name || 'Staff'}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )
+              )}
+
+              {duplicateDrawerTab === 'search' && (
+                searchedDuplicatePayments.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 space-y-2">
+                    <Search className="w-10 h-10 mx-auto text-slate-300" />
+                    <p className="text-xs font-bold text-slate-600">No matching transactions found.</p>
+                    <p className="text-[11px]">Good to go! No matching client phone or UTR was detected.</p>
+                  </div>
+                ) : (
+                  searchedDuplicatePayments.map((p: any) => (
+                    <div key={p.id} className="p-3 rounded-2xl border border-slate-200 bg-white hover:border-slate-300 transition-all space-y-1.5 shadow-2xs text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">{p.client_name || p.trader_name || 'Client'}</span>
+                        <span className="font-mono font-black text-emerald-700">{formatINR(p.amount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500">
+                        <span className="font-mono">{p.client_phone || p.trader_phone || 'No phone'}</span>
+                        <span>Staff: {p.employee_name || 'Staff'}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+                        <span className="font-mono">UTR: {p.utr}</span>
+                        <span className={`font-semibold capitalize ${p.status === 'approved' ? 'text-emerald-700' : 'text-amber-700'}`}>{p.status.replace(/_/g, ' ')}</span>
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowDuplicateCheckDrawer(false)}
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Close Drawer
               </button>
             </div>
           </div>

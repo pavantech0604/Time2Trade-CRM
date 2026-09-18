@@ -12,6 +12,7 @@ import {
   FileSpreadsheet,
   Camera,
   Target,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ProfileModal } from './ProfileModal';
@@ -40,6 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     if (role === 'employee') {
       return [
         { id: 'employee-dashboard', label: 'My Dashboard', icon: LayoutDashboard },
+        { id: 'team-chat', label: 'Team Chat', icon: MessageSquare },
         { id: 'public-payment-form', label: 'Submit Payment Proof', icon: CreditCard },
       ];
     }
@@ -47,6 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     // Admin default
     return [
       { id: 'dashboard', label: 'Admin Overview', icon: LayoutDashboard },
+      { id: 'team-chat', label: 'Team Chat & Sales', icon: MessageSquare },
       { id: 'employee-scorecards', label: 'Employee Scorecards', icon: Target },
       { id: 'active-traders', label: 'Active Traders', icon: TrendingUp },
       { id: 'payment-verification', label: 'Payment Verification', icon: ShieldCheck, badge: pendingVerifications },

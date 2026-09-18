@@ -18,6 +18,7 @@ import {
   AuditLog,
   FilterState,
   DateFilter,
+  ChatMessage,
 } from '../types';
 import {
   INITIAL_USERS,
@@ -33,6 +34,7 @@ import {
 } from '../lib/mockData';
 import { calculateTraderStreak } from '../lib/calculations';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { dispatchDeletePaymentFromGoogleSheets } from '../lib/googleSheets';
 
 interface AuthResponse {
   success: boolean;
@@ -123,6 +125,12 @@ interface AuthContextType {
   // Live Sync Actions
   refreshLivePayments: () => Promise<void>;
   isLiveSyncing: boolean;
+
+  // In-App Team Chat & Celebrations
+  chatMessages: ChatMessage[];
+  sendMessage: (msgInput: Omit<ChatMessage, 'id' | 'created_at'>) => void;
+  sendCelebrationMessage: (payment: Payment, customNote?: string) => void;
+  addMessageReaction: (messageId: string, emoji: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -268,6 +276,137 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return [];
   });
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+
+  // In-App Team Chat System State with LocalStorage Persistence
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const stored = localStorage.getItem('time2trade_chat_messages');
+      if (stored) {
+        const parsed: ChatMessage[] = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {}
+
+    const now = new Date();
+    const subHours = (h: number) => new Date(now.getTime() - h * 60 * 60 * 1000).toISOString();
+    return [
+      {
+        id: 'msg-welcome-1',
+        sender_id: 'admin-system',
+        sender_name: 'Time2Trade Desk Bot',
+        sender_role: 'admin',
+        channel_id: 'general-desk',
+        message: 'Welcome to the Time2Trade Team Desk Chat! 🚀 Communicate here in real-time about client updates, shifts, and advisory desk handovers without switching to third-party apps.',
+        message_type: 'text',
+        created_at: subHours(12),
+        reactions: { '👋': ['admin-system'], '🚀': ['admin-system'] },
+      },
+      {
+        id: 'msg-sales-1',
+        sender_id: 'admin-system',
+        sender_name: 'Time2Trade Sales Bot',
+        sender_role: 'admin',
+        channel_id: 'sales-celebrations',
+        message: '🎉 Welcome to Sales Celebrations! Every verified transaction will automatically broadcast here. Cheer on your teammates with congratulatory messages and celebration reactions! 👏💰',
+        message_type: 'celebration',
+        created_at: subHours(8),
+        reactions: { '🎉': ['admin-system'], '👏': ['admin-system'], '🔥': ['admin-system'] },
+      },
+      {
+        id: 'msg-query-1',
+        sender_id: 'admin-system',
+        sender_name: 'Accounts & Verification Desk',
+        sender_role: 'admin',
+        channel_id: 'payment-queries',
+        message: 'Submit your payment verification queries here. Tag the UTR or client name to fast-track anti-fraud approval. ⚡',
+        message_type: 'text',
+        created_at: subHours(6),
+        reactions: { '⚡': ['admin-system'] },
+      },
+    ];
+  });
+
+  // Sync chat messages to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('time2trade_chat_messages', JSON.stringify(chatMessages));
+    } catch {}
+  }, [chatMessages]);
+
+  const sendMessage = (msgInput: Omit<ChatMessage, 'id' | 'created_at'>) => {
+    const newMsg: ChatMessage = {
+      ...msgInput,
+      id: `chat-${Date.now()}-${generateUUID().slice(0, 6)}`,
+      created_at: new Date().toISOString(),
+      reactions: {},
+    };
+    setChatMessages((prev) => [...prev, newMsg]);
+  };
+
+  const sendCelebrationMessage = (payment: Payment, customNote?: string) => {
+    const client = payment.client_name || payment.trader_name || 'Client';
+    const amountStr = Number(payment.amount).toLocaleString('en-IN');
+    const primaryEmp = payment.employee_name || 'Sales Executive';
+    const hasShared = payment.allocations && payment.allocations.length > 1;
+
+    let sharedText = '';
+    if (hasShared && payment.allocations) {
+      sharedText = '\n🤝 Team Split: ' + payment.allocations.map(a => `${a.employee_name || 'Staff'} (${a.allocation_percentage || 0}% - ₹${Number(a.allocation_amount).toLocaleString('en-IN')})`).join(' • ');
+    }
+
+    const note = customNote || `🎉 HUGE CONGRATULATIONS to ${primaryEmp} for closing ₹${amountStr} for client ${client}! 🚀 Keep up the stellar work! 🏆`;
+
+    const celebMsg: ChatMessage = {
+      id: `celeb-${Date.now()}-${generateUUID().slice(0, 6)}`,
+      sender_id: currentUser?.id || 'admin-system',
+      sender_name: currentUser?.name || 'Accounts Admin',
+      sender_role: (currentUser?.role as any) || 'admin',
+      channel_id: 'sales-celebrations',
+      message: `${note}${sharedText}`,
+      message_type: 'celebration',
+      payment_meta: {
+        payment_id: payment.id,
+        amount: payment.amount,
+        client_name: client,
+        client_phone: payment.client_phone || payment.trader_phone,
+        utr: payment.utr,
+        service_category: payment.service_category,
+        subscription_duration: payment.subscription_duration,
+        allocations: payment.allocations?.map(a => ({
+          employee_id: a.employee_id,
+          employee_name: a.employee_name || 'Staff',
+          amount: a.allocation_amount,
+          percentage: a.allocation_percentage || 0,
+        })),
+      },
+      reactions: { '🎉': [currentUser?.id || 'system'], '👏': [currentUser?.id || 'system'], '🔥': [currentUser?.id || 'system'] },
+      created_at: new Date().toISOString(),
+    };
+
+    setChatMessages((prev) => [...prev, celebMsg]);
+  };
+
+  const addMessageReaction = (messageId: string, emoji: string) => {
+    if (!currentUser) return;
+    setChatMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id !== messageId) return msg;
+        const currentReactions = { ...(msg.reactions || {}) };
+        const existingUsers = currentReactions[emoji] || [];
+        if (existingUsers.includes(currentUser.id)) {
+          // Toggle off reaction
+          currentReactions[emoji] = existingUsers.filter((u) => u !== currentUser.id);
+          if (currentReactions[emoji].length === 0) delete currentReactions[emoji];
+        } else {
+          // Add reaction
+          currentReactions[emoji] = [...existingUsers, currentUser.id];
+        }
+        return { ...msg, reactions: currentReactions };
+      })
+    );
+  };
 
   // Sync notifications to localStorage
   useEffect(() => {
@@ -2481,8 +2620,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newStatus: PaymentStatus = isApproved ? 'approved' : 'rejected';
     const now = new Date().toISOString();
 
-    setPayments((prev) =>
-      prev.map((p) =>
+    setPayments((prev) => {
+      const updated = prev.map((p) =>
         p.id === paymentId
           ? {
               ...p,
@@ -2491,8 +2630,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               verified_at: now,
             }
           : p
-      )
-    );
+      );
+      try {
+        localStorage.setItem('time2trade_payments_cache', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
 
     const traderId = targetPayment.trader_id;
     let totalShared = 0;
@@ -2568,6 +2711,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             created_at: now,
           });
         }
+      });
+
+      // Automatically broadcast sales celebration card in Team Chat (#sales-celebrations)
+      sendCelebrationMessage({
+        ...targetPayment,
+        status: 'approved',
+        admin_remarks: remarks,
+        verified_at: now,
       });
     } else {
       if (primaryEmp) {
@@ -2743,6 +2894,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deletePayment = async (paymentId: string) => {
     const target = payments.find((p) => p.id === paymentId);
+
+    // Automatically remove from Google Sheets and linked Google Form responses to prevent duplicates
+    if (target) {
+      try {
+        await dispatchDeletePaymentFromGoogleSheets({
+          utr: target.utr,
+          referenceId: target.id,
+          clientName: target.client_name || target.trader_name,
+          clientPhone: target.client_phone || target.trader_phone,
+          amount: Number(target.amount),
+        });
+      } catch (sheetErr) {
+        console.warn('Google Sheets auto-delete dispatch error:', sheetErr);
+      }
+    }
+
     setPayments((prev) => {
       const updated = prev.filter((p) => p.id !== paymentId);
       try {
@@ -2892,6 +3059,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toggleDarkMode,
         refreshLivePayments: loadSupabaseData,
         isLiveSyncing,
+        chatMessages,
+        sendMessage,
+        sendCelebrationMessage,
+        addMessageReaction,
       }}
     >
       {children}
