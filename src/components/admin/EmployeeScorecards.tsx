@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Lead } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
-import { Search, Camera, CheckCircle2, TrendingUp, Target } from 'lucide-react';
+import { formatINR } from '../../lib/formatters';
+import { Search, Camera, CheckCircle2, TrendingUp, Target, Users, Trophy } from 'lucide-react';
 
 export const EmployeeScorecards: React.FC = () => {
-  const { leads, users } = useAuth();
+  const { leads, users, payments } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
@@ -40,6 +41,38 @@ export const EmployeeScorecards: React.FC = () => {
       // Conversions count (leads successfully converted to active traders)
       const conversionsCount = handledLeads.filter((l) => l.status === 'active_trader').length;
 
+      // Approved payments linked to this employee
+      const employeeApprovedPayments = payments.filter((p) => {
+        if (p.status !== 'approved') return false;
+        if (p.employee_id === user.id || p.submitted_by_employee_id === user.id) return true;
+        if (p.allocations && p.allocations.some((a) => a.employee_id === user.id)) return true;
+        return false;
+      });
+
+      // Distinct client metrics & Top client
+      const clientMap: Record<string, number> = {};
+      employeeApprovedPayments.forEach((p) => {
+        const clientKey = p.client_name?.trim() || p.trader_id || 'Client';
+        let amount = Number(p.amount || 0);
+        if (p.allocations && p.allocations.length > 0) {
+          const alloc = p.allocations.find((a) => a.employee_id === user.id);
+          if (alloc) amount = Number(alloc.allocation_amount || 0);
+        }
+        clientMap[clientKey] = (clientMap[clientKey] || 0) + amount;
+      });
+
+      const clientNames = Object.keys(clientMap);
+      const clientCount = clientNames.length;
+
+      let topClientName = 'None';
+      let topClientTotal = 0;
+      clientNames.forEach((name) => {
+        if (clientMap[name] > topClientTotal) {
+          topClientTotal = clientMap[name];
+          topClientName = name;
+        }
+      });
+
       return {
         id: user.id,
         name: user.name,
@@ -47,6 +80,9 @@ export const EmployeeScorecards: React.FC = () => {
         handled: handledLeads.length,
         filtered: filteredCount,
         conversions: conversionsCount,
+        clientCount,
+        topClientName,
+        topClientTotal,
         conversionRate: handledLeads.length > 0 
           ? ((conversionsCount / handledLeads.length) * 100).toFixed(1) 
           : '0.0',
@@ -98,7 +134,7 @@ export const EmployeeScorecards: React.FC = () => {
                   }`}
                 >
                 {/* Employee Info */}
-                <div className="flex items-center gap-4 min-w-0 lg:min-w-[240px] w-full lg:w-auto">
+                <div className="flex items-center gap-4 min-w-0 lg:min-w-[200px] w-full lg:w-auto">
                   <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center font-black text-slate-800 text-sm shrink-0">
                     {metric.name.charAt(0)}
                   </div>
@@ -117,18 +153,39 @@ export const EmployeeScorecards: React.FC = () => {
                 </div>
 
                 {/* Performance Counts */}
-                <div className="grid grid-cols-3 gap-2.5 sm:gap-6 w-full lg:w-auto text-center lg:text-left bg-slate-50 lg:bg-transparent p-3.5 lg:p-0 rounded-2xl border border-slate-200 lg:border-none">
-                  <div className="min-w-[60px]">
+                <div className="grid grid-cols-5 gap-2 sm:gap-4 w-full lg:w-auto text-center lg:text-left bg-slate-50 lg:bg-transparent p-3 lg:p-0 rounded-2xl border border-slate-200 lg:border-none">
+                  <div className="min-w-[50px]">
                     <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Handled</span>
                     <span className="text-sm font-black text-slate-800 mt-0.5 block">{metric.handled}</span>
                   </div>
-                  <div className="min-w-[60px]">
+                  <div className="min-w-[50px]">
                     <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Filtered</span>
                     <span className="text-sm font-black text-slate-800 mt-0.5 block">{metric.filtered}</span>
                   </div>
-                  <div className="min-w-[60px]">
+                  <div className="min-w-[50px]">
                     <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Traders</span>
                     <span className="text-sm font-black text-emerald-600 mt-0.5 block">{metric.conversions}</span>
+                  </div>
+                  <div className="min-w-[60px] pl-1 border-l border-slate-200/60 lg:border-none">
+                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider flex items-center justify-center lg:justify-start gap-1">
+                      <Users className="w-2.5 h-2.5 text-blue-600" /> Clients
+                    </span>
+                    <span className={`text-sm font-black mt-0.5 block ${metric.clientCount > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
+                      {metric.clientCount}
+                    </span>
+                  </div>
+                  <div className="min-w-[80px] pl-1 border-l border-slate-200/60 lg:border-none">
+                    <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider flex items-center justify-center lg:justify-start gap-1">
+                      <Trophy className="w-2.5 h-2.5 text-amber-500" /> Top Client
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-800 mt-0.5 block truncate max-w-[100px]" title={metric.topClientName !== 'None' ? `${metric.topClientName} (${formatINR(metric.topClientTotal)})` : 'None'}>
+                      {metric.topClientName !== 'None' ? metric.topClientName : '—'}
+                    </span>
+                    {metric.topClientTotal > 0 && (
+                      <span className="text-[9px] font-mono font-extrabold text-emerald-600 block">
+                        {formatINR(metric.topClientTotal)}
+                      </span>
+                    )}
                   </div>
                 </div>
 

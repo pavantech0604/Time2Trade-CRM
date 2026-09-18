@@ -57,13 +57,13 @@ WHERE email ILIKE '%@capitalgrow.com'
        '10000000-0000-0000-0000-000000000005'
    );
 
--- 9. Confirm admin user exists and is approved
+-- 9. Confirm manager user exists and is approved
 INSERT INTO public.users (id, name, email, role, is_active, approval_status)
-VALUES ('10000000-0000-0000-0000-000000000001', 'Karthik Muni', 'karthik@time2trade.com', 'admin', true, 'approved')
+VALUES ('10000000-0000-0000-0000-000000000001', 'Karthik Muni', 'karthik@time2trade.com', 'manager', true, 'approved')
 ON CONFLICT (id) DO UPDATE SET 
     name = 'Karthik Muni',
     email = 'karthik@time2trade.com',
-    role = 'admin',
+    role = 'manager',
     is_active = true,
     approval_status = 'approved';
 

@@ -43,6 +43,13 @@ export const Layout: React.FC<LayoutProps> = ({
         { id: 'team-chat', label: 'Chat', icon: MessageSquare },
         { id: 'public-payment-form', label: 'Submit Pay', icon: CreditCard },
       ];
+    } else if (role === 'manager') {
+      items = [
+        { id: 'manager-dashboard', label: 'Overview', icon: LayoutDashboard },
+        { id: 'employee-sales', label: 'Sales', icon: FileSpreadsheet },
+        { id: 'team-chat', label: 'Chat', icon: MessageSquare },
+        { id: 'public-payment-form', label: 'Submit Pay', icon: CreditCard },
+      ];
     } else {
       // Admin default
       items = [
@@ -59,7 +66,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const mobileNavItems = getMobileNavItems();
 
   return (
-    <div className="h-screen w-screen bg-[#FAF8F5] text-slate-800 flex flex-col md:flex-row font-sans antialiased selection:bg-[#C5A028] selection:text-black relative overflow-hidden">
+    <div className="min-h-screen h-[100dvh] w-full max-w-[100vw] bg-[#FAF8F5] text-slate-800 flex flex-col md:flex-row font-sans antialiased selection:bg-[#C5A028] selection:text-black relative overflow-hidden">
       <BackgroundEffects />
       {/* Sidebar for tablet & desktop */}
       <div className="hidden md:flex shrink-0">
@@ -76,7 +83,7 @@ export const Layout: React.FC<LayoutProps> = ({
           />
 
           {/* Drawer content */}
-          <div className="relative flex flex-col w-64 max-w-xs bg-white h-full border-r border-slate-200 shadow-2xl animate-in slide-in-from-left duration-200 z-50">
+          <div className="relative flex flex-col w-72 max-w-[85vw] bg-white h-full border-r border-slate-200 shadow-2xl animate-in slide-in-from-left duration-200 z-50">
             {/* Close button inside drawer */}
             <div className="absolute top-4 right-4 z-50">
               <button
@@ -88,13 +95,14 @@ export const Layout: React.FC<LayoutProps> = ({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 h-full overflow-hidden">
               <Sidebar
                 activeTab={activeTab}
                 setActiveTab={(tab) => {
                   setActiveTab(tab);
                   setIsMobileMenuOpen(false);
                 }}
+                className="!h-full !w-full !border-r-0 !sticky-none shadow-none"
               />
             </div>
           </div>
@@ -110,7 +118,7 @@ export const Layout: React.FC<LayoutProps> = ({
         />
         
         {/* Responsive padding: mobile-first optimized with bottom navbar offset */}
-        <main className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-7 pb-24 md:pb-8 max-w-7xl w-full mx-auto space-y-6 overflow-y-auto">
+        <main className="flex-1 p-3 sm:p-5 md:p-6 lg:p-7 pb-24 md:pb-8 max-w-7xl w-full mx-auto space-y-6 overflow-y-auto touch-scroll overscroll-y-contain">
           {children}
         </main>
 

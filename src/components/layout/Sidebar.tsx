@@ -13,6 +13,7 @@ import {
   Camera,
   Target,
   MessageSquare,
+  Banknote,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ProfileModal } from './ProfileModal';
@@ -20,9 +21,10 @@ import { ProfileModal } from './ProfileModal';
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  className?: string;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, className = '' }) => {
   const { currentUser, payments, users, logout } = useAuth();
   const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false);
 
@@ -46,6 +48,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       ];
     }
 
+    if (role === 'manager') {
+      return [
+        { id: 'manager-dashboard', label: 'Manager Overview', icon: LayoutDashboard },
+        { id: 'employee-sales', label: 'Employee Sales', icon: FileSpreadsheet },
+        { id: 'employee-scorecards', label: 'Employee Scorecards', icon: Target },
+        { id: 'active-traders', label: 'Active Traders', icon: TrendingUp },
+        { id: 'team-chat', label: 'Team Chat & Sales', icon: MessageSquare },
+        { id: 'public-payment-form', label: 'Submit Payment Proof', icon: CreditCard },
+      ];
+    }
+
     // Admin default
     return [
       { id: 'dashboard', label: 'Admin Overview', icon: LayoutDashboard },
@@ -57,6 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       { id: 'employee-management', label: 'Staff & Roles', icon: UserCog, badge: pendingReviews },
       { id: 'admin-attendance', label: 'Attendance Board', icon: Clock },
       { id: 'expenses', label: 'Expenses Manager', icon: Receipt },
+      { id: 'manager-advances', label: 'Manager Advances', icon: Banknote },
       { id: 'reports', label: 'Reports & Analytics', icon: BarChart3 },
       { id: 'public-payment-form', label: 'Public Payment Form', icon: CreditCard },
     ];
@@ -68,7 +82,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     <aside
       role="navigation"
       aria-label="Main sidebar navigation"
-      className="w-64 bg-white border-r border-slate-200/80 flex flex-col h-screen sticky top-0 font-sans shadow-sm"
+      className={`w-64 bg-white border-r border-slate-200/80 flex flex-col h-screen sticky top-0 font-sans shadow-sm ${className}`}
     >
       {/* Scrollable Navigation Area */}
       <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">

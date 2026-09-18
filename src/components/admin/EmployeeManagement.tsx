@@ -266,6 +266,7 @@ export const EmployeeManagement: React.FC = () => {
           >
             <option value="all">All Roles</option>
             <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
             <option value="employee">Employee</option>
             <option value="pending">Pending Role</option>
           </select>
@@ -319,6 +320,7 @@ export const EmployeeManagement: React.FC = () => {
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold border ${
                       isRejected ? 'bg-slate-100 text-slate-500 border-slate-200' :
                       user.role === 'admin' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                      user.role === 'manager' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                       user.role === 'employee' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                       'bg-amber-50 text-amber-800 border-amber-200'
                     }`}>
@@ -445,6 +447,10 @@ export const EmployeeManagement: React.FC = () => {
                         ) : user.role === 'admin' ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
                             Admin
+                          </span>
+                        ) : user.role === 'manager' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold">
+                            Manager
                           </span>
                         ) : user.role === 'employee' ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
@@ -621,9 +627,14 @@ export const EmployeeManagement: React.FC = () => {
                     desc: 'Manages leads, follow-ups, converted traders, P&L, and profit uploads.',
                   },
                   {
+                    id: 'manager' as UserRole,
+                    title: 'Manager',
+                    desc: 'High-level performance views, executive revenue share, employee distribution overview. Restricted from expenses & advances.',
+                  },
+                  {
                     id: 'admin' as UserRole,
                     title: 'System Administrator',
-                    desc: 'Full access to verification desk, expenses, reports, and staff management.',
+                    desc: 'Full access to verification desk, manager advances, expenses, reports, and staff management.',
                   },
                 ].map((item) => (
                   <label

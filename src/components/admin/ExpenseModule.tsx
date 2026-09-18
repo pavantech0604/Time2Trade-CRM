@@ -54,16 +54,20 @@ export const ExpenseModule: React.FC = () => {
       </div>
 
       {/* Summary KPI + Category Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold text-slate-500 uppercase font-mono">Total Monthly Expenses</span>
-          <h3 className="text-2xl font-black text-rose-700 mt-1">{formatINR(totalExpenses)}</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide font-mono">Total Monthly Expenses</span>
+          <h3 className="text-xl sm:text-2xl font-black text-rose-700 mt-1 tabular-nums" title={formatINR(totalExpenses)}>
+            {formatINR(totalExpenses)}
+          </h3>
         </div>
 
         {Object.entries(categoriesMap).map(([cat, amt]) => (
-          <div key={cat} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <span className="text-xs font-bold text-slate-500 uppercase font-mono">{cat} Costs</span>
-            <h3 className="text-xl font-bold text-slate-800 mt-1">{formatINR(amt)}</h3>
+          <div key={cat} className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide font-mono truncate block">{cat} Costs</span>
+            <h3 className="text-lg sm:text-xl font-bold text-slate-800 mt-1 tabular-nums" title={formatINR(amt)}>
+              {formatINR(amt)}
+            </h3>
           </div>
         ))}
       </div>
@@ -71,28 +75,28 @@ export const ExpenseModule: React.FC = () => {
       {/* Mobile View: Expenses Card Stack */}
       <div className="md:hidden block space-y-3 font-sans">
         {expenses.length === 0 ? (
-          <div className="bg-white border border-slate-200 p-8 rounded-3xl text-center text-slate-500 shadow-sm">
+          <div className="bg-white border border-slate-200 p-8 rounded-2xl text-center text-slate-500 shadow-sm text-xs">
             No expenses found.
           </div>
         ) : (
           expenses.map((expense) => (
             <div
               key={expense.id}
-              className="bg-white border border-slate-200 rounded-3xl p-4 space-y-3 shadow-sm"
+              className="bg-white border border-slate-200 rounded-2xl p-3.5 space-y-2.5 shadow-sm"
             >
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-600 uppercase tracking-wide">
+              <div className="flex justify-between items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <span className="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-[9px] font-bold text-slate-600 uppercase tracking-wide inline-block">
                     {expense.category}
                   </span>
-                  <h4 className="text-xs font-bold text-slate-800 mt-1.5">{expense.description}</h4>
+                  <h4 className="text-xs font-bold text-slate-800 mt-1 truncate">{expense.description}</h4>
                 </div>
-                <span className="text-xs font-black text-rose-700 font-mono">{formatINR(expense.amount)}</span>
+                <span className="text-xs sm:text-sm font-black text-rose-700 font-mono tabular-nums whitespace-nowrap">{formatINR(expense.amount)}</span>
               </div>
 
               <div className="flex justify-between items-center text-[10px] text-slate-500 pt-2 border-t border-slate-100 font-mono">
-                <span>By: {expense.added_by_name || 'Admin'}</span>
-                <span>Date: {expense.date}</span>
+                <span className="truncate mr-2">By: {expense.added_by_name || 'Admin'}</span>
+                <span className="whitespace-nowrap">Date: {expense.date}</span>
               </div>
             </div>
           ))

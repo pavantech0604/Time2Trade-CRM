@@ -23,29 +23,28 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({ onOpenFu
   const [isOpen, setIsOpen] = useState(false);
   const [activeChannel, setActiveChannel] = useState<'sales-celebrations' | 'payment-queries' | 'general-desk'>('sales-celebrations');
   const [inputText, setInputText] = useState('');
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [lastReadTimestamp, setLastReadTimestamp] = useState<number>(() => Date.now());
+  const lastReadTimestampRef = useRef<number>(Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // If chat is open, keep the read timestamp current
+  if (isOpen) {
+    lastReadTimestampRef.current = Date.now();
+  }
+
+  // Derive unread count purely without any useEffect or setState calls
+  const unreadCount = useMemo(() => {
+    if (isOpen) return 0;
+    return chatMessages.filter(
+      (m) => new Date(m.created_at).getTime() > lastReadTimestampRef.current && m.sender_id !== currentUser?.id
+    ).length;
+  }, [chatMessages, isOpen, currentUser?.id]);
 
   // Filter messages for the current widget channel
   const currentMessages = useMemo(() => {
     return chatMessages.filter((msg) => msg.channel_id === activeChannel);
   }, [chatMessages, activeChannel]);
 
-  // Track unread messages when widget is closed
-  useEffect(() => {
-    if (isOpen) {
-      setUnreadCount(0);
-      setLastReadTimestamp(Date.now());
-    } else {
-      const newMsgs = chatMessages.filter(
-        (m) => new Date(m.created_at).getTime() > lastReadTimestamp && m.sender_id !== currentUser?.id
-      );
-      setUnreadCount(newMsgs.length);
-    }
-  }, [chatMessages, isOpen, lastReadTimestamp, currentUser?.id]);
-
-  // Scroll to bottom on new messages if open
+  // Scroll to bottom on new messages if open (pure DOM effect, no setState)
   useEffect(() => {
     if (isOpen) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -84,12 +83,12 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({ onOpenFu
   ];
 
   return (
-    <div className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 font-sans">
-      {/* Expanded Popup Window (Time2Trade CRM Theme) */}
+    <div className="fixed bottom-20 right-3 sm:right-6 md:bottom-6 z-50 font-sans max-w-[calc(100vw-24px)]">
+      {/* Expanded Popup Window (Time2Trade CRM Theme) - Mobile Optimized */}
       {isOpen && (
-        <div className="w-[360px] sm:w-[400px] h-[520px] max-h-[calc(100vh-120px)] bg-white rounded-3xl shadow-2xl border border-slate-200/90 flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 zoom-in-95 duration-200">
+        <div className="w-[calc(100vw-24px)] sm:w-[380px] max-w-[400px] h-[480px] sm:h-[520px] max-h-[calc(100dvh-120px)] bg-white rounded-3xl shadow-2xl border border-slate-200/90 flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 zoom-in-95 duration-200">
           {/* Header - Time2Trade Luxury Navy & Gold Theme */}
-          <div className="bg-gradient-to-r from-[#091A2F] via-[#112744] to-[#091A2F] text-white px-4 py-3.5 flex items-center justify-between border-b border-[#C5A028]/30 shadow-md shrink-0">
+          <div className="bg-gradient-to-r from-[#091A2F] via-[#112744] to-[#091A2F] text-white px-3.5 sm:px-4 py-3 sm:py-3.5 flex items-center justify-between border-b border-[#C5A028]/30 shadow-md shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#C5A028]/30 to-[#E6C34E]/20 border border-[#C5A028]/40 flex items-center justify-center text-[#F3E29F] shadow-sm">
                 <MessageSquare className="w-4 h-4" />

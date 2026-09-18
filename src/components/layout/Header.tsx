@@ -166,6 +166,11 @@ export const Header: React.FC<HeaderProps> = ({
             mobileBadgeText = 'Admin';
             colorStyle = 'from-slate-900 to-slate-800 shadow-slate-900/10';
             textColor = 'text-slate-800 bg-slate-100 border-slate-200';
+          } else if (currentUser?.role === 'manager') {
+            badgeText = 'Management Desk';
+            mobileBadgeText = 'Manager';
+            colorStyle = 'from-purple-600 to-indigo-600 shadow-purple-500/10';
+            textColor = 'text-purple-700 bg-purple-50 border-purple-200';
           } else if (currentUser?.role === 'employee') {
             badgeText = 'Trading Operations';
             mobileBadgeText = 'Employee';

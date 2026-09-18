@@ -48,7 +48,7 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
     return allUsers.filter((u) => {
       // Must be active and staff
       const isActive = u.is_active !== false && u.approval_status !== 'rejected';
-      const isStaff = u.role === 'employee' || u.role === 'admin';
+      const isStaff = u.role === 'employee' || u.role === 'admin' || u.role === 'manager';
       return isActive && isStaff;
     });
   }, [allUsers]);
@@ -301,7 +301,7 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
                 const designation =
                   user.designation ||
                   user.department ||
-                  (user.role === 'admin' ? 'Administrator' : 'Sales Executive');
+                  (user.role === 'admin' ? 'Administrator' : user.role === 'manager' ? 'Manager' : 'Sales Executive');
 
                 return (
                   <li

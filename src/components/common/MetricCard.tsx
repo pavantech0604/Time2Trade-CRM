@@ -7,6 +7,7 @@ interface MetricCardProps {
   value: number | string;
   change?: number;
   changeLabel?: string;
+  subtitle?: string;
   isCurrency?: boolean;
   icon: LucideIcon;
   variant?: 'positive' | 'negative' | 'warning' | 'info' | 'neutral';
@@ -18,6 +19,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   value,
   change,
   changeLabel = 'vs last period',
+  subtitle,
   isCurrency = true,
   icon: Icon,
   variant = 'neutral',
@@ -25,6 +27,14 @@ export const MetricCard: React.FC<MetricCardProps> = ({
 }) => {
   const formattedValue =
     typeof value === 'number' ? (isCurrency ? formatINR(value) : value.toLocaleString('en-IN')) : value;
+
+  const strVal = String(formattedValue);
+  const fontSizeClass =
+    strVal.length > 13
+      ? 'text-base min-[380px]:text-lg sm:text-xl xl:text-2xl'
+      : strVal.length > 10
+      ? 'text-lg min-[380px]:text-xl sm:text-2xl xl:text-3xl'
+      : 'text-xl min-[380px]:text-2xl sm:text-3xl';
 
   const getVariantStyles = () => {
     switch (variant) {
@@ -61,20 +71,31 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   return (
     <div
       onClick={onClick}
-      className={`bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm transition-all duration-300 ${
+      className={`bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm transition-all duration-300 min-w-0 overflow-hidden ${
         onClick ? 'cursor-pointer hover:-translate-y-1 hover:shadow-lg' : 'hover:shadow-md'
       } ${gradient}`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest">{title}</span>
-        <div className={`p-2 sm:p-2.5 rounded-xl border shrink-0 ${iconBg}`}>
-          <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+      <div className="flex items-center justify-between gap-2.5">
+        <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">{title}</span>
+        <div className={`p-1.5 sm:p-2.5 rounded-xl border shrink-0 ${iconBg}`}>
+          <Icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
         </div>
       </div>
 
-      <div className="mt-3 sm:mt-4 flex items-baseline justify-between">
-        <h3 className="text-xl sm:text-3xl font-black text-slate-800 tracking-tight">{formattedValue}</h3>
+      <div className="mt-2.5 sm:mt-4 flex items-baseline justify-between min-w-0 overflow-hidden">
+        <h3
+          className={`${fontSizeClass} font-black text-slate-800 tracking-tight truncate leading-tight tabular-nums`}
+          title={strVal}
+        >
+          {formattedValue}
+        </h3>
       </div>
+
+      {Boolean(subtitle) && (
+        <p className="mt-1 text-[11px] text-slate-400 font-medium truncate" title={subtitle}>
+          {subtitle}
+        </p>
+      )}
 
       {typeof change !== 'undefined' && (
         <div className="mt-2 sm:mt-3 flex items-center gap-1.5 text-[10px] sm:text-xs font-medium">

@@ -16,6 +16,7 @@ import {
   Expense,
   NotificationItem,
   AuditLog,
+  ManagerAdvance,
   FilterState,
   DateFilter,
   ChatMessage,
@@ -72,6 +73,12 @@ interface AuthContextType {
   expenses: Expense[];
   notifications: NotificationItem[];
   auditLogs: AuditLog[];
+
+  // Manager Advances (admin-only)
+  managerAdvances: ManagerAdvance[];
+  addManagerAdvance: (advance: Omit<ManagerAdvance, 'id' | 'created_at'>) => void;
+  updateManagerAdvance: (id: string, updates: Partial<ManagerAdvance>) => void;
+  deleteManagerAdvance: (id: string) => void;
 
   // Filter State
   filters: FilterState;
@@ -172,6 +179,38 @@ const isMockUser = (u: any) => {
 const isValidUUID = (id?: string | null): boolean =>
   Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
 
+export const isKarthikUser = (u: any): boolean => {
+  if (!u) return false;
+  const name = (u.name || u.full_name || '').toLowerCase();
+  const email = (u.email || '').toLowerCase();
+  return name.includes('karthik') || email.includes('karthik');
+};
+
+export const isBhavaniUser = (val?: any): boolean => {
+  if (!val) return false;
+  const str = typeof val === 'string' ? val : `${val.id || ''} ${val.name || val.full_name || ''} ${val.email || ''}`;
+  const s = str.toLowerCase().trim();
+  return (
+    s.includes('bhavani') ||
+    s.includes('bavani') ||
+    s.includes('02abbc1d') ||
+    s.includes('99b02b72') ||
+    s.includes('7f90e43c') ||
+    s.includes('a5f41104')
+  );
+};
+
+export const normalizeUserRole = (u: User): User => {
+  if (isKarthikUser(u)) {
+    return {
+      ...u,
+      role: 'manager' as UserRole,
+      designation: u.designation && u.designation !== 'Admin' ? u.designation : 'Manager',
+    };
+  }
+  return u;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const useMocks = false;
 
@@ -245,6 +284,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return INITIAL_PAYMENTS;
   });
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [managerAdvances, setManagerAdvances] = useState<ManagerAdvance[]>([]);
 
   // Sync payments to localStorage cache so they are never lost on reload
   useEffect(() => {
@@ -532,7 +572,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     lastFetchTimeRef.current = now;
     setIsLiveSyncing(true);
     try {
-      const [uRes, lRes, tRes, pRes, tdRes, expRes, allocRes] = await Promise.all([
+      const [uRes, lRes, tRes, pRes, tdRes, expRes, allocRes, maRes] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('leads').select('*').order('created_at', { ascending: false }),
         supabase.from('active_traders').select('*').order('joined_at', { ascending: false }),
@@ -540,13 +580,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         supabase.from('trading_days').select('*').order('trade_date', { ascending: false }),
         supabase.from('expenses').select('*').order('date', { ascending: false }),
         Promise.resolve(supabase.from('payment_allocations').select('*').order('created_at', { ascending: true })).catch(() => ({ data: null })),
+        Promise.resolve(supabase.from('manager_advances').select('*').order('date', { ascending: false })).catch(() => ({ data: null })),
       ]);
 
       let userList = users;
       if (uRes.data && Array.isArray(uRes.data)) {
-        userList = (uRes.data as User[]).filter((u) => !isMockUser(u));
+        userList = (uRes.data as User[])
+          .filter((u) => !isMockUser(u))
+          .map((u) => {
+            let normalized = normalizeUserRole(u);
+            if (isBhavaniUser(normalized)) {
+              normalized = {
+                ...normalized,
+                name: 'Bhavani N',
+                email: normalized.email?.includes('bhavani') ? normalized.email : 'bhavani@time2trade.com',
+              };
+            }
+            return normalized;
+          });
         setUsers(userList);
+
+        // Auto-heal / sync Karthik's role in Supabase database public.users table
+        const karthikDbUser = (uRes.data as any[]).find((u) => isKarthikUser(u));
+        if (karthikDbUser && karthikDbUser.role !== 'manager') {
+          Promise.resolve(
+            supabase.from('users').update({ role: 'manager' }).eq('id', karthikDbUser.id)
+          ).catch(() => {});
+        }
       }
+
+      // Ensure currentUser also stays normalized as manager if it is Karthik, or Bhavani N if Bhavani
+      setCurrentUser((prev) => {
+        if (!prev) return null;
+        let normalized = normalizeUserRole(prev);
+        if (isBhavaniUser(normalized)) {
+          normalized = {
+            ...normalized,
+            name: 'Bhavani N',
+          };
+        }
+        if (isKarthikUser(normalized) && prev.role !== 'manager') {
+          try {
+            localStorage.setItem('time2trade_auth_user', JSON.stringify(normalized));
+          } catch {}
+        }
+        return normalized;
+      });
+
       if (lRes.data && Array.isArray(lRes.data)) {
         setLeads((lRes.data as Lead[]).filter((l) => !isMockId(l.id) && !isMockId(l.assigned_to)));
       }
@@ -609,24 +689,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const matchedAllocs = allocations.filter((a) => a && a.payment_id === p.id);
               const enrichedAllocs = matchedAllocs.map((a) => {
                 const emp = userList.find((u) => u.id === a.employee_id);
+                const isThisBhavani = isBhavaniUser(a.employee_id) || isBhavaniUser(a.employee_name) || isBhavaniUser(emp?.name);
                 return {
                   ...a,
-                  employee_name: emp?.name || a.employee_name || 'Staff',
-                  employee_email: emp?.email || a.employee_email,
+                  employee_id: isThisBhavani ? '99b02b72-2886-4257-acc5-6ce655f8e4dc' : a.employee_id,
+                  employee_name: isThisBhavani ? 'Bhavani N' : (emp?.name || a.employee_name || 'Staff'),
+                  employee_email: isThisBhavani ? 'bhavani@time2trade.com' : (emp?.email || a.employee_email),
                   employee_code: emp?.employee_code || a.employee_code,
                   employee_role: emp?.designation || (emp?.role === 'admin' ? 'Admin' : 'Employee'),
                 };
               });
 
-              // Check if remarks contains client contact information
+              // Check if remarks contains client contact information or proof URL
               let remarkClientName = '';
               let remarkClientPhone = '';
+              let remarkProofUrl = '';
               if (typeof p.remarks === 'string') {
                 const nameMatch = p.remarks.match(/(?:Client|Name|Client Name)\s*:\s*([^\n;,]+)/i);
                 if (nameMatch) remarkClientName = nameMatch[1].trim();
                 const phoneMatch = p.remarks.match(/(?:Phone|Mobile|Contact)\s*:\s*([0-9\+\s-]{10,14})/i);
                 if (phoneMatch) remarkClientPhone = phoneMatch[1].replace(/\D/g, '').slice(-10);
+                const proofMatch = p.remarks.match(/Proof URL:\s*(https?:\/\/[^\s\n]+)/i);
+                if (proofMatch) remarkProofUrl = proofMatch[1].trim();
               }
+              const resolvedScreenshotUrl = p.screenshot_url || remarkProofUrl || '';
 
               // 1. Look up matched active trader FIRST by trader_id, phone, or name
               let matchedTrader = tradersList.find((t) => {
@@ -731,7 +817,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
               const normalizedServiceType = p.service_type === 'Future Option' ? 'Option' : (p.service_type || 'Option');
 
-              // Multi-tier Employee Name resolution
+              // Multi-tier Employee Name and ID resolution
               const primaryAlloc = enrichedAllocs.find((a) => a.is_primary) || enrichedAllocs[0];
               const empFromAlloc = primaryAlloc?.employee_name && primaryAlloc.employee_name !== 'Staff' && primaryAlloc.employee_name !== 'Staff Member'
                 ? primaryAlloc.employee_name
@@ -753,20 +839,92 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
               }
 
+              // Check if remarks mentions any known staff member (e.g. Bhavani / Bavani)
+              let userInRemarks: User | undefined;
+              if (typeof p.remarks === 'string') {
+                const lowerRemarks = p.remarks.toLowerCase();
+                if (isBhavaniUser(lowerRemarks)) {
+                  userInRemarks = userList.find((u) => isBhavaniUser(u)) || ({
+                    id: '99b02b72-2886-4257-acc5-6ce655f8e4dc',
+                    name: 'Bhavani N',
+                    email: 'bhavani@time2trade.com',
+                    role: 'employee',
+                  } as User);
+                } else {
+                  userInRemarks = userList.find(
+                    (u) => u.name && u.name.length > 2 && lowerRemarks.includes(u.name.toLowerCase().trim())
+                  );
+                }
+              }
+
+              // If remarks explicitly mentions staff (like Bhavani) or has Allocations: Bhavani,
+              // prioritize that staff member over a generic admin employee_id.
+              const directUser = p.employee_id ? userList.find((u) => u.id === p.employee_id) : null;
+              const directUserIsAdmin = directUser?.role === 'admin' || directUser?.role === 'manager';
+
               const resolvedEmpName =
                 (p.employee_name && p.employee_name !== 'Staff' && p.employee_name !== 'Staff Member' ? p.employee_name : '') ||
                 empFromAlloc ||
+                (directUserIsAdmin && userInRemarks ? userInRemarks.name : '') ||
+                (directUserIsAdmin && empFromRemarks ? empFromRemarks : '') ||
                 empFromDirectId ||
+                (userInRemarks ? userInRemarks.name : '') ||
+                empFromRemarks ||
                 empFromSubmitter ||
                 empFromTrader ||
-                empFromRemarks ||
                 (p.submitted_by_employee_name && p.submitted_by_employee_name !== 'Staff' && p.submitted_by_employee_name !== 'Staff Member' ? p.submitted_by_employee_name : '') ||
                 '';
+
+              const matchedUserObj = resolvedEmpName
+                ? userList.find(
+                    (u) =>
+                      u.name.toLowerCase().trim() === resolvedEmpName.toLowerCase().trim() ||
+                      resolvedEmpName.toLowerCase().includes(u.name.toLowerCase().trim()) ||
+                      u.name.toLowerCase().includes(resolvedEmpName.toLowerCase().trim())
+                  )
+                : userInRemarks;
+
+              const isBhavaniDeal =
+                isBhavaniUser(resolvedEmpName) ||
+                isBhavaniUser(p.employee_id) ||
+                isBhavaniUser(p.submitted_by_employee_id) ||
+                isBhavaniUser(p.remarks) ||
+                isBhavaniUser(empFromRemarks) ||
+                isBhavaniUser(userInRemarks);
+
+              const resolvedEmpId =
+                (isBhavaniDeal ? '99b02b72-2886-4257-acc5-6ce655f8e4dc' : null) ||
+                primaryAlloc?.employee_id ||
+                (directUserIsAdmin && userInRemarks ? userInRemarks.id : null) ||
+                (directUserIsAdmin && matchedUserObj ? matchedUserObj.id : null) ||
+                p.employee_id ||
+                matchedUserObj?.id ||
+                p.submitted_by_employee_id ||
+                null;
 
               const resolvedSubmitterName =
                 empFromSubmitter ||
                 (p.submitted_by_employee_name && p.submitted_by_employee_name !== 'Staff' ? p.submitted_by_employee_name : '') ||
-                resolvedEmpName;
+                (isBhavaniDeal ? 'Bhavani N' : resolvedEmpName);
+
+              // Ensure solo payments always have a 100% primary allocation so sales and credits are never lost
+              const synthesizedAllocs: PaymentAllocation[] =
+                enrichedAllocs.length > 0
+                  ? enrichedAllocs
+                  : [
+                      {
+                        id: `alloc-${p.id}`,
+                        payment_id: p.id,
+                        employee_id: isBhavaniDeal ? '99b02b72-2886-4257-acc5-6ce655f8e4dc' : (resolvedEmpId || p.employee_id || (matchedUserObj ? matchedUserObj.id : '')),
+                        employee_name: isBhavaniDeal ? 'Bhavani N' : (resolvedEmpName || p.employee_name || 'Staff'),
+                        employee_email: isBhavaniDeal ? 'bhavani@time2trade.com' : matchedUserObj?.email,
+                        employee_code: matchedUserObj?.employee_code,
+                        employee_role: matchedUserObj?.designation || 'Sales Executive',
+                        allocation_amount: Number(p.amount) || 0,
+                        allocation_percentage: 100,
+                        is_primary: true,
+                      },
+                    ];
 
               return {
                 ...p,
@@ -775,11 +933,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 client_phone: resolvedClientPhone,
                 trader_name: resolvedClientName,
                 trader_phone: resolvedClientPhone,
-                employee_name: resolvedEmpName || p.employee_name,
+                employee_id: isBhavaniDeal ? '99b02b72-2886-4257-acc5-6ce655f8e4dc' : (resolvedEmpId || p.employee_id),
+                employee_name: isBhavaniDeal ? 'Bhavani N' : (resolvedEmpName || p.employee_name),
                 submitted_by_employee_name: resolvedSubmitterName || p.submitted_by_employee_name,
                 service_type: normalizedServiceType,
-                allocations: enrichedAllocs.length > 0 ? enrichedAllocs : p.allocations,
-                is_shared: (enrichedAllocs.length > 1) || p.is_shared,
+                screenshot_url: resolvedScreenshotUrl,
+                allocations: synthesizedAllocs,
+                is_shared: enrichedAllocs.length > 1 || Boolean(p.is_shared),
               };
             } catch {
               return {
@@ -894,6 +1054,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           (expRes.data as Expense[]).filter((exp) => exp && !isMockId(exp.id))
         );
       }
+      // Load manager advances (admin-only data, but loaded for context availability)
+      if (maRes && (maRes as any).data && Array.isArray((maRes as any).data)) {
+        const advances = ((maRes as any).data as ManagerAdvance[]).filter((a) => a && !isMockId(a.id));
+        // Enrich with manager names
+        const enriched = advances.map((a) => {
+          const mgr = (userList || users).find((u) => u.id === a.manager_id);
+          return { ...a, manager_name: mgr?.name || a.manager_name || 'Manager' };
+        });
+        setManagerAdvances(enriched);
+      }
     } catch {
       // Non-blocking data fetch error handled safely
     } finally {
@@ -917,7 +1087,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .maybeSingle();
 
             if (profile) {
-              const userObj: User = {
+              const userObj: User = normalizeUserRole({
                 id: profile.id,
                 name: profile.name || profile.full_name || session.user.email?.split('@')[0] || 'Staff',
                 email: profile.email || session.user.email || '',
@@ -927,7 +1097,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 phone: profile.phone,
                 avatar_url: profile.avatar_url,
                 created_at: profile.created_at,
-              };
+              });
 
               if (profile.is_active && profile.approval_status === 'approved') {
                 const needsReset =
@@ -942,6 +1112,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
 
                 setCurrentUser(userObj);
+                try {
+                  localStorage.setItem('time2trade_auth_user', JSON.stringify(userObj));
+                } catch {}
                 await loadSupabaseData(); // Load all data for logged in user
                 setLoading(false);
                 return;
@@ -955,11 +1128,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (storedUser) {
           let parsed: User = JSON.parse(storedUser);
           
-          // Migrate old roles
+          // Migrate old roles & normalize Karthik to manager
           if ((parsed.role as string) === 'telecaller' || (parsed.role as string) === 'relationship_manager') {
             parsed.role = 'employee';
-            localStorage.setItem('time2trade_auth_user', JSON.stringify(parsed));
           }
+          parsed = normalizeUserRole(parsed);
+          localStorage.setItem('time2trade_auth_user', JSON.stringify(parsed));
 
           if (parsed && parsed.id && parsed.is_active && parsed.approval_status === 'approved') {
             const needsReset =
@@ -1265,13 +1439,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
 
     try {
-      const normalizedEmail = emailInput.trim().toLowerCase();
-      let authenticatedUser: User | null = null;
+      const cleanedInput = emailInput.trim().replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\u00A0/g, ' ');
+      let normalizedEmail = cleanedInput.toLowerCase();
 
+      // Resolve username/alias without domain (e.g. 'karthik' -> 'karthik@time2trade.com')
+      if (!normalizedEmail.includes('@') && normalizedEmail.length > 0) {
+        const matched = users.find(
+          (u) =>
+            u.email.toLowerCase().split('@')[0] === normalizedEmail ||
+            u.name.toLowerCase() === normalizedEmail
+        );
+        if (matched?.email) {
+          normalizedEmail = matched.email.toLowerCase();
+        } else {
+          normalizedEmail = `${normalizedEmail}@time2trade.com`;
+        }
+      } else if (normalizedEmail.endsWith('@time2trade')) {
+        normalizedEmail = `${normalizedEmail}.com`;
+      }
+
+      let authenticatedUser: User | null = null;
       let lastAuthError: string | null = null;
 
+      // Check standard email format to avoid Supabase GoTrue 422 (Unprocessable Content)
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const isValidEmailFormat = emailRegex.test(normalizedEmail);
+
       // 1. Authenticate with Supabase Auth using the user's actual signup password
-      if (supabase) {
+      if (supabase && isValidEmailFormat) {
         try {
           const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
             email: normalizedEmail,
@@ -1565,6 +1760,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // 4. Successful Authentication
+      authenticatedUser = normalizeUserRole(authenticatedUser);
       setCurrentUser(authenticatedUser);
       localStorage.setItem('time2trade_auth_user', JSON.stringify(authenticatedUser));
       if (supabase && !useMocks) {
@@ -1738,7 +1934,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       message: `Your account registration was approved by Admin. Your role is set to ${assignedRole}. Welcome to Time2Trade CRM!`,
       type: 'success',
       category: 'system',
-      action_tab: assignedRole === 'admin' ? 'dashboard' : 'employee-dashboard',
+      action_tab: assignedRole === 'admin' ? 'dashboard' : assignedRole === 'manager' ? 'manager-dashboard' : 'employee-dashboard',
       action_label: 'Access Dashboard',
       is_read: false,
       created_at: nowIso,
@@ -2443,12 +2639,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       trader_name: resolvedClientName,
       trader_phone: resolvedClientPhone,
       employee_id: effectiveEmployeeId || 'sys',
-      employee_name: currentUser?.name || 'Staff',
+      employee_name: paymentInput.employee_name || currentUser?.name || 'Staff',
       submitted_by_employee_id: currentUser?.id || effectiveEmployeeId || undefined,
       submitted_by_employee_name: currentUser?.name || 'Staff',
       status: 'pending_verification',
       is_shared: isSharedPayment,
-      allocations: enrichedAllocations.length > 0 ? enrichedAllocations : undefined,
+      allocations:
+        enrichedAllocations.length > 0
+          ? enrichedAllocations
+          : [
+              {
+                id: `alloc-${newPayId}`,
+                payment_id: newPayId,
+                employee_id: effectiveEmployeeId || '',
+                employee_name: paymentInput.employee_name || currentUser?.name || 'Staff',
+                allocation_amount: Number(paymentInput.amount) || 0,
+                allocation_percentage: 100,
+                is_primary: true,
+              },
+            ],
       created_at: new Date().toISOString(),
     };
 
@@ -2990,6 +3199,105 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // ── Manager Advance CRUD (admin-only) ──────────────────────────────────────
+  const addManagerAdvance = async (advanceInput: Omit<ManagerAdvance, 'id' | 'created_at'>) => {
+    const newId = generateUUID();
+    const now = new Date().toISOString();
+    const mgr = users.find((u) => u.id === advanceInput.manager_id);
+    const newAdvance: ManagerAdvance = {
+      ...advanceInput,
+      id: newId,
+      manager_name: mgr?.name || advanceInput.manager_name || 'Manager',
+      created_by: currentUser?.id,
+      created_at: now,
+    };
+    setManagerAdvances((prev) => [newAdvance, ...prev]);
+
+    // Audit log
+    setAuditLogs((prev) => [{
+      id: `aud-${Date.now()}`,
+      user_id: currentUser?.id,
+      user_name: currentUser?.name || 'Admin',
+      action: 'CREATE_MANAGER_ADVANCE',
+      table_name: 'manager_advances',
+      record_id: newId,
+      new_values: { amount: advanceInput.amount, date: advanceInput.date, notes: advanceInput.notes },
+      created_at: now,
+    }, ...prev]);
+
+    if (supabase && !useMocks) {
+      try {
+        await supabase.from('manager_advances').insert({
+          id: newId,
+          manager_id: advanceInput.manager_id,
+          amount: advanceInput.amount,
+          date: advanceInput.date,
+          notes: advanceInput.notes || null,
+          created_by: currentUser?.id || null,
+        });
+      } catch {
+        // Non-blocking
+      }
+    }
+  };
+
+  const updateManagerAdvance = async (id: string, updates: Partial<ManagerAdvance>) => {
+    const now = new Date().toISOString();
+    const oldAdvance = managerAdvances.find((a) => a.id === id);
+    setManagerAdvances((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, ...updates, updated_at: now } : a))
+    );
+
+    setAuditLogs((prev) => [{
+      id: `aud-${Date.now()}`,
+      user_id: currentUser?.id,
+      user_name: currentUser?.name || 'Admin',
+      action: 'UPDATE_MANAGER_ADVANCE',
+      table_name: 'manager_advances',
+      record_id: id,
+      old_values: oldAdvance ? { amount: oldAdvance.amount, date: oldAdvance.date, notes: oldAdvance.notes } : {},
+      new_values: updates,
+      created_at: now,
+    }, ...prev]);
+
+    if (supabase && !useMocks) {
+      try {
+        const dbUpdates: Record<string, any> = { updated_at: now };
+        if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
+        if (updates.date !== undefined) dbUpdates.date = updates.date;
+        if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+        await supabase.from('manager_advances').update(dbUpdates).eq('id', id);
+      } catch {
+        // Non-blocking
+      }
+    }
+  };
+
+  const deleteManagerAdvance = async (id: string) => {
+    const now = new Date().toISOString();
+    const oldAdvance = managerAdvances.find((a) => a.id === id);
+    setManagerAdvances((prev) => prev.filter((a) => a.id !== id));
+
+    setAuditLogs((prev) => [{
+      id: `aud-${Date.now()}`,
+      user_id: currentUser?.id,
+      user_name: currentUser?.name || 'Admin',
+      action: 'DELETE_MANAGER_ADVANCE',
+      table_name: 'manager_advances',
+      record_id: id,
+      old_values: oldAdvance ? { amount: oldAdvance.amount, date: oldAdvance.date, notes: oldAdvance.notes } : {},
+      created_at: now,
+    }, ...prev]);
+
+    if (supabase && !useMocks) {
+      try {
+        await supabase.from('manager_advances').delete().eq('id', id);
+      } catch {
+        // Non-blocking
+      }
+    }
+  };
+
   const markNotificationRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
   };
@@ -3030,6 +3338,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tradingDays,
         payments,
         expenses,
+        managerAdvances,
+        addManagerAdvance,
+        updateManagerAdvance,
+        deleteManagerAdvance,
         notifications,
         auditLogs,
         filters,

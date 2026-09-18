@@ -131,7 +131,7 @@ export const PaymentVerification: React.FC = () => {
           );
           return {
             name: primary.employee_name!.trim(),
-            role: matchedUser?.designation || (matchedUser?.role === 'admin' ? 'Admin' : 'Sales Executive'),
+            role: matchedUser?.designation || (matchedUser?.role === 'admin' ? 'Admin' : matchedUser?.role === 'manager' ? 'Manager' : 'Sales Executive'),
             initials: primary.employee_name!.trim().slice(0, 2).toUpperCase(),
             isShared: payment.allocations.length > 1,
             shareCount: payment.allocations.length,
@@ -142,7 +142,7 @@ export const PaymentVerification: React.FC = () => {
           if (matched && matched.name && !isGenericStaff(matched.name)) {
             return {
               name: matched.name.trim(),
-              role: matched.designation || (matched.role === 'admin' ? 'Admin' : 'Sales Executive'),
+              role: matched.designation || (matched.role === 'admin' ? 'Admin' : matched.role === 'manager' ? 'Manager' : 'Sales Executive'),
               initials: matched.name.trim().slice(0, 2).toUpperCase(),
               isShared: payment.allocations.length > 1,
               shareCount: payment.allocations.length,
@@ -158,7 +158,7 @@ export const PaymentVerification: React.FC = () => {
       if (matched && matched.name && !isGenericStaff(matched.name)) {
         return {
           name: matched.name.trim(),
-          role: matched.designation || (matched.role === 'admin' ? 'Admin' : 'Sales Executive'),
+          role: matched.designation || (matched.role === 'admin' ? 'Admin' : matched.role === 'manager' ? 'Manager' : 'Sales Executive'),
           initials: matched.name.trim().slice(0, 2).toUpperCase(),
           isShared: Boolean(payment.is_shared),
           shareCount: 1,
@@ -172,7 +172,7 @@ export const PaymentVerification: React.FC = () => {
       if (matched && matched.name && !isGenericStaff(matched.name)) {
         return {
           name: matched.name.trim(),
-          role: matched.designation || (matched.role === 'admin' ? 'Admin' : 'Sales Executive'),
+          role: matched.designation || (matched.role === 'admin' ? 'Admin' : matched.role === 'manager' ? 'Manager' : 'Sales Executive'),
           initials: matched.name.trim().slice(0, 2).toUpperCase(),
           isShared: Boolean(payment.is_shared),
           shareCount: 1,
@@ -186,7 +186,7 @@ export const PaymentVerification: React.FC = () => {
       const matchedUser = users.find((u) => u.name.toLowerCase() === rawEmp.toLowerCase());
       return {
         name: rawEmp,
-        role: matchedUser?.designation || (matchedUser?.role === 'admin' ? 'Admin' : 'Sales Executive'),
+        role: matchedUser?.designation || (matchedUser?.role === 'admin' ? 'Admin' : matchedUser?.role === 'manager' ? 'Manager' : 'Sales Executive'),
         initials: rawEmp.slice(0, 2).toUpperCase(),
         isShared: Boolean(payment.is_shared),
         shareCount: 1,
@@ -238,7 +238,7 @@ export const PaymentVerification: React.FC = () => {
           if (matched && matched.name && !isGenericStaff(matched.name)) {
             return {
               name: matched.name.trim(),
-              role: matched.designation || (matched.role === 'admin' ? 'Admin' : 'Sales Executive'),
+              role: matched.designation || (matched.role === 'admin' ? 'Admin' : matched.role === 'manager' ? 'Manager' : 'Sales Executive'),
               initials: matched.name.trim().slice(0, 2).toUpperCase(),
               isShared: Boolean(payment.is_shared),
               shareCount: 1,
@@ -358,7 +358,7 @@ export const PaymentVerification: React.FC = () => {
       }
     });
     users.forEach((u) => {
-      if ((u.role === 'employee' || u.role === 'admin') && u.name) {
+      if ((u.role === 'employee' || u.role === 'admin' || u.role === 'manager') && u.name) {
         if (!empMap.has(u.name)) {
           empMap.set(u.name, 0);
         }

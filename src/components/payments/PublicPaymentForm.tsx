@@ -109,7 +109,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
   const effectivePrimaryUser: User = currentUser
     ? currentUser
     : {
-        id: users.find((u) => u.role === 'admin' || u.role === 'employee')?.id || 'primary-staff',
+        id: users.find((u) => u.role === 'admin' || u.role === 'manager' || u.role === 'employee')?.id || 'primary-staff',
         name: 'Primary Staff',
         email: 'staff@time2trade.com',
         role: 'employee',
@@ -311,7 +311,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
             employee_id: effectivePrimaryUser.id,
             employee_name: effectivePrimaryUser.name,
             employee_code: effectivePrimaryUser.employee_code || `EMP-${effectivePrimaryUser.id.slice(0, 4).toUpperCase()}`,
-            employee_role: effectivePrimaryUser.designation || (effectivePrimaryUser.role === 'admin' ? 'Admin' : 'Sales Executive'),
+            employee_role: effectivePrimaryUser.designation || (effectivePrimaryUser.role === 'admin' ? 'Admin' : effectivePrimaryUser.role === 'manager' ? 'Manager' : 'Sales Executive'),
             employee_email: effectivePrimaryUser.email,
             allocation_amount: numAmount,
             allocation_percentage: 100,
@@ -399,7 +399,7 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
       employee_id: user.id,
       employee_name: user.name,
       employee_code: user.employee_code || `EMP-${user.id.slice(0, 4).toUpperCase()}`,
-      employee_role: user.designation || (user.role === 'admin' ? 'Admin' : 'Sales Executive'),
+      employee_role: user.designation || (user.role === 'admin' ? 'Admin' : user.role === 'manager' ? 'Manager' : 'Sales Executive'),
       employee_email: user.email,
       allocation_amount: 0,
       allocation_percentage: 0,

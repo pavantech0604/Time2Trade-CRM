@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     phone TEXT,
-    role TEXT NOT NULL DEFAULT 'employee' CHECK (role IN ('admin', 'employee', 'pending')),
+    role TEXT NOT NULL DEFAULT 'employee' CHECK (role IN ('admin', 'manager', 'employee', 'pending')),
     is_active BOOLEAN NOT NULL DEFAULT true,
     avatar_url TEXT,
     approval_status TEXT NOT NULL DEFAULT 'pending_admin_review' CHECK (approval_status IN ('pending_admin_review', 'approved', 'rejected')),
@@ -120,6 +120,18 @@ CREATE TABLE IF NOT EXISTS public.expenses (
     added_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
     receipt_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- MANAGER ADVANCES TABLE (tracks advance salary payments from admin to manager)
+CREATE TABLE IF NOT EXISTS public.manager_advances (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    manager_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    amount NUMERIC(15,2) NOT NULL CHECK (amount > 0),
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    notes TEXT,
+    created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 
@@ -235,6 +247,7 @@ ALTER TABLE public.active_traders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trading_days ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.manager_advances ENABLE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION public.get_current_role() RETURNS TEXT AS $$
     SELECT role FROM public.users WHERE id = auth.uid();
@@ -249,25 +262,30 @@ CREATE POLICY "Enable anon operations on active_traders" ON public.active_trader
 CREATE POLICY "Enable anon operations on trading_days" ON public.trading_days FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Enable anon operations on payments" ON public.payments FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Enable anon operations on expenses" ON public.expenses FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Enable anon operations on manager_advances" ON public.manager_advances FOR ALL TO anon USING (true) WITH CHECK (true);
 
 -- Leads Policy
 CREATE POLICY "Admin lead access" ON public.leads FOR ALL USING (public.get_current_role() = 'admin');
+CREATE POLICY "Manager lead access" ON public.leads FOR SELECT USING (public.get_current_role() = 'manager');
 CREATE POLICY "Employee lead access" ON public.leads FOR SELECT USING (assigned_to = auth.uid());
 CREATE POLICY "Employee lead update" ON public.leads FOR UPDATE USING (assigned_to = auth.uid());
 
 -- Active Traders Policy
 CREATE POLICY "Admin trader access" ON public.active_traders FOR ALL USING (public.get_current_role() = 'admin');
+CREATE POLICY "Manager trader access" ON public.active_traders FOR SELECT USING (public.get_current_role() = 'manager');
 CREATE POLICY "Employee trader access" ON public.active_traders FOR SELECT USING (assigned_to = auth.uid());
 CREATE POLICY "Employee trader modify" ON public.active_traders FOR ALL USING (assigned_to = auth.uid());
 
 -- Trading Days Policy
 CREATE POLICY "Admin trading days access" ON public.trading_days FOR ALL USING (public.get_current_role() = 'admin');
+CREATE POLICY "Manager trading days access" ON public.trading_days FOR SELECT USING (public.get_current_role() = 'manager');
 CREATE POLICY "Employee trading days access" ON public.trading_days FOR ALL USING (
     EXISTS (SELECT 1 FROM public.active_traders WHERE active_traders.id = trading_days.trader_id AND active_traders.assigned_to = auth.uid())
 );
 
 -- Payments Policy
 CREATE POLICY "Admin payments access" ON public.payments FOR ALL USING (public.get_current_role() = 'admin');
+CREATE POLICY "Manager payments access" ON public.payments FOR SELECT USING (public.get_current_role() = 'manager');
 CREATE POLICY "Employee payments access" ON public.payments FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.active_traders WHERE active_traders.id = payments.trader_id AND active_traders.assigned_to = auth.uid())
 );
@@ -275,6 +293,9 @@ CREATE POLICY "Public payment submission" ON public.payments FOR INSERT WITH CHE
 
 -- Expenses Policy
 CREATE POLICY "Admin expenses access" ON public.expenses FOR ALL USING (public.get_current_role() = 'admin');
+
+-- Manager Advances Policy (ADMIN ONLY — managers cannot see their own advance records)
+CREATE POLICY "Admin manager_advances access" ON public.manager_advances FOR ALL USING (public.get_current_role() = 'admin');
 
 
 -- 5. STORAGE BUCKETS & POLICIES
@@ -309,5 +330,5 @@ $$;
 -- 6. ADMIN SEED DATA
 INSERT INTO public.users (id, name, email, role, is_active, approval_status) 
 VALUES
-('10000000-0000-0000-0000-000000000001', 'Karthik Muni', 'karthik@time2trade.com', 'admin', true, 'approved')
+('10000000-0000-0000-0000-000000000001', 'Karthik Muni', 'karthik@time2trade.com', 'manager', true, 'approved')
 ON CONFLICT (id) DO NOTHING;

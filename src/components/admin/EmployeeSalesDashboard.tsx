@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, isBhavaniUser } from '../../context/AuthContext';
 import { formatINR } from '../../lib/formatters';
 import {
   Calendar,
@@ -138,12 +138,23 @@ export const EmployeeSalesDashboard: React.FC = () => {
     // Start of month
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    const BHAVANI_CANONICAL_ID = '99b02b72-2886-4257-acc5-6ce655f8e4dc';
+    const getCanonicalEmpId = (id?: string | null, name?: string | null): string => {
+      if (isBhavaniUser(id) || isBhavaniUser(name)) return BHAVANI_CANONICAL_ID;
+      return id || 'direct';
+    };
+
     // Initialize stats for staff
     users.forEach(user => {
       if (['employee', 'admin'].includes(user.role)) {
-        stats[user.id] = {
-          id: user.id,
-          name: user.name,
+        // Unify duplicate Bhavani user records into single canonical profile
+        if (isBhavaniUser(user) && user.id !== BHAVANI_CANONICAL_ID) {
+          return;
+        }
+        const targetId = isBhavaniUser(user) ? BHAVANI_CANONICAL_ID : user.id;
+        stats[targetId] = {
+          id: targetId,
+          name: isBhavaniUser(user) ? 'Bhavani N' : user.name,
           role: user.role === 'employee' ? 'Employee' : 'Admin',
           daily: 0,
           weekly: 0,
@@ -173,11 +184,12 @@ export const EmployeeSalesDashboard: React.FC = () => {
       if (payment.allocations && payment.allocations.length > 0) {
         // Multi-employee allocation distribution
         payment.allocations.forEach(alloc => {
-          const empId = alloc.employee_id || 'direct';
+          const empId = getCanonicalEmpId(alloc.employee_id, alloc.employee_name);
+          const isBhavani = isBhavaniUser(empId) || isBhavaniUser(alloc.employee_name);
           if (!stats[empId]) {
             stats[empId] = {
               id: empId,
-              name: alloc.employee_name || 'Staff',
+              name: isBhavani ? 'Bhavani N' : (alloc.employee_name || 'Staff'),
               role: alloc.employee_role || 'Employee',
               daily: 0,
               weekly: 0,
@@ -203,12 +215,13 @@ export const EmployeeSalesDashboard: React.FC = () => {
         });
       } else {
         // Single employee / Direct payment
-        const empId = payment.employee_id || 'direct';
+        const empId = getCanonicalEmpId(payment.employee_id, payment.employee_name);
+        const isBhavani = isBhavaniUser(empId) || isBhavaniUser(payment.employee_name) || isBhavaniUser(payment.remarks);
         if (!stats[empId]) {
           stats[empId] = {
             id: empId,
-            name: payment.employee_name || 'Unknown',
-            role: 'Unknown',
+            name: isBhavani ? 'Bhavani N' : (payment.employee_name || 'Unknown'),
+            role: 'Employee',
             daily: 0,
             weekly: 0,
             monthly: 0,
@@ -357,54 +370,54 @@ export const EmployeeSalesDashboard: React.FC = () => {
                   {/* Card Header & High-Level Stats (Always Visible) */}
                   <div 
                     onClick={() => toggleCard(stat.id)}
-                    className="relative p-4 sm:p-6 md:p-8 cursor-pointer flex flex-col xl:flex-row xl:items-center justify-between gap-6 sm:gap-8 z-10"
+                    className="relative p-3.5 sm:p-6 md:p-8 cursor-pointer flex flex-col xl:flex-row xl:items-center justify-between gap-4 sm:gap-6 xl:gap-8 z-10"
                   >
                     {/* Profile Section */}
-                    <div className="flex items-center gap-4 sm:gap-5 xl:w-1/4 shrink-0 group/profile">
+                    <div className="flex items-center gap-3.5 sm:gap-5 xl:w-1/4 shrink-0 group/profile">
                       <div className="relative">
-                        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-white shadow-lg overflow-hidden transition-transform duration-500 group-hover/profile:scale-105 group-hover/profile:rotate-3 group-hover/profile:shadow-blue-500/20">
+                        <div className="w-11 h-11 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-white shadow-lg overflow-hidden transition-transform duration-500 group-hover/profile:scale-105 group-hover/profile:rotate-3 group-hover/profile:shadow-blue-500/20">
                           <UserIcon className="w-5 h-5 sm:w-7 sm:h-7 opacity-90 transition-transform duration-500 group-hover/profile:scale-110" />
                         </div>
                         <div className="absolute -bottom-1 -right-1 sm:-bottom-2 sm:-right-2 bg-white rounded-full p-1 shadow-sm">
-                          <span className="flex w-3 h-3 sm:w-4 sm:h-4 bg-emerald-500 rounded-full border-2 border-white items-center justify-center animate-pulse">
+                          <span className="flex w-2.5 h-2.5 sm:w-4 sm:h-4 bg-emerald-500 rounded-full border-2 border-white items-center justify-center animate-pulse">
                              <span className="sr-only">Active</span>
                           </span>
                         </div>
                       </div>
-                      <div>
-                        <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight group-hover/profile:text-blue-700 transition-colors">{stat.name}</h3>
-                        <span className="inline-flex items-center mt-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-slate-100/80 text-slate-600 border border-slate-200/50 backdrop-blur-sm">
+                      <div className="min-w-0">
+                        <h3 className="text-base sm:text-xl font-black text-slate-800 tracking-tight group-hover/profile:text-blue-700 transition-colors truncate">{stat.name}</h3>
+                        <span className="inline-flex items-center mt-0.5 sm:mt-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-slate-100/80 text-slate-600 border border-slate-200/50 backdrop-blur-sm">
                           {stat.role}
                         </span>
                       </div>
                     </div>
 
                     {/* Big Number Stats Section */}
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-8 border-t border-slate-100/50 xl:border-t-0 pt-4 sm:pt-6 xl:pt-0">
-                      <div className="space-y-1.5 sm:space-y-2 group/stat">
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:gap-8 border-t border-slate-100/50 xl:border-t-0 pt-3 sm:pt-6 xl:pt-0">
+                      <div className="space-y-1 sm:space-y-2 group/stat">
                         <div className="flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
                           <Calendar className="w-3.5 h-3.5 text-slate-400 group-hover/stat:text-blue-500 transition-colors" /> Today's Verified
                         </div>
-                        <div className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-baseline gap-1 group-hover/stat:text-blue-700 transition-colors">
+                        <div className="text-xl min-[380px]:text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-baseline gap-1 group-hover/stat:text-blue-700 transition-colors tabular-nums" title={formatINR(stat.daily)}>
                           {formatINR(stat.daily)}
                         </div>
                       </div>
 
-                      <div className="space-y-1.5 sm:space-y-2 group/stat">
+                      <div className="space-y-1 sm:space-y-2 group/stat">
                         <div className="flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
                           <CalendarDays className="w-3.5 h-3.5 text-slate-400 group-hover/stat:text-indigo-500 transition-colors" /> This Week's Sales
                         </div>
-                        <div className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-baseline gap-1 group-hover/stat:text-indigo-700 transition-colors">
+                        <div className="text-xl min-[380px]:text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-baseline gap-1 group-hover/stat:text-indigo-700 transition-colors tabular-nums" title={formatINR(stat.weekly)}>
                           {formatINR(stat.weekly)}
                         </div>
                       </div>
                     </div>
 
                     {/* Total All-Time & Action CTA */}
-                    <div className="flex items-center justify-between xl:justify-end gap-6 sm:gap-8 border-t border-slate-100/50 xl:border-t-0 pt-4 sm:pt-6 xl:pt-0">
-                      <div className="text-left xl:text-right space-y-1">
+                    <div className="flex items-center justify-between xl:justify-end gap-4 sm:gap-8 border-t border-slate-100/50 xl:border-t-0 pt-3 sm:pt-6 xl:pt-0">
+                      <div className="text-left xl:text-right space-y-0.5 sm:space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Credited Sales</span>
-                        <div className="text-2xl sm:text-3xl font-black text-emerald-700">
+                        <div className="text-xl min-[380px]:text-2xl sm:text-3xl font-black text-emerald-700 tabular-nums" title={formatINR(stat.total)}>
                           {formatINR(stat.total)}
                         </div>
                       </div>

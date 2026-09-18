@@ -35,6 +35,15 @@ export const ActiveTradersView: React.FC = () => {
     trades_count: 5,
   });
 
+  const getTraderPaymentCount = (t: ActiveTrader) => {
+    return payments.filter(
+      (p) =>
+        p.status === 'approved' &&
+        (p.trader_id === t.id ||
+          (p.client_name && p.client_name.trim().toLowerCase() === t.name.trim().toLowerCase()))
+    ).length;
+  };
+
   const handleOpenDetail = (trader: ActiveTrader) => {
     setSelectedTrader(trader);
   };
@@ -135,7 +144,11 @@ export const ActiveTradersView: React.FC = () => {
             </p>
           </div>
 
-          <StreakBadge streak={selectedTrader.current_streak} showWeeklyStrip />
+          <StreakBadge
+            streak={selectedTrader.current_streak}
+            paymentCount={getTraderPaymentCount(selectedTrader)}
+            showWeeklyStrip
+          />
         </div>
 
         {/* Summary Metric Cards */}
@@ -298,7 +311,10 @@ export const ActiveTradersView: React.FC = () => {
                 <div>
                   <span className="text-slate-400 uppercase tracking-wider block text-[8.5px] font-bold">Streak Status</span>
                   <div className="mt-0.5">
-                    <StreakBadge streak={trader.current_streak} />
+                    <StreakBadge
+                      streak={trader.current_streak}
+                      paymentCount={getTraderPaymentCount(trader)}
+                    />
                   </div>
                 </div>
                 <div>
@@ -350,7 +366,10 @@ export const ActiveTradersView: React.FC = () => {
                   <td className="py-3.5 px-4 font-bold text-emerald-700 font-mono">{formatINR(trader.total_profit_gained)}</td>
                   <td className="py-3.5 px-4 font-bold text-blue-700 font-mono">{formatINR(trader.total_profit_shared)}</td>
                   <td className="py-3.5 px-4">
-                    <StreakBadge streak={trader.current_streak} />
+                    <StreakBadge
+                      streak={trader.current_streak}
+                      paymentCount={getTraderPaymentCount(trader)}
+                    />
                   </td>
                   <td className="py-3.5 px-4 text-right">
                     <button

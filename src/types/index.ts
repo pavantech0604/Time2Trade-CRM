@@ -1,4 +1,4 @@
-export type UserRole = 'pending' | 'admin' | 'employee';
+export type UserRole = 'pending' | 'admin' | 'manager' | 'employee';
 
 export type ApprovalStatus = 'pending_admin_review' | 'approved' | 'rejected';
 
@@ -248,6 +248,23 @@ export interface AuditLog {
   created_at: string;
 }
 
+/**
+ * Manager Advance: tracks advance salary payments given by admin to a manager.
+ * The manager's total earned share is 60% of overall sales; advances are deducted
+ * from this to compute the net payable/receivable.
+ */
+export interface ManagerAdvance {
+  id: string;
+  manager_id: string;
+  manager_name?: string;
+  amount: number;
+  date: string;
+  notes?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
 export type DateFilter = 'today' | 'this_week' | 'this_month' | 'all';
 
 export interface FilterState {
@@ -261,6 +278,8 @@ export interface DashboardKPIs {
   totalLeads: number;
   activeTraders: number;
   totalProfitShared: number;
+  managerShare: number;
+  companyGrossShare: number;
   netProfit: number;
   pendingVerificationCount: number;
   totalExpenses: number;

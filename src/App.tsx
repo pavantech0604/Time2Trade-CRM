@@ -11,6 +11,8 @@ import { ExpenseModule } from './components/admin/ExpenseModule';
 import { ReportsModule } from './components/admin/ReportsModule';
 import { EmployeeDashboard } from './components/employee/EmployeeDashboard';
 import { EmployeeSalesDashboard } from './components/admin/EmployeeSalesDashboard';
+import { ManagerAdvances } from './components/admin/ManagerAdvances';
+import { ManagerDashboard } from './components/admin/ManagerDashboard';
 import { PublicPaymentForm } from './components/payments/PublicPaymentForm';
 import { TeamChat } from './components/chat/TeamChat';
 import { FloatingChatWidget } from './components/chat/FloatingChatWidget';
@@ -31,6 +33,8 @@ const MainApp: React.FC = () => {
 
     if (currentUser.role === 'employee') {
       setActiveTab('employee-dashboard');
+    } else if (currentUser.role === 'manager') {
+      setActiveTab('manager-dashboard');
     } else if (currentUser.role === 'admin') {
       setActiveTab('dashboard');
     }
@@ -78,23 +82,40 @@ const MainApp: React.FC = () => {
     switch (activeTab) {
       // Admin Views
       case 'dashboard':
+        if (currentUser.role === 'manager') return <ManagerDashboard />;
         return <AdminOverview onNavigate={setActiveTab} />;
       case 'employee-scorecards':
         return <EmployeeScorecards />;
       case 'active-traders':
         return <ActiveTradersView />;
       case 'payment-verification':
+        if (currentUser.role === 'manager') return <ManagerDashboard />;
         return <PaymentVerification />;
       case 'employee-management':
+        if (currentUser.role === 'manager') return <ManagerDashboard />;
         return <EmployeeManagement />;
       case 'admin-attendance':
+        if (currentUser.role === 'manager') return <ManagerDashboard />;
         return <AttendanceDashboard />;
       case 'expenses':
+        if (currentUser.role === 'manager') return <ManagerDashboard />;
         return <ExpenseModule />;
       case 'reports':
+        if (currentUser.role === 'manager') return <ManagerDashboard />;
         return <ReportsModule />;
       case 'employee-sales':
         return <EmployeeSalesDashboard />;
+
+      // Manager Views
+      case 'manager-dashboard':
+        return <ManagerDashboard />;
+
+      // Admin-only Manager Advances
+      case 'manager-advances':
+        if (currentUser.role !== 'admin') {
+          return currentUser.role === 'manager' ? <ManagerDashboard /> : <EmployeeDashboard />;
+        }
+        return <ManagerAdvances />;
 
       // Employee View
       case 'employee-dashboard':
@@ -113,7 +134,8 @@ const MainApp: React.FC = () => {
         return (
           <PublicPaymentForm
             onBack={() => {
-            if (currentUser.role === 'employee') setActiveTab('employee-dashboard');
+              if (currentUser.role === 'employee') setActiveTab('employee-dashboard');
+              else if (currentUser.role === 'manager') setActiveTab('manager-dashboard');
               else setActiveTab('dashboard');
             }}
           />
@@ -121,6 +143,7 @@ const MainApp: React.FC = () => {
 
       default:
         if (currentUser.role === 'employee') return <EmployeeDashboard />;
+        if (currentUser.role === 'manager') return <ManagerDashboard />;
         return <AdminOverview onNavigate={setActiveTab} />;
     }
   };

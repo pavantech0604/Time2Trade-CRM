@@ -128,7 +128,9 @@ export const TeamChat: React.FC<TeamChatProps> = ({ initialChannelId = 'sales-ce
 
   // List of other users for 1-on-1 direct messaging
   const teamMembers = useMemo(() => {
-    return users.filter((u) => u.id !== currentUser.id && (u.role === 'employee' || u.role === 'admin'));
+    return users.filter(
+      (u) => u.id !== currentUser.id && (u.role === 'employee' || u.role === 'admin' || u.role === 'manager')
+    );
   }, [users, currentUser.id]);
 
   // Count unread or channel count
@@ -314,7 +316,11 @@ export const TeamChat: React.FC<TeamChatProps> = ({ initialChannelId = 'sales-ce
               {teamMembers.map((member) => {
                 const isActive = activeDirectUser === member.id;
                 const msgCount = getDirectMessageCount(member.id);
-                const isAdmin = member.role === 'admin';
+                const isKarthik =
+                  (member.name || '').toLowerCase().includes('karthik') ||
+                  (member.email || '').toLowerCase().includes('karthik');
+                const isManager = member.role === 'manager' || isKarthik;
+                const isAdmin = member.role === 'admin' && !isManager;
 
                 return (
                   <button
@@ -342,9 +348,18 @@ export const TeamChat: React.FC<TeamChatProps> = ({ initialChannelId = 'sales-ce
                               Admin
                             </span>
                           )}
+                          {isManager && (
+                            <span className="px-1 py-0.1 rounded text-[8px] font-extrabold bg-purple-100 text-purple-800 uppercase">
+                              Manager
+                            </span>
+                          )}
                         </div>
                         <span className="text-[10px] text-slate-400 block truncate">
-                          {member.designation || (isAdmin ? 'Admin' : 'Sales Executive')}
+                          {isManager
+                            ? member.designation && member.designation !== 'Admin'
+                              ? member.designation
+                              : 'Manager'
+                            : member.designation || (isAdmin ? 'Admin' : 'Sales Executive')}
                         </span>
                       </div>
                     </div>
@@ -565,11 +580,27 @@ export const TeamChat: React.FC<TeamChatProps> = ({ initialChannelId = 'sales-ce
                           {!isMe && (
                             <span className="font-black text-[11px] text-emerald-800 block">
                               {msg.sender_name}
-                              {msg.sender_role === 'admin' && (
-                                <span className="ml-1.5 px-1 py-0.2 rounded text-[8px] bg-blue-100 text-blue-800 uppercase font-extrabold">
-                                  Admin
-                                </span>
-                              )}
+                              {(() => {
+                                const isSenderKarthik = (msg.sender_name || '').toLowerCase().includes('karthik');
+                                const isSenderManager = msg.sender_role === 'manager' || isSenderKarthik;
+                                const isSenderAdmin = msg.sender_role === 'admin' && !isSenderManager;
+
+                                if (isSenderAdmin) {
+                                  return (
+                                    <span className="ml-1.5 px-1 py-0.2 rounded text-[8px] bg-blue-100 text-blue-800 uppercase font-extrabold">
+                                      Admin
+                                    </span>
+                                  );
+                                }
+                                if (isSenderManager) {
+                                  return (
+                                    <span className="ml-1.5 px-1 py-0.2 rounded text-[8px] bg-purple-100 text-purple-800 uppercase font-extrabold">
+                                      Manager
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </span>
                           )}
 

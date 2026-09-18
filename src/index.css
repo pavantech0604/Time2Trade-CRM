@@ -299,9 +299,50 @@ button:active:not(:disabled) {
   }
 }
 
+/* Tabular numbers for aligned currency columns */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Revenue allocation panel entry animation */
+@keyframes revealUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-reveal-up {
+  animation: revealUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+
 /* ==========================================================================
-   Accessibility: Reduced Motion & Focus Ring
+   Streak Flame Pulse Animation
    ========================================================================== */
+@keyframes streakFlamePulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 2px 5px rgba(234, 88, 12, 0.25));
+  }
+  50% {
+    transform: scale(1.05);
+    filter: drop-shadow(0 3px 8px rgba(234, 88, 12, 0.45));
+  }
+}
+
+.animate-streak-flame {
+  animation: streakFlamePulse 2.8s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,
@@ -317,4 +358,5 @@ button:active:not(:disabled) {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
 }
+
 
