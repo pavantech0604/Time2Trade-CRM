@@ -1051,7 +1051,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       if (expRes.data && Array.isArray(expRes.data)) {
         setExpenses(
-          (expRes.data as Expense[]).filter((exp) => exp && !isMockId(exp.id))
+          (expRes.data as Expense[]).filter((exp) => {
+            if (!exp || isMockId(exp.id)) return false;
+            const cat = (exp.category || '').toLowerCase();
+            const desc = (exp.description || '').toLowerCase();
+            // Manager advances belong strictly to manager settlement and must not pollute operating expenses
+            if (cat === 'salary' || cat.includes('advance') || desc.includes('k adv') || desc.includes('advance')) {
+              return false;
+            }
+            return true;
+          })
         );
       }
       // Load manager advances (admin-only data, but loaded for context availability)

@@ -477,17 +477,20 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-5 h-5 rounded-full bg-rose-600 text-white flex items-center justify-center text-[9px] font-bold shrink-0">3</div>
-                    <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">Deductions</span>
+                    <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">Independent Deductions</span>
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-medium text-rose-600">Expenses</span>
+                      <span className="text-[10px] font-medium text-rose-600">Operating Exp (from 40%)</span>
                       <span className="text-xs font-bold text-rose-700 tabular-nums" title={formatINR(totalExpenses)}>−{formatINRCompact(totalExpenses)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-medium text-slate-500">Advances</span>
+                      <span className="text-[10px] font-medium text-purple-700">Manager Adv (from 60%)</span>
                       <span className="text-xs font-bold text-slate-600 tabular-nums" title={formatINR(totalAdvancesGiven)}>−{formatINRCompact(totalAdvancesGiven)}</span>
                     </div>
+                  </div>
+                  <div className="text-[9px] text-slate-400 mt-2 italic truncate">
+                    Advances reduce manager due, not company profit
                   </div>
                   <div className="hidden lg:flex absolute -right-2 top-1/2 -translate-y-1/2 z-10">
                     <ChevronRight className="w-4 h-4 text-slate-300" />

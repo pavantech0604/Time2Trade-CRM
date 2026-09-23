@@ -99,10 +99,10 @@ const MainApp: React.FC = () => {
         return <AttendanceDashboard />;
       case 'expenses':
         if (currentUser.role === 'manager') return <ManagerDashboard />;
-        return <ExpenseModule />;
+        return <ExpenseModule onNavigate={setActiveTab} />;
       case 'reports':
         if (currentUser.role === 'manager') return <ManagerDashboard />;
-        return <ReportsModule />;
+        return <ReportsModule onNavigate={setActiveTab} />;
       case 'employee-sales':
         return <EmployeeSalesDashboard />;
 

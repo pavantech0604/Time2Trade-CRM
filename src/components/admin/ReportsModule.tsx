@@ -3,7 +3,11 @@ import { useAuth } from '../../context/AuthContext';
 import { calculateDashboardKPIs, formatINR } from '../../lib/calculations';
 import { BarChart3, TrendingUp, Users, DollarSign, Award, Target, PhoneCall } from 'lucide-react';
 
-export const ReportsModule: React.FC = () => {
+interface ReportsModuleProps {
+  onNavigate?: (tab: string) => void;
+}
+
+export const ReportsModule: React.FC<ReportsModuleProps> = () => {
   const { leads, traders, payments, expenses, users } = useAuth();
   const kpis = calculateDashboardKPIs(leads, traders, payments, expenses);
 

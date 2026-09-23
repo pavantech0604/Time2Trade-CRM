@@ -10,7 +10,6 @@ import {
   Calendar,
   DollarSign,
   User,
-  Info,
   AlertTriangle,
   CheckCircle2,
   X,
@@ -22,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export const ManagerAdvances: React.FC = () => {
-  const { currentUser, users, managerAdvances, addManagerAdvance, updateManagerAdvance, deleteManagerAdvance } =
+  const { currentUser, users, payments, managerAdvances, addManagerAdvance, updateManagerAdvance, deleteManagerAdvance } =
     useAuth();
 
   // Guard: Admin-only access
@@ -63,6 +62,17 @@ export const ManagerAdvances: React.FC = () => {
     return users.filter((u) => u.role === 'manager');
   }, [users]);
 
+  // Overall platform sales & manager earned 60% revenue share
+  const totalApprovedSales = useMemo(() => {
+    return (payments || [])
+      .filter((p) => p.status === 'approved')
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  }, [payments]);
+
+  const managerEarnedShare = useMemo(() => {
+    return totalApprovedSales * 0.60;
+  }, [totalApprovedSales]);
+
   // Set default manager when opening add modal
   const openAddModal = () => {
     setEditingAdvance(null);
@@ -98,7 +108,7 @@ export const ManagerAdvances: React.FC = () => {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [managerAdvances, selectedManagerFilter, searchQuery]);
 
-  // Summary Metrics
+  // Summary Metrics including live net balance due
   const summary = useMemo(() => {
     const list = selectedManagerFilter === 'all'
       ? managerAdvances
@@ -107,14 +117,17 @@ export const ManagerAdvances: React.FC = () => {
     const totalGiven = list.reduce((sum, a) => sum + Number(a.amount || 0), 0);
     const sorted = [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const lastAdvance = sorted[0];
+    const netBalanceDue = managerEarnedShare - totalGiven;
 
     return {
+      managerEarnedShare,
       totalGiven,
+      netBalanceDue,
       count: list.length,
       lastDate: lastAdvance ? lastAdvance.date : null,
       lastAmount: lastAdvance ? lastAdvance.amount : 0,
     };
-  }, [managerAdvances, selectedManagerFilter]);
+  }, [managerAdvances, selectedManagerFilter, managerEarnedShare]);
 
   // Running totals calculation: chronological order (oldest to newest) to compute cumulative
   const runningTotalsMap = useMemo(() => {
@@ -217,59 +230,64 @@ export const ManagerAdvances: React.FC = () => {
         </button>
       </div>
 
-      {/* Tooltip Explainer Note */}
-      <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-4 flex items-start gap-3">
-        <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-        <div className="text-xs text-blue-900 leading-relaxed">
-          <strong className="font-bold">About Manager Advances:</strong> Managers earn an executive revenue share of verified client collections. Any salary advances paid to a manager are recorded here by the Administrator and deducted from their cumulative payable balance. This screen is <strong className="font-bold">admin-only</strong> and strictly invisible to managers.
-        </div>
-      </div>
-
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 1. Manager Earned Share */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
           <div className="flex items-center justify-between text-slate-400 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Total Advances Given</span>
-            <Banknote className="w-4 h-4 text-blue-600 shrink-0" />
+            <span className="truncate">Manager Share (60%)</span>
+            <TrendingUp className="w-4 h-4 text-purple-600 shrink-0" />
           </div>
-          <div className="text-2xl font-black text-slate-900 truncate" title={formatINR(summary.totalGiven)}>
-            {formatINR(summary.totalGiven)}
+          <div className="text-2xl font-black text-purple-900 truncate" title={formatINR(summary.managerEarnedShare)}>
+            {formatINR(summary.managerEarnedShare)}
           </div>
           <p className="text-[11px] text-slate-400 font-mono truncate">
-            {summary.count} total transaction{summary.count !== 1 ? 's' : ''}
+            60% of verified platform sales
           </p>
         </div>
 
+        {/* 2. Total Advances Given */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
           <div className="flex items-center justify-between text-slate-400 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Last Advance Date</span>
+            <span className="truncate">Advances Disbursed</span>
+            <Banknote className="w-4 h-4 text-slate-600 shrink-0" />
+          </div>
+          <div className="text-2xl font-black text-slate-700 truncate" title={formatINR(summary.totalGiven)}>
+            {summary.totalGiven > 0 ? `−${formatINR(summary.totalGiven)}` : formatINR(0)}
+          </div>
+          <p className="text-[11px] text-slate-400 font-mono truncate">
+            {summary.count} total disbursement{summary.count !== 1 ? 's' : ''}
+          </p>
+        </div>
+
+        {/* 3. Net Balance Due to Manager */}
+        <div className="bg-white border border-purple-200/90 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden bg-gradient-to-br from-white to-purple-50/30">
+          <div className="flex items-center justify-between text-purple-700 text-xs font-bold font-mono uppercase tracking-wider">
+            <span className="truncate">Balance Due to Manager</span>
+            <DollarSign className="w-4 h-4 text-purple-600 shrink-0" />
+          </div>
+          <div
+            className={`text-2xl font-black truncate tabular-nums ${summary.netBalanceDue >= 0 ? 'text-purple-900' : 'text-rose-600'}`}
+            title={formatINR(summary.netBalanceDue)}
+          >
+            {formatINR(summary.netBalanceDue)}
+          </div>
+          <p className="text-[11px] text-purple-600 font-mono truncate font-medium">
+            Share − Advances Disbursed
+          </p>
+        </div>
+
+        {/* 4. Last Advance */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
+          <div className="flex items-center justify-between text-slate-400 text-xs font-bold font-mono uppercase tracking-wider">
+            <span className="truncate">Recent Advance</span>
             <Calendar className="w-4 h-4 text-amber-500 shrink-0" />
           </div>
           <div className="text-2xl font-black text-slate-900 font-mono truncate">
-            {summary.lastDate ? new Date(summary.lastDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-          </div>
-          <p className="text-[11px] text-slate-400 font-mono truncate">Most recent disbursement</p>
-        </div>
-
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Last Advance Amount</span>
-            <DollarSign className="w-4 h-4 text-emerald-600 shrink-0" />
-          </div>
-          <div className="text-2xl font-black text-emerald-700 truncate" title={summary.lastAmount > 0 ? formatINR(summary.lastAmount) : '—'}>
             {summary.lastAmount > 0 ? formatINR(summary.lastAmount) : '—'}
           </div>
-          <p className="text-[11px] text-slate-400 font-mono truncate">Latest single advance</p>
-        </div>
-
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Active Managers</span>
-            <User className="w-4 h-4 text-purple-600 shrink-0" />
-          </div>
-          <div className="text-2xl font-black text-purple-700 truncate">{managers.length}</div>
           <p className="text-[11px] text-slate-400 font-mono truncate">
-            {managers.map((m) => m.name).join(', ') || 'None assigned'}
+            {summary.lastDate ? new Date(summary.lastDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No advances'}
           </p>
         </div>
       </div>
@@ -565,6 +583,36 @@ export const ManagerAdvances: React.FC = () => {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
                 />
               </div>
+
+              {/* Live Settlement Balance Preview */}
+              {(() => {
+                const parsedFormAmount = parseFloat(formAmount) || 0;
+                if (parsedFormAmount <= 0) return null;
+                const currentAdvAmount = editingAdvance ? editingAdvance.amount : 0;
+                const projectedBalanceDue = summary.netBalanceDue - (parsedFormAmount - currentAdvAmount);
+                return (
+                  <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-3 space-y-1.5 text-xs animate-in fade-in">
+                    <div className="flex justify-between items-center text-purple-900 font-medium">
+                      <span>Current Balance Due:</span>
+                      <span className="font-bold font-mono">{formatINR(summary.netBalanceDue)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-purple-700">
+                      <span>Deduction ({editingAdvance ? 'Updated' : 'New'} Advance):</span>
+                      <span className="font-bold font-mono">−{formatINR(parsedFormAmount)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-purple-900 font-bold border-t border-purple-200/80 pt-1.5 mt-1">
+                      <span>Projected Balance Due:</span>
+                      <span className={`font-mono text-sm ${projectedBalanceDue >= 0 ? 'text-purple-900' : 'text-rose-600'}`}>
+                        {formatINR(projectedBalanceDue)}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-emerald-700 font-medium pt-0.5 flex items-center gap-1">
+                      <span>✓</span>
+                      <span>Deducted from manager's 60% share · Company Net Profit is unaffected.</span>
+                    </p>
+                  </div>
+                );
+              })()}
 
               <div className="flex items-center gap-3 pt-2">
                 <button

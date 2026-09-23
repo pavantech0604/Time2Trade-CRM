@@ -80,10 +80,22 @@ export function calculateDashboardKPIs(
   // - Management receives 60% of verified client collections
   // - Company retains 40% of verified client collections
   // - Company net profit is 40% retained share minus company operational expenses
+  // NOTE: Manager salary advances are funded strictly from the manager's 60% share
+  // (reducing Manager Balance Due) and NEVER reduce Company Net Profit.
   const managerShare = totalProfitShared * 0.60;
   const companyGrossShare = totalProfitShared * 0.40;
 
-  const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const operationalExpenses = expenses.filter((e) => {
+    if (!e) return false;
+    const cat = (e.category || '').trim().toLowerCase();
+    const desc = (e.description || '').trim().toLowerCase();
+    if (cat === 'salary' || cat.includes('advance') || desc.includes('k adv') || desc.includes('advance')) {
+      return false;
+    }
+    return true;
+  });
+
+  const totalExpenses = operationalExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
   const netProfit = companyGrossShare - totalExpenses;
 
   const pendingVerificationCount = payments.filter((p) => p.status === 'pending_verification').length;
