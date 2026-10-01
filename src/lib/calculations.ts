@@ -68,12 +68,32 @@ export function calculateDashboardKPIs(
   leads: Lead[],
   traders: ActiveTrader[],
   payments: Payment[],
-  expenses: Expense[]
+  expenses: Expense[],
+  period?: { isAllTime?: boolean; year?: number; month?: number }
 ): DashboardKPIs {
   const totalLeads = leads.length;
   const activeTraders = traders.filter((t) => t.status === 'active').length;
 
-  const approvedPayments = payments.filter((p) => p.status === 'approved');
+  let approvedPayments = payments.filter((p) => p.status === 'approved');
+
+  // If a specific period is selected (and not all-time), filter payments by that period
+  if (period && !period.isAllTime && period.year && period.month) {
+    approvedPayments = approvedPayments.filter((p) => {
+      const tx = p.transaction_time || p.created_at;
+      if (!tx) return false;
+      const d = new Date(tx);
+      if (isNaN(d.getTime())) return false;
+      // Using IST Date parts
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+      });
+      const [y, m] = formatter.format(d).split('-').map(Number);
+      return y === period.year && m === period.month;
+    });
+  }
+
   const totalProfitShared = approvedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
   // Revenue settlement split:
@@ -85,7 +105,7 @@ export function calculateDashboardKPIs(
   const managerShare = totalProfitShared * 0.60;
   const companyGrossShare = totalProfitShared * 0.40;
 
-  const operationalExpenses = expenses.filter((e) => {
+  let operationalExpenses = expenses.filter((e) => {
     if (!e) return false;
     const cat = (e.category || '').trim().toLowerCase();
     const desc = (e.description || '').trim().toLowerCase();
@@ -94,6 +114,23 @@ export function calculateDashboardKPIs(
     }
     return true;
   });
+
+  // If a specific period is selected (and not all-time), filter operational expenses by that period
+  if (period && !period.isAllTime && period.year && period.month) {
+    operationalExpenses = operationalExpenses.filter((e) => {
+      const dateVal = e.date || e.created_at;
+      if (!dateVal) return false;
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return false;
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+      });
+      const [y, m] = formatter.format(d).split('-').map(Number);
+      return y === period.year && m === period.month;
+    });
+  }
 
   const totalExpenses = operationalExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
   const netProfit = companyGrossShare - totalExpenses;

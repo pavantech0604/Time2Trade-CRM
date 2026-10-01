@@ -3,13 +3,28 @@ import { useAuth } from '../../context/AuthContext';
 import { Expense } from '../../types';
 import { formatINR } from '../../lib/calculations';
 import { Receipt, Plus, X, Tag, AlertCircle } from 'lucide-react';
+import {
+  UnifiedPeriod,
+  getCurrentUnifiedPeriod,
+  getAvailableReportingPeriods,
+  toUnifiedPeriod,
+  filterExpensesByPeriod,
+} from '../../lib/reportingPeriodService';
+import { ReportingPeriodSelector } from '../common/ReportingPeriodSelector';
 
 interface ExpenseModuleProps {
   onNavigate?: (tab: string) => void;
 }
 
 export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ onNavigate }) => {
-  const { expenses, addExpense } = useAuth();
+  const { expenses, payments, addExpense } = useAuth();
+
+  const [selectedPeriod, setSelectedPeriod] = useState<UnifiedPeriod>(() => getCurrentUnifiedPeriod());
+
+  // Dynamically compute available reporting periods
+  const availablePeriods = useMemo(() => {
+    return getAvailableReportingPeriods(payments).map(toUnifiedPeriod);
+  }, [payments]);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [form, setForm] = useState({
@@ -20,8 +35,8 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ onNavigate }) => {
   });
   const [descWarning, setDescWarning] = useState<string | null>(null);
 
-  // Filter out any accidental salary/advance records so only genuine company operational expenses are shown
-  const operationalExpenses = useMemo(() => {
+  // All-time operational expenses (excluding manager advances)
+  const allOperationalExpenses = useMemo(() => {
     return expenses.filter((e) => {
       if (!e) return false;
       const cat = (e.category || '').toLowerCase();
@@ -32,6 +47,15 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ onNavigate }) => {
       return true;
     });
   }, [expenses]);
+
+  const allTimeTotal = useMemo(() => {
+    return allOperationalExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  }, [allOperationalExpenses]);
+
+  // Filter operational expenses for the selected period
+  const operationalExpenses = useMemo(() => {
+    return filterExpensesByPeriod(expenses, selectedPeriod);
+  }, [expenses, selectedPeriod]);
 
   const totalExpenses = useMemo(() => {
     return operationalExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
@@ -82,25 +106,40 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ onNavigate }) => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setDescWarning(null);
-            setIsAddModalOpen(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/10 cursor-pointer border-none transition-all active:scale-95 self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4 text-white" /> Add Expense
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          {/* Reporting Period Selector */}
+          <ReportingPeriodSelector
+            periods={availablePeriods}
+            selectedPeriod={selectedPeriod}
+            onSelectPeriod={setSelectedPeriod}
+            includeAllTime={true}
+          />
+
+          <button
+            onClick={() => {
+              setDescWarning(null);
+              setIsAddModalOpen(true);
+            }}
+            className="flex items-center gap-2 h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/10 cursor-pointer border-none transition-all active:scale-95 whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4 text-white" /> Add Expense
+          </button>
+        </div>
       </div>
 
       {/* Summary KPI + Category Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide font-mono">Total Monthly Expenses</span>
+          <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide font-mono">
+            {selectedPeriod.isAllTime ? 'All-Time Expenses' : `${selectedPeriod.label} Expenses`}
+          </span>
           <h3 className="text-xl sm:text-2xl font-black text-rose-700 mt-1 tabular-nums" title={formatINR(totalExpenses)}>
             {formatINR(totalExpenses)}
           </h3>
-          <p className="text-[10px] text-slate-400 mt-0.5 font-medium">Operational deductions from Company 40%</p>
+          <p className="text-[10px] text-slate-400 mt-0.5 font-medium">
+            {selectedPeriod.isAllTime ? 'Lifetime operational deductions' : `Deductions from ${selectedPeriod.shortLabel} Company 40%`}
+            {!selectedPeriod.isAllTime && ` • All-Time: ${formatINR(allTimeTotal)}`}
+          </p>
         </div>
 
         {Object.entries(categoriesMap).map(([cat, amt]) => (
@@ -110,7 +149,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ onNavigate }) => {
               {formatINR(amt)}
             </h3>
             <p className="text-[10px] text-slate-400 mt-0.5 font-medium">
-              {operationalExpenses.filter((e) => e.category === cat).length} record(s)
+              {operationalExpenses.filter((e) => e.category === cat).length} record(s) in {selectedPeriod.shortLabel}
             </p>
           </div>
         ))}
@@ -120,7 +159,7 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ onNavigate }) => {
       <div className="md:hidden block space-y-3 font-sans">
         {operationalExpenses.length === 0 ? (
           <div className="bg-white border border-slate-200 p-8 rounded-2xl text-center text-slate-500 shadow-sm text-xs">
-            No operating expenses found.
+            No operating expenses recorded for {selectedPeriod.label}.
           </div>
         ) : (
           operationalExpenses.map((expense) => (
@@ -161,19 +200,27 @@ export const ExpenseModule: React.FC<ExpenseModuleProps> = ({ onNavigate }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80">
-              {operationalExpenses.map((expense) => (
-                <tr key={expense.id} className="hover:bg-slate-50/50 transition-all border-b border-slate-100/40">
-                  <td className="py-3.5 px-4 text-slate-700 font-medium font-mono">{expense.date}</td>
-                  <td className="py-3.5 px-4">
-                    <span className="px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-[10px] font-bold text-slate-600">
-                      {expense.category}
-                    </span>
+              {operationalExpenses.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-400 font-medium">
+                    No operating expenses recorded for {selectedPeriod.label}.
                   </td>
-                  <td className="py-3.5 px-4 text-slate-800 font-medium">{expense.description}</td>
-                  <td className="py-3.5 px-4 text-slate-500">{expense.added_by_name || 'Admin'}</td>
-                  <td className="py-3.5 px-4 text-right font-bold text-rose-700 font-mono">{formatINR(expense.amount)}</td>
                 </tr>
-              ))}
+              ) : (
+                operationalExpenses.map((expense) => (
+                  <tr key={expense.id} className="hover:bg-slate-50/50 transition-all border-b border-slate-100/40">
+                    <td className="py-3.5 px-4 text-slate-700 font-medium font-mono">{expense.date}</td>
+                    <td className="py-3.5 px-4">
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-[10px] font-bold text-slate-600">
+                        {expense.category}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-800 font-medium">{expense.description}</td>
+                    <td className="py-3.5 px-4 text-slate-500">{expense.added_by_name || 'Admin'}</td>
+                    <td className="py-3.5 px-4 text-right font-bold text-rose-700 font-mono">{formatINR(expense.amount)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { UserPresenceStatus } from '../../types';
 import { NotificationCenter } from '../notifications/NotificationCenter';
+import { ProfileModal } from './ProfileModal';
 
 interface HeaderProps {
   onOpenPaymentForm?: () => void;
@@ -47,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
     return n.user_id === currentUser?.id && !n.is_read;
   }).length;
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const [statusToast, setStatusToast] = useState<string | null>(null);
   const statusDropdownRef = useRef<HTMLDivElement>(null);
@@ -326,6 +328,30 @@ export const Header: React.FC<HeaderProps> = ({
           />
         </div>
 
+        {/* User Profile Placeholder in Header */}
+        <button
+          type="button"
+          onClick={() => setIsProfileModalOpen(true)}
+          className="flex items-center gap-2 p-1 sm:px-2.5 sm:py-1 rounded-xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 transition-all cursor-pointer group shrink-0 active:scale-95"
+          title="Click to view & edit Profile (Personal & Office Number)"
+        >
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-xs overflow-hidden shrink-0">
+            {currentUser?.avatar_url ? (
+              <img src={currentUser.avatar_url} alt={currentUser.name} className="w-full h-full object-cover" />
+            ) : (
+              currentUser?.name.charAt(0).toUpperCase()
+            )}
+          </div>
+          <div className="hidden lg:flex flex-col text-left">
+            <span className="text-xs font-bold text-slate-800 leading-tight group-hover:text-blue-600 transition-colors truncate max-w-[100px]">
+              {currentUser?.name.split(' ')[0]}
+            </span>
+            <span className="text-[9px] font-mono text-slate-400 capitalize">
+              {currentUser?.role}
+            </span>
+          </div>
+        </button>
+
         {/* Mobile-Only Logout Button */}
         <button
           onClick={logout}
@@ -336,6 +362,11 @@ export const Header: React.FC<HeaderProps> = ({
           <LogOut className="w-4 h-4" />
         </button>
       </div>
+
+      <ProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </header>
   );
 };

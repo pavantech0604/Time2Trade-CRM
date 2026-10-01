@@ -23,6 +23,8 @@ import {
   Clock,
   ExternalLink,
   ChevronRight,
+  ChevronLeft,
+  Menu,
   Plus,
   RefreshCw,
   Hash,
@@ -75,6 +77,7 @@ export const TeamChat: React.FC<TeamChatProps> = ({ initialChannelId = 'sales-ce
   const [searchQuery, setSearchQuery] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null); // message id for emoji bar
   const [isConfettiActive, setIsConfettiActive] = useState(false);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -205,7 +208,7 @@ export const TeamChat: React.FC<TeamChatProps> = ({ initialChannelId = 'sales-ce
       )}
 
       {/* LEFT SIDEBAR: CHANNELS & DIRECT MESSAGES (WhatsApp styled) */}
-      <div className="w-full md:w-80 lg:w-88 border-r border-slate-200 bg-slate-50/70 flex flex-col shrink-0">
+      <div className={`${showMobileSidebar ? 'flex' : 'hidden'} md:flex w-full md:w-80 lg:w-88 border-r border-slate-200 bg-slate-50/70 flex-col shrink-0 h-full`}>
         {/* Sidebar Header */}
         <div className="p-4 border-b border-slate-200/80 bg-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -276,6 +279,7 @@ export const TeamChat: React.FC<TeamChatProps> = ({ initialChannelId = 'sales-ce
                     onClick={() => {
                       setActiveDirectUser(null);
                       setActiveChannel(chKey);
+                      setShowMobileSidebar(false);
                     }}
                     className={`w-full text-left px-3 py-2.5 rounded-2xl flex items-center justify-between transition-all cursor-pointer ${
                       isActive
@@ -326,7 +330,10 @@ export const TeamChat: React.FC<TeamChatProps> = ({ initialChannelId = 'sales-ce
                   <button
                     key={member.id}
                     type="button"
-                    onClick={() => setActiveDirectUser(member.id)}
+                    onClick={() => {
+                      setActiveDirectUser(member.id);
+                      setShowMobileSidebar(false);
+                    }}
                     className={`w-full text-left px-3 py-2 rounded-2xl flex items-center justify-between transition-all cursor-pointer ${
                       isActive
                         ? 'bg-emerald-500/10 text-emerald-900 font-bold border border-emerald-300/80 shadow-xs'
@@ -377,7 +384,7 @@ export const TeamChat: React.FC<TeamChatProps> = ({ initialChannelId = 'sales-ce
       </div>
 
       {/* RIGHT MAIN CHAT AREA (WhatsApp Aesthetic) */}
-      <div className="flex-1 flex flex-col bg-[#EFEAE2] min-w-0 relative">
+      <div className={`${showMobileSidebar ? 'hidden' : 'flex'} md:flex flex-1 flex-col bg-[#EFEAE2] min-w-0 relative h-full`}>
         {/* Subtle WhatsApp-style doodle / geometry wallpaper background overlay */}
         <div
           className="absolute inset-0 opacity-[0.035] pointer-events-none"
@@ -388,8 +395,14 @@ export const TeamChat: React.FC<TeamChatProps> = ({ initialChannelId = 'sales-ce
         />
 
         {/* Chat Active Header */}
-        <div className="p-3.5 sm:p-4 border-b border-slate-200/90 bg-white/95 backdrop-blur-sm flex items-center justify-between relative z-10 shadow-2xs">
+        <div className="p-3.5 sm:p-4 border-b border-slate-200/90 bg-white/95 backdrop-blur-sm flex items-center justify-between relative z-10 shadow-2xs shrink-0">
           <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => setShowMobileSidebar(true)}
+              className="md:hidden p-1.5 -ml-1.5 mr-0.5 rounded-xl text-slate-500 hover:bg-slate-100 transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
             {activeDirectUserObj ? (
               <>
                 <div className="relative shrink-0">

@@ -13,12 +13,33 @@ import {
   User as UserIcon,
   Copy,
   Check,
+  Building2,
+  Droplet,
+  Eye,
 } from 'lucide-react';
 import { StatusBadge } from '../common/StatusBadge';
+import {
+  UnifiedPeriod,
+  getCurrentUnifiedPeriod,
+  getAvailableReportingPeriods,
+  toUnifiedPeriod,
+  isDateInReportingPeriod,
+  getISTDateParts,
+} from '../../lib/reportingPeriodService';
+import { ReportingPeriodSelector } from '../common/ReportingPeriodSelector';
+import { ProfileModal } from '../layout/ProfileModal';
+import { User } from '../../types';
 
 export const EmployeeSalesDashboard: React.FC = () => {
   const { payments: contextPayments, users, traders } = useAuth();
   const payments = contextPayments;
+
+  const [selectedPeriod, setSelectedPeriod] = useState<UnifiedPeriod>(() => getCurrentUnifiedPeriod());
+
+  // Dynamically compute available reporting periods from payments
+  const availablePeriods = useMemo(() => {
+    return getAvailableReportingPeriods(payments).map(toUnifiedPeriod);
+  }, [payments]);
 
   const resolveClientContact = (payment: any) => {
     let name = (payment.client_name || payment.trader_name || '').trim();
@@ -52,46 +73,56 @@ export const EmployeeSalesDashboard: React.FC = () => {
     };
   };
 
-  
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'Equity' | 'Commodity'>('all');
   const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
+  const [inspectProfileUser, setInspectProfileUser] = useState<User | null>(null);
 
-  // Filter only approved payments
-  const approvedPayments = useMemo(() => {
-    return payments.filter(p => p.status === 'approved');
+  // Filter only approved payments belonging to the selected period
+  const periodApprovedPayments = useMemo(() => {
+    return payments.filter(
+      (p) => p.status === 'approved' && isDateInReportingPeriod(p.transaction_time || p.created_at, selectedPeriod)
+    );
+  }, [payments, selectedPeriod]);
+
+  // Overall all-time approved payments for reference
+  const allTimeApprovedPayments = useMemo(() => {
+    return payments.filter((p) => p.status === 'approved');
   }, [payments]);
 
-  // High-level payment statistics for Admin
+  // High-level payment statistics for Admin for the selected period
   const adminKPIs = useMemo(() => {
-    const totalPaymentsCount = payments.length;
-    const pendingCount = payments.filter((p) => p.status === 'pending_verification').length;
-    const approvedCount = approvedPayments.length;
-    const rejectedCount = payments.filter((p) => p.status === 'rejected').length;
+    const periodPayments = payments.filter((p) =>
+      isDateInReportingPeriod(p.transaction_time || p.created_at, selectedPeriod)
+    );
+    const totalPaymentsCount = periodPayments.length;
+    const pendingCount = periodPayments.filter((p) => p.status === 'pending_verification').length;
+    const approvedCount = periodApprovedPayments.length;
+    const rejectedCount = periodPayments.filter((p) => p.status === 'rejected').length;
 
-    const totalPaymentAmount = approvedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    const sharedPaymentCount = approvedPayments.filter((p) => p.is_shared || (p.allocations && p.allocations.length > 1)).length;
+    const totalPaymentAmount = periodApprovedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const sharedPaymentCount = periodApprovedPayments.filter((p) => p.is_shared || (p.allocations && p.allocations.length > 1)).length;
 
     // Breakdown by Service Category
-    const equitySales = approvedPayments
+    const equitySales = periodApprovedPayments
       .filter((p) => p.service_category === 'Equity')
       .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
-    const commoditySales = approvedPayments
+    const commoditySales = periodApprovedPayments
       .filter((p) => p.service_category === 'Commodity')
       .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     // Breakdown by Duration
     const durationSales = {
-      '3 Months': approvedPayments
+      '3 Months': periodApprovedPayments
         .filter((p) => p.subscription_duration === '3 Months')
         .reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
-      '6 Months': approvedPayments
+      '6 Months': periodApprovedPayments
         .filter((p) => p.subscription_duration === '6 Months')
         .reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
-      'Yearly': approvedPayments
+      'Yearly': periodApprovedPayments
         .filter((p) => p.subscription_duration === 'Yearly')
         .reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
     };
@@ -107,9 +138,9 @@ export const EmployeeSalesDashboard: React.FC = () => {
       commoditySales,
       durationSales,
     };
-  }, [payments, approvedPayments]);
+  }, [payments, periodApprovedPayments, selectedPeriod]);
 
-  // Calculate statistics per employee based on individual allocations
+  // Calculate statistics per employee based on individual allocations for the selected period
   const employeeStats = useMemo(() => {
     const stats: Record<string, {
       id: string;
@@ -120,7 +151,7 @@ export const EmployeeSalesDashboard: React.FC = () => {
       monthly: number;
       total: number;
       payments: Array<{
-        payment: typeof approvedPayments[0];
+        payment: typeof allTimeApprovedPayments[0];
         creditedAmount: number;
         allocationPercentage: number;
         isShared: boolean;
@@ -135,9 +166,6 @@ export const EmployeeSalesDashboard: React.FC = () => {
     startOfWeek.setDate(now.getDate() - now.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
 
-    // Start of month
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
     const BHAVANI_CANONICAL_ID = '99b02b72-2886-4257-acc5-6ce655f8e4dc';
     const getCanonicalEmpId = (id?: string | null, name?: string | null): string => {
       if (isBhavaniUser(id) || isBhavaniUser(name)) return BHAVANI_CANONICAL_ID;
@@ -147,7 +175,6 @@ export const EmployeeSalesDashboard: React.FC = () => {
     // Initialize stats for staff
     users.forEach(user => {
       if (['employee', 'admin'].includes(user.role)) {
-        // Unify duplicate Bhavani user records into single canonical profile
         if (isBhavaniUser(user) && user.id !== BHAVANI_CANONICAL_ID) {
           return;
         }
@@ -177,9 +204,12 @@ export const EmployeeSalesDashboard: React.FC = () => {
       payments: []
     };
 
-    approvedPayments.forEach(payment => {
-      const txDate = new Date(payment.transaction_time);
-      const txDateStr = payment.transaction_time.split('T')[0];
+    // Process all approved payments to accumulate totals and isolate selected period
+    allTimeApprovedPayments.forEach(payment => {
+      const tx = payment.transaction_time || payment.created_at;
+      const txDate = new Date(tx);
+      const txDateStr = tx.split('T')[0];
+      const inSelectedPeriod = isDateInReportingPeriod(tx, selectedPeriod);
 
       if (payment.allocations && payment.allocations.length > 0) {
         // Multi-employee allocation distribution
@@ -202,16 +232,21 @@ export const EmployeeSalesDashboard: React.FC = () => {
           const credited = Number(alloc.allocation_amount) || 0;
           stats[empId].total += credited;
 
-          stats[empId].payments.push({
-            payment,
-            creditedAmount: credited,
-            allocationPercentage: alloc.allocation_percentage || 100,
-            isShared: payment.allocations!.length > 1,
-          });
+          // If payment falls inside the chosen reporting period
+          if (inSelectedPeriod) {
+            stats[empId].monthly += credited;
+            stats[empId].payments.push({
+              payment,
+              creditedAmount: credited,
+              allocationPercentage: alloc.allocation_percentage || 100,
+              isShared: payment.allocations!.length > 1,
+            });
 
-          if (txDateStr === todayStr) stats[empId].daily += credited;
-          if (txDate >= startOfWeek) stats[empId].weekly += credited;
-          if (txDate >= startOfMonth) stats[empId].monthly += credited;
+            if (selectedPeriod.isCurrent) {
+              if (txDateStr === todayStr) stats[empId].daily += credited;
+              if (txDate >= startOfWeek) stats[empId].weekly += credited;
+            }
+          }
         });
       } else {
         // Single employee / Direct payment
@@ -233,30 +268,36 @@ export const EmployeeSalesDashboard: React.FC = () => {
         const credited = Number(payment.amount) || 0;
         stats[empId].total += credited;
 
-        stats[empId].payments.push({
-          payment,
-          creditedAmount: credited,
-          allocationPercentage: 100,
-          isShared: false,
-        });
+        // If payment falls inside the chosen reporting period
+        if (inSelectedPeriod) {
+          stats[empId].monthly += credited;
+          stats[empId].payments.push({
+            payment,
+            creditedAmount: credited,
+            allocationPercentage: 100,
+            isShared: false,
+          });
 
-        if (txDateStr === todayStr) stats[empId].daily += credited;
-        if (txDate >= startOfWeek) stats[empId].weekly += credited;
-        if (txDate >= startOfMonth) stats[empId].monthly += credited;
+          if (selectedPeriod.isCurrent) {
+            if (txDateStr === todayStr) stats[empId].daily += credited;
+            if (txDate >= startOfWeek) stats[empId].weekly += credited;
+          }
+        }
       }
     });
 
     // Sort payments within each employee by newest first
     Object.values(stats).forEach(stat => {
       stat.payments.sort(
-        (a, b) => new Date(b.payment.transaction_time).getTime() - new Date(a.payment.transaction_time).getTime()
+        (a, b) => new Date(b.payment.transaction_time || b.payment.created_at).getTime() - new Date(a.payment.transaction_time || a.payment.created_at).getTime()
       );
     });
 
+    // Return employees active in the period, or active employees with lifetime volume
     return Object.values(stats)
-      .filter(s => s.total > 0)
-      .sort((a, b) => b.total - a.total);
-  }, [approvedPayments, users]);
+      .filter(s => s.monthly > 0 || (selectedPeriod.isCurrent && s.total > 0))
+      .sort((a, b) => b.monthly - a.monthly || b.total - a.total);
+  }, [allTimeApprovedPayments, users, selectedPeriod]);
 
   const toggleCard = (id: string) => {
     setExpandedCardId(prev => prev === id ? null : id);
@@ -275,17 +316,27 @@ export const EmployeeSalesDashboard: React.FC = () => {
             Inspect verified employee sales ledgers, shared payment allocations, and service distributions
           </p>
         </div>
+
+        {/* Reporting Period Selector */}
+        <div className="self-start md:self-auto">
+          <ReportingPeriodSelector
+            periods={availablePeriods}
+            selectedPeriod={selectedPeriod}
+            onSelectPeriod={setSelectedPeriod}
+            includeAllTime={false}
+          />
+        </div>
       </div>
 
       {/* Top Admin KPI Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Approved Sales</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">{selectedPeriod.label} Approved Sales</span>
           <span className="text-xl sm:text-2xl font-black text-emerald-700 block mt-1">
             {formatINR(adminKPIs.totalPaymentAmount)}
           </span>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
-            {adminKPIs.approvedCount} verified transactions
+            {adminKPIs.approvedCount} verified in {selectedPeriod.shortLabel}
           </span>
         </div>
 
@@ -305,7 +356,7 @@ export const EmployeeSalesDashboard: React.FC = () => {
             {adminKPIs.sharedPaymentCount} Shared
           </span>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
-            Multi-employee sales splits
+            In {selectedPeriod.shortLabel}
           </span>
         </div>
 
@@ -321,7 +372,8 @@ export const EmployeeSalesDashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="space-y-6">
+      {/* Compact & Interactive Employee Sales Cards */}
+      <div className="space-y-3">
         {employeeStats.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-3xl border border-slate-200">
             <p className="text-slate-500 font-semibold">No verified sales data found.</p>
@@ -344,129 +396,193 @@ export const EmployeeSalesDashboard: React.FC = () => {
               );
             });
 
+            const empUser = users.find(
+              (u) => u.id === stat.id || u.name.toLowerCase() === stat.name.toLowerCase()
+            );
+
             return (
               <div 
                 key={stat.id} 
-                className={`relative rounded-3xl transition-all duration-500 group ${
-                  isExpanded ? 'z-20' : 'hover:z-10 z-0'
+                className={`bg-white rounded-2xl border transition-all duration-200 overflow-hidden shadow-2xs hover:shadow-md ${
+                  isExpanded ? 'border-blue-400 ring-2 ring-blue-500/10' : 'border-slate-200/90 hover:border-slate-300'
                 }`}
               >
-                {/* Animated Gradient Border Glow */}
-                <div className={`absolute inset-0 rounded-3xl bg-gradient-to-r from-blue-500 via-[#C5A028] to-emerald-500 transition-all duration-700 blur-md ${
-                  isExpanded ? 'opacity-30' : 'opacity-0 group-hover:opacity-20'
-                }`}></div>
-                
-                {/* Solid Gradient Border base */}
-                <div className={`absolute inset-0 rounded-3xl bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 transition-all duration-700 ${
-                  isExpanded ? 'opacity-20' : 'opacity-0 group-hover:opacity-10'
-                }`}></div>
-
-                {/* Inner Card Container */}
-                <div className="relative z-10 flex flex-col bg-white/95 backdrop-blur-2xl rounded-3xl border border-white/60 shadow-xl overflow-hidden transition-all duration-500">
-                  
-                  {/* Subtle ambient background blob */}
-                  <div className="absolute -top-32 -right-32 w-96 h-96 bg-gradient-to-br from-blue-100 to-emerald-50 rounded-full blur-[60px] opacity-40 group-hover:opacity-80 transition-opacity duration-700 pointer-events-none"></div>
-
-                  {/* Card Header & High-Level Stats (Always Visible) */}
-                  <div 
-                    onClick={() => toggleCard(stat.id)}
-                    className="relative p-3.5 sm:p-6 md:p-8 cursor-pointer flex flex-col xl:flex-row xl:items-center justify-between gap-4 sm:gap-6 xl:gap-8 z-10"
-                  >
-                    {/* Profile Section */}
-                    <div className="flex items-center gap-3.5 sm:gap-5 xl:w-1/4 shrink-0 group/profile">
-                      <div className="relative">
-                        <div className="w-11 h-11 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center text-white shadow-lg overflow-hidden transition-transform duration-500 group-hover/profile:scale-105 group-hover/profile:rotate-3 group-hover/profile:shadow-blue-500/20">
-                          <UserIcon className="w-5 h-5 sm:w-7 sm:h-7 opacity-90 transition-transform duration-500 group-hover/profile:scale-110" />
-                        </div>
-                        <div className="absolute -bottom-1 -right-1 sm:-bottom-2 sm:-right-2 bg-white rounded-full p-1 shadow-sm">
-                          <span className="flex w-2.5 h-2.5 sm:w-4 sm:h-4 bg-emerald-500 rounded-full border-2 border-white items-center justify-center animate-pulse">
-                             <span className="sr-only">Active</span>
-                          </span>
-                        </div>
+                {/* Streamlined Card Header */}
+                <div 
+                  onClick={() => toggleCard(stat.id)}
+                  className="p-3 sm:px-4 sm:py-3 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4 select-none hover:bg-slate-50/60 transition-colors"
+                >
+                  {/* Left: Employee Profile Summary */}
+                  <div className="flex items-center gap-3 min-w-0 md:w-1/3 shrink-0">
+                    <div className="relative shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-slate-800 to-slate-900 flex items-center justify-center text-white shadow-xs overflow-hidden">
+                        {empUser?.avatar_url ? (
+                          <img src={empUser.avatar_url} alt={stat.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="font-black text-sm">{stat.name.charAt(0).toUpperCase()}</span>
+                        )}
                       </div>
-                      <div className="min-w-0">
-                        <h3 className="text-base sm:text-xl font-black text-slate-800 tracking-tight group-hover/profile:text-blue-700 transition-colors truncate">{stat.name}</h3>
-                        <span className="inline-flex items-center mt-0.5 sm:mt-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-slate-100/80 text-slate-600 border border-slate-200/50 backdrop-blur-sm">
+                      <span className="flex w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white absolute -bottom-0.5 -right-0.5 shadow-xs" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="text-sm font-bold text-slate-800 tracking-tight hover:text-blue-600 transition-colors truncate">
+                          {stat.name}
+                        </h3>
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
                           {stat.role}
                         </span>
-                      </div>
-                    </div>
-
-                    {/* Big Number Stats Section */}
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:gap-8 border-t border-slate-100/50 xl:border-t-0 pt-3 sm:pt-6 xl:pt-0">
-                      <div className="space-y-1 sm:space-y-2 group/stat">
-                        <div className="flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400 group-hover/stat:text-blue-500 transition-colors" /> Today's Verified
-                        </div>
-                        <div className="text-xl min-[380px]:text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-baseline gap-1 group-hover/stat:text-blue-700 transition-colors tabular-nums" title={formatINR(stat.daily)}>
-                          {formatINR(stat.daily)}
-                        </div>
-                      </div>
-
-                      <div className="space-y-1 sm:space-y-2 group/stat">
-                        <div className="flex items-center gap-1.5 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                          <CalendarDays className="w-3.5 h-3.5 text-slate-400 group-hover/stat:text-indigo-500 transition-colors" /> This Week's Sales
-                        </div>
-                        <div className="text-xl min-[380px]:text-2xl sm:text-3xl font-black text-slate-800 tracking-tight flex items-baseline gap-1 group-hover/stat:text-indigo-700 transition-colors tabular-nums" title={formatINR(stat.weekly)}>
-                          {formatINR(stat.weekly)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Total All-Time & Action CTA */}
-                    <div className="flex items-center justify-between xl:justify-end gap-4 sm:gap-8 border-t border-slate-100/50 xl:border-t-0 pt-3 sm:pt-6 xl:pt-0">
-                      <div className="text-left xl:text-right space-y-0.5 sm:space-y-1">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Credited Sales</span>
-                        <div className="text-xl min-[380px]:text-2xl sm:text-3xl font-black text-emerald-700 tabular-nums" title={formatINR(stat.total)}>
-                          {formatINR(stat.total)}
-                        </div>
+                        {empUser?.blood_group && (
+                          <span className="inline-flex items-center gap-0.5 text-[9px] font-black text-rose-700 bg-rose-50 px-1 py-0.2 rounded border border-rose-200">
+                            <Droplet className="w-2 h-2 fill-rose-500/20" /> {empUser.blood_group}
+                          </span>
+                        )}
+                        {empUser && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInspectProfileUser(empUser);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                            title="Inspect Profile & Office Desk"
+                          >
+                            <Eye className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
 
-                      {/* Expand Icon */}
-                      <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 xl:w-12 xl:h-12 rounded-xl xl:rounded-2xl bg-slate-50 xl:bg-white/50 border border-slate-100 shadow-xs text-slate-400 shrink-0 backdrop-blur-sm group-hover:bg-white group-hover:shadow-md transition-all duration-300">
-                        <ChevronDown className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-500 ${isExpanded ? 'rotate-180 text-blue-600' : ''}`} />
+                      <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-500 font-mono truncate">
+                        {empUser?.office_phone ? (
+                          <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100">
+                            <Building2 className="w-2.5 h-2.5" /> Desk: {empUser.office_phone}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">Office desk not set</span>
+                        )}
+                        <span className="text-slate-300 hidden sm:inline">•</span>
+                        <span className="text-slate-500 hidden sm:inline">{stat.payments.length} verified sales</span>
                       </div>
                     </div>
                   </div>
 
+                  {/* Middle: Compact Metrics Strip */}
+                  <div className="flex items-center gap-2 sm:gap-3 flex-wrap md:flex-nowrap">
+                    {selectedPeriod.isCurrent ? (
+                      <>
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
+                          <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <div>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Today</span>
+                            <span className="text-xs sm:text-sm font-black text-slate-800 tabular-nums block leading-tight">
+                              {formatINR(stat.daily)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
+                          <CalendarDays className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                          <div>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block font-mono">This Week</span>
+                            <span className="text-xs sm:text-sm font-black text-indigo-700 tabular-nums block leading-tight">
+                              {formatINR(stat.weekly)}
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
+                          <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <div>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Deals</span>
+                            <span className="text-xs sm:text-sm font-black text-slate-800 tabular-nums block leading-tight">
+                              {stat.payments.length} sales
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
+                          <CalendarDays className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                          <div>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Share</span>
+                            <span className="text-xs sm:text-sm font-black text-indigo-700 tabular-nums block leading-tight">
+                              {adminKPIs.totalPaymentAmount > 0 ? ((stat.monthly / adminKPIs.totalPaymentAmount) * 100).toFixed(1) : '0.0'}%
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Right: Period Sales & Toggle Button */}
+                  <div className="flex items-center justify-between md:justify-end gap-3 shrink-0 pt-2 md:pt-0 border-t border-slate-100 md:border-t-0">
+                    <div className="text-left md:text-right">
+                      <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider block font-mono">
+                        {selectedPeriod.shortLabel} Credited
+                      </span>
+                      <div className="text-base sm:text-lg font-black text-emerald-700 tabular-nums leading-tight">
+                        {formatINR(stat.monthly)}
+                      </div>
+                      <span className="text-[9px] text-slate-400 block font-mono">
+                        Life: {formatINR(stat.total)}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                        isExpanded
+                          ? 'bg-blue-600 text-white shadow-blue-500/20'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      <span>Ledger</span>
+                      <span className="text-[10px] opacity-80 font-mono">({stat.payments.length})</span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+
                   {/* Expanded Area: Spreadsheet Data */}
                   <div className={`grid transition-all duration-500 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                     <div className="overflow-hidden">
-                      <div className="border-t border-slate-100/50 bg-slate-50/50 backdrop-blur-md">
-                        <div className="p-4 md:px-8 border-b border-slate-200/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="flex items-center gap-3">
-                            <h4 className="text-sm font-bold text-slate-800">Verified Submissions Ledger</h4>
-                            <span className="text-[11px] font-black bg-blue-100/80 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200/50">
+                      <div className="border-t border-slate-100 bg-slate-50/70">
+                        <div className="px-3 sm:px-4 py-2.5 border-b border-slate-200/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <h4 className="text-xs font-bold text-slate-800">Verified Submissions Ledger</h4>
+                            <span className="text-[10px] font-mono font-bold bg-blue-100/80 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200/50">
                               {stat.payments.length} Records
                             </span>
                           </div>
                           
-                          <div className="relative w-full md:w-72 group/search">
-                            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 group-focus-within/search:text-blue-500 transition-colors" />
+                          <div className="relative w-full md:w-64 group/search">
+                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 group-focus-within/search:text-blue-500 transition-colors" />
                             <input
                               type="text"
                               value={searchQuery}
                               onChange={(e) => setSearchQuery(e.target.value)}
                               placeholder="Search UTR, Client, Mode..."
-                              className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-xs focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all font-medium shadow-sm"
+                              className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-blue-500 font-medium shadow-2xs"
                             />
                           </div>
                         </div>
 
-                        <div className="overflow-x-auto p-4 md:px-8 pb-8">
+                        <div className="overflow-x-auto px-2 sm:px-4 pb-3">
                           <table className="w-full text-left text-xs whitespace-nowrap">
                             <thead>
-                              <tr className="border-b-2 border-slate-200/60 text-slate-500 uppercase text-[10px] font-black tracking-widest">
-                                <th className="py-4 px-4 pl-0">Date & Time</th>
-                                <th className="py-4 px-4">Client / Trader</th>
-                                <th className="py-4 px-4">Service Package</th>
-                                <th className="py-4 px-4 text-right">Credited Share</th>
-                                <th className="py-4 px-4">Mode & Sharing</th>
-                                <th className="py-4 px-4">Bank Ref (UTR)</th>
-                                <th className="py-4 px-4 text-right pr-0">Visual Proof</th>
+                              <tr className="border-b border-slate-200/80 text-slate-400 uppercase text-[9px] font-bold tracking-wider font-mono">
+                                <th className="py-2.5 px-3 pl-0">Date & Time</th>
+                                <th className="py-2.5 px-3">Client / Trader</th>
+                                <th className="py-2.5 px-3">Service Package</th>
+                                <th className="py-2.5 px-3 text-right">Credited Share</th>
+                                <th className="py-2.5 px-3">Mode & Sharing</th>
+                                <th className="py-2.5 px-3">Bank Ref (UTR)</th>
+                                <th className="py-2.5 px-3 text-right pr-0">Visual Proof</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100/60">
+                            <tbody className="divide-y divide-slate-100">
                               {filteredCardPayments.length === 0 ? (
                                 <tr>
                                   <td colSpan={7} className="py-12 text-center text-slate-400 font-medium text-sm">
@@ -475,19 +591,19 @@ export const EmployeeSalesDashboard: React.FC = () => {
                                 </tr>
                               ) : (
                                 filteredCardPayments.map(({ payment, creditedAmount, allocationPercentage, isShared }) => (
-                                  <tr key={payment.id} className="hover:bg-white/60 transition-colors group/row">
-                                    <td className="py-4 px-4 pl-0 font-mono text-slate-500 text-[11px]">
+                                  <tr key={payment.id} className="hover:bg-blue-50/30 transition-colors group/row">
+                                    <td className="py-2.5 px-3 pl-0 font-mono text-slate-500 text-[11px]">
                                       {new Date(payment.transaction_time).toLocaleString('en-IN', {
                                         day: '2-digit', month: 'short', year: 'numeric',
                                         hour: '2-digit', minute: '2-digit'
                                       })}
                                     </td>
-                                    <td className="py-4 px-4">
+                                    <td className="py-2.5 px-3">
                                       {(() => {
                                         const { displayName, displayPhone } = resolveClientContact(payment);
                                         return (
-                                          <div className="flex items-center gap-2.5">
-                                            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 font-black text-xs flex items-center justify-center border border-blue-200/60 shrink-0">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded-lg bg-blue-50 text-blue-700 font-black text-[10px] flex items-center justify-center border border-blue-200/60 shrink-0">
                                               {(displayName || 'C').charAt(0).toUpperCase()}
                                             </div>
                                             <div>
@@ -495,8 +611,8 @@ export const EmployeeSalesDashboard: React.FC = () => {
                                                 {displayName}
                                               </span>
                                               {displayPhone ? (
-                                                <div className="flex items-center gap-1.5 mt-0.5">
-                                                  <span className="text-[11px] text-slate-500 font-mono">
+                                                <div className="flex items-center gap-1 mt-0.5">
+                                                  <span className="text-[10px] text-slate-500 font-mono">
                                                     {displayPhone}
                                                   </span>
                                                   <button
@@ -525,10 +641,10 @@ export const EmployeeSalesDashboard: React.FC = () => {
                                         );
                                       })()}
                                     </td>
-                                    <td className="py-4 px-4">
+                                    <td className="py-2.5 px-3">
                                       {payment.service_category ? (
-                                        <div>
-                                            <span className="font-bold text-slate-800 block">
+                                        <div className="leading-tight">
+                                            <span className="font-bold text-slate-800 text-xs block">
                                               {payment.service_category} • {payment.service_type === 'Future Option' ? 'Option' : payment.service_type}
                                             </span>
                                           <span className="text-[10px] font-semibold text-teal-600">
@@ -539,18 +655,18 @@ export const EmployeeSalesDashboard: React.FC = () => {
                                         <span className="text-slate-400 text-[11px]">Standard</span>
                                       )}
                                     </td>
-                                    <td className="py-4 px-4 text-right">
-                                      <span className="font-black text-emerald-700 text-sm block">
+                                    <td className="py-2.5 px-3 text-right">
+                                      <span className="font-black text-emerald-700 text-xs sm:text-sm block">
                                         {formatINR(creditedAmount)}
                                       </span>
                                       {isShared && (
-                                        <span className="text-[10px] text-slate-400 block">
+                                        <span className="text-[9px] text-slate-400 block font-mono">
                                           {allocationPercentage}% of {formatINR(payment.amount)}
                                         </span>
                                       )}
                                     </td>
-                                    <td className="py-4 px-4">
-                                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100/80 text-slate-700 font-semibold text-[11px] border border-slate-200/50">
+                                    <td className="py-2.5 px-3">
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100/80 text-slate-700 font-semibold text-[10px] border border-slate-200/50">
                                         {payment.payment_mode}
                                       </span>
                                       {isShared && (
@@ -559,19 +675,19 @@ export const EmployeeSalesDashboard: React.FC = () => {
                                         </span>
                                       )}
                                     </td>
-                                    <td className="py-4 px-4 font-mono font-bold text-slate-700 group-hover/row:text-blue-600 transition-colors">
+                                    <td className="py-2.5 px-3 font-mono font-bold text-slate-700 text-xs group-hover/row:text-blue-600 transition-colors">
                                       {payment.utr}
                                     </td>
-                                    <td className="py-4 px-4 pr-0">
+                                    <td className="py-2.5 px-3 pr-0">
                                       <div className="flex items-center justify-end">
                                         <button 
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setPreviewImage(payment.screenshot_url);
                                           }}
-                                          className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200/80 bg-white hover:border-blue-400 hover:bg-blue-50 text-blue-600 font-bold transition-all shadow-sm hover:shadow active:scale-95"
+                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200/80 bg-white hover:border-blue-400 hover:bg-blue-50 text-blue-600 font-bold transition-all shadow-2xs hover:shadow active:scale-95 text-xs"
                                         >
-                                          <ZoomIn className="w-4 h-4" /> 
+                                          <ZoomIn className="w-3.5 h-3.5" /> 
                                           <span>Verify</span>
                                         </button>
                                       </div>
@@ -586,7 +702,6 @@ export const EmployeeSalesDashboard: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              </div>
             );
           })
         )}
@@ -612,6 +727,13 @@ export const EmployeeSalesDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Employee Profile & Office Desk Modal */}
+      <ProfileModal
+        isOpen={Boolean(inspectProfileUser)}
+        onClose={() => setInspectProfileUser(null)}
+        targetUser={inspectProfileUser}
+      />
     </div>
   );
 };

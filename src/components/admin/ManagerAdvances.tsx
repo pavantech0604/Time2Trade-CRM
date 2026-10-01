@@ -18,7 +18,16 @@ import {
   Filter,
   ArrowUpRight,
   TrendingUp,
+  Info,
 } from 'lucide-react';
+import {
+  UnifiedPeriod,
+  getCurrentUnifiedPeriod,
+  getAvailableReportingPeriods,
+  toUnifiedPeriod,
+  isDateInReportingPeriod,
+} from '../../lib/reportingPeriodService';
+import { ReportingPeriodSelector } from '../common/ReportingPeriodSelector';
 
 export const ManagerAdvances: React.FC = () => {
   const { currentUser, users, payments, managerAdvances, addManagerAdvance, updateManagerAdvance, deleteManagerAdvance } =
@@ -38,12 +47,18 @@ export const ManagerAdvances: React.FC = () => {
   }
 
   // State
+  const [selectedPeriod, setSelectedPeriod] = useState<UnifiedPeriod>(() => getCurrentUnifiedPeriod());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingAdvance, setEditingAdvance] = useState<ManagerAdvance | null>(null);
   const [deletingAdvance, setDeletingAdvance] = useState<ManagerAdvance | null>(null);
   const [selectedManagerFilter, setSelectedManagerFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Available reporting periods
+  const availablePeriods = useMemo(() => {
+    return getAvailableReportingPeriods(payments).map(toUnifiedPeriod);
+  }, [payments]);
 
   // Form State
   const [formManagerId, setFormManagerId] = useState('');
@@ -62,16 +77,28 @@ export const ManagerAdvances: React.FC = () => {
     return users.filter((u) => u.role === 'manager');
   }, [users]);
 
-  // Overall platform sales & manager earned 60% revenue share
-  const totalApprovedSales = useMemo(() => {
+  // All-time approved sales & manager earned 60% share
+  const allTimeApprovedSales = useMemo(() => {
     return (payments || [])
       .filter((p) => p.status === 'approved')
       .reduce((sum, p) => sum + Number(p.amount || 0), 0);
   }, [payments]);
 
-  const managerEarnedShare = useMemo(() => {
-    return totalApprovedSales * 0.60;
-  }, [totalApprovedSales]);
+  const allTimeManagerShare = useMemo(() => {
+    return allTimeApprovedSales * 0.60;
+  }, [allTimeApprovedSales]);
+
+  // Selected period approved sales & manager earned 60% share
+  const periodApprovedSales = useMemo(() => {
+    if (selectedPeriod.isAllTime) return allTimeApprovedSales;
+    return (payments || [])
+      .filter((p) => p.status === 'approved' && isDateInReportingPeriod(p.transaction_time || p.created_at, selectedPeriod))
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  }, [payments, selectedPeriod, allTimeApprovedSales]);
+
+  const periodManagerShare = useMemo(() => {
+    return periodApprovedSales * 0.60;
+  }, [periodApprovedSales]);
 
   // Set default manager when opening add modal
   const openAddModal = () => {
@@ -94,10 +121,13 @@ export const ManagerAdvances: React.FC = () => {
     setIsAddModalOpen(true);
   };
 
-  // Filtered advances sorted by date DESC
+  // Filtered advances for the selected period & search
   const filteredAdvances = useMemo(() => {
     return managerAdvances
       .filter((adv) => {
+        const inPeriod = isDateInReportingPeriod(adv.date || adv.created_at, selectedPeriod);
+        if (!inPeriod) return false;
+
         const matchesManager = selectedManagerFilter === 'all' || adv.manager_id === selectedManagerFilter;
         const matchesSearch =
           (adv.manager_name && adv.manager_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -106,28 +136,39 @@ export const ManagerAdvances: React.FC = () => {
         return matchesManager && matchesSearch;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [managerAdvances, selectedManagerFilter, searchQuery]);
+  }, [managerAdvances, selectedPeriod, selectedManagerFilter, searchQuery]);
 
-  // Summary Metrics including live net balance due
+  // Summary Metrics distinguishing selected period from lifetime position
   const summary = useMemo(() => {
-    const list = selectedManagerFilter === 'all'
+    const allForManager = selectedManagerFilter === 'all'
       ? managerAdvances
       : managerAdvances.filter((a) => a.manager_id === selectedManagerFilter);
 
-    const totalGiven = list.reduce((sum, a) => sum + Number(a.amount || 0), 0);
-    const sorted = [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const lifetimeGiven = allForManager.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+    const lifetimeBalanceDue = allTimeManagerShare - lifetimeGiven;
+
+    const periodAdvances = allForManager.filter((a) =>
+      isDateInReportingPeriod(a.date || a.created_at, selectedPeriod)
+    );
+    const periodGiven = periodAdvances.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+    const periodNetBalanceDue = periodManagerShare - periodGiven;
+
+    const sorted = [...allForManager].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const lastAdvance = sorted[0];
-    const netBalanceDue = managerEarnedShare - totalGiven;
 
     return {
-      managerEarnedShare,
-      totalGiven,
-      netBalanceDue,
-      count: list.length,
+      periodManagerShare,
+      periodGiven,
+      periodNetBalanceDue,
+      periodCount: periodAdvances.length,
+      lifetimeManagerShare: allTimeManagerShare,
+      lifetimeGiven,
+      lifetimeBalanceDue,
+      lifetimeCount: allForManager.length,
       lastDate: lastAdvance ? lastAdvance.date : null,
       lastAmount: lastAdvance ? lastAdvance.amount : 0,
     };
-  }, [managerAdvances, selectedManagerFilter, managerEarnedShare]);
+  }, [managerAdvances, selectedManagerFilter, periodManagerShare, allTimeManagerShare, selectedPeriod]);
 
   // Running totals calculation: chronological order (oldest to newest) to compute cumulative
   const runningTotalsMap = useMemo(() => {
@@ -221,73 +262,101 @@ export const ManagerAdvances: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-600/20 transition-all cursor-pointer self-start sm:self-auto border-none active:scale-95"
-        >
-          <Plus className="w-4 h-4 text-white" />
-          Record New Advance
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          {/* Universal Reporting Period Selector */}
+          <ReportingPeriodSelector
+            periods={availablePeriods}
+            selectedPeriod={selectedPeriod}
+            onSelectPeriod={setSelectedPeriod}
+            includeAllTime={true}
+          />
+
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 h-10 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-600/20 transition-all cursor-pointer border-none active:scale-95 whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4 text-white" />
+            Record New Advance
+          </button>
+        </div>
       </div>
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 1. Manager Earned Share */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0">
           <div className="flex items-center justify-between text-slate-400 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Manager Share (60%)</span>
+            <span className="truncate">
+              {selectedPeriod.isAllTime ? 'Manager Share (60%)' : `${selectedPeriod.shortLabel} Manager Share`}
+            </span>
             <TrendingUp className="w-4 h-4 text-purple-600 shrink-0" />
           </div>
-          <div className="text-2xl font-black text-purple-900 truncate" title={formatINR(summary.managerEarnedShare)}>
-            {formatINR(summary.managerEarnedShare)}
+          <div className="text-2xl font-black text-purple-900 font-mono whitespace-nowrap" title={formatINR(summary.periodManagerShare)}>
+            {formatINR(summary.periodManagerShare)}
           </div>
-          <p className="text-[11px] text-slate-400 font-mono truncate">
-            60% of verified platform sales
+          <p className="text-[11px] text-slate-400 font-mono">
+            {selectedPeriod.isAllTime ? '60% of lifetime platform collections' : `60% of ${selectedPeriod.shortLabel} collections`}
           </p>
         </div>
 
-        {/* 2. Total Advances Given */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
+        {/* 2. Total Advances Given in Period */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0">
           <div className="flex items-center justify-between text-slate-400 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Advances Disbursed</span>
+            <span className="truncate">
+              {selectedPeriod.isAllTime ? 'Advances Disbursed' : `${selectedPeriod.shortLabel} Advances`}
+            </span>
             <Banknote className="w-4 h-4 text-slate-600 shrink-0" />
           </div>
-          <div className="text-2xl font-black text-slate-700 truncate" title={formatINR(summary.totalGiven)}>
-            {summary.totalGiven > 0 ? `−${formatINR(summary.totalGiven)}` : formatINR(0)}
+          <div className="text-2xl font-black text-slate-700 font-mono whitespace-nowrap" title={formatINR(summary.periodGiven)}>
+            {summary.periodGiven > 0 ? `−${formatINR(summary.periodGiven)}` : formatINR(0)}
           </div>
-          <p className="text-[11px] text-slate-400 font-mono truncate">
-            {summary.count} total disbursement{summary.count !== 1 ? 's' : ''}
+          <p className="text-[11px] text-slate-400 font-mono">
+            {summary.periodCount} disbursement{summary.periodCount !== 1 ? 's' : ''} in {selectedPeriod.shortLabel}
           </p>
         </div>
 
         {/* 3. Net Balance Due to Manager */}
-        <div className="bg-white border border-purple-200/90 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden bg-gradient-to-br from-white to-purple-50/30">
+        <div className="bg-white border border-purple-200/90 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 bg-gradient-to-br from-white to-purple-50/30">
           <div className="flex items-center justify-between text-purple-700 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Balance Due to Manager</span>
+            <span className="truncate">
+              {selectedPeriod.isAllTime ? 'Total Balance Due' : `${selectedPeriod.shortLabel} Period Balance`}
+            </span>
             <DollarSign className="w-4 h-4 text-purple-600 shrink-0" />
           </div>
           <div
-            className={`text-2xl font-black truncate tabular-nums ${summary.netBalanceDue >= 0 ? 'text-purple-900' : 'text-rose-600'}`}
-            title={formatINR(summary.netBalanceDue)}
+            className={`text-2xl font-black tabular-nums font-mono whitespace-nowrap ${
+              (selectedPeriod.isAllTime ? summary.lifetimeBalanceDue : summary.periodNetBalanceDue) >= 0 ? 'text-purple-900' : 'text-rose-600'
+            }`}
+            title={formatINR(selectedPeriod.isAllTime ? summary.lifetimeBalanceDue : summary.periodNetBalanceDue)}
           >
-            {formatINR(summary.netBalanceDue)}
+            {formatINR(selectedPeriod.isAllTime ? summary.lifetimeBalanceDue : summary.periodNetBalanceDue)}
           </div>
-          <p className="text-[11px] text-purple-600 font-mono truncate font-medium">
-            Share − Advances Disbursed
+          <p className="text-[11px] text-purple-600 font-mono font-medium">
+            {selectedPeriod.isAllTime ? 'Lifetime Share − All Advances' : 'Period Share − Period Advances'}
           </p>
         </div>
 
-        {/* 4. Last Advance */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
+        {/* 4. Prior Carry-Forward Position / Recent Advance */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0">
           <div className="flex items-center justify-between text-slate-400 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Recent Advance</span>
-            <Calendar className="w-4 h-4 text-amber-500 shrink-0" />
+            <span className="truncate">
+              {selectedPeriod.isAllTime ? 'Recent Advance' : 'Prior Period Balance'}
+            </span>
+            {selectedPeriod.isAllTime ? (
+              <Calendar className="w-4 h-4 text-amber-500 shrink-0" />
+            ) : (
+              <Info className="w-4 h-4 text-amber-600 shrink-0" />
+            )}
           </div>
-          <div className="text-2xl font-black text-slate-900 font-mono truncate">
-            {summary.lastAmount > 0 ? formatINR(summary.lastAmount) : '—'}
+          <div className="text-2xl font-black text-slate-900 font-mono whitespace-nowrap">
+            {selectedPeriod.isAllTime
+              ? (summary.lastAmount > 0 ? formatINR(summary.lastAmount) : '—')
+              : formatINR(summary.lifetimeBalanceDue)}
           </div>
           <p className="text-[11px] text-slate-400 font-mono truncate">
-            {summary.lastDate ? new Date(summary.lastDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No advances'}
+            {selectedPeriod.isAllTime
+              ? (summary.lastDate ? new Date(summary.lastDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No advances')
+              : 'Carried from previous periods (Sept 2026)'}
           </p>
         </div>
       </div>
@@ -589,12 +658,13 @@ export const ManagerAdvances: React.FC = () => {
                 const parsedFormAmount = parseFloat(formAmount) || 0;
                 if (parsedFormAmount <= 0) return null;
                 const currentAdvAmount = editingAdvance ? editingAdvance.amount : 0;
-                const projectedBalanceDue = summary.netBalanceDue - (parsedFormAmount - currentAdvAmount);
+                const currentBalDue = selectedPeriod.isAllTime ? summary.lifetimeBalanceDue : summary.periodNetBalanceDue;
+                const projectedBalanceDue = currentBalDue - (parsedFormAmount - currentAdvAmount);
                 return (
                   <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-3 space-y-1.5 text-xs animate-in fade-in">
                     <div className="flex justify-between items-center text-purple-900 font-medium">
-                      <span>Current Balance Due:</span>
-                      <span className="font-bold font-mono">{formatINR(summary.netBalanceDue)}</span>
+                      <span>Current {selectedPeriod.isAllTime ? 'Lifetime' : 'Period'} Balance Due:</span>
+                      <span className="font-bold font-mono">{formatINR(currentBalDue)}</span>
                     </div>
                     <div className="flex justify-between items-center text-purple-700">
                       <span>Deduction ({editingAdvance ? 'Updated' : 'New'} Advance):</span>

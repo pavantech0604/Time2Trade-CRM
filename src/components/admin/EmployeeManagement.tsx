@@ -21,9 +21,13 @@ import {
   Copy,
   Check,
   Lock,
+  Building2,
+  Droplet,
+  Eye,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { User, UserRole, ApprovalStatus } from '../../types';
+import { ProfileModal } from '../layout/ProfileModal';
 
 export const EmployeeManagement: React.FC = () => {
   const {
@@ -42,6 +46,7 @@ export const EmployeeManagement: React.FC = () => {
 
   // Modal State
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [inspectProfileUser, setInspectProfileUser] = useState<User | null>(null);
   const [modalMode, setModalMode] = useState<'assign' | 'reject' | 'details' | 'reset_password' | null>(null);
   const [selectedRole, setSelectedRole] = useState<UserRole>('employee');
   const [rejectReason, setRejectReason] = useState('');
@@ -58,10 +63,14 @@ export const EmployeeManagement: React.FC = () => {
   // Filter users
   const filteredUsers = users
     .filter((u) => {
+      const q = searchQuery.toLowerCase();
       const matchesSearch =
-        u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.phone && u.phone.includes(searchQuery));
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        (u.phone && u.phone.includes(searchQuery)) ||
+        (u.personal_phone && u.personal_phone.includes(searchQuery)) ||
+        (u.office_phone && u.office_phone.toLowerCase().includes(q)) ||
+        (u.blood_group && u.blood_group.toLowerCase().includes(q));
 
       const matchesRole = roleFilter === 'all' || u.role === roleFilter;
       const matchesApproval =
@@ -368,6 +377,13 @@ export const EmployeeManagement: React.FC = () => {
                       </button>
                     )}
                     <button
+                      onClick={() => setInspectProfileUser(user)}
+                      className="px-3 py-2.5 rounded-xl bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 font-bold text-[10px] active:scale-95 transition-all shadow-sm shrink-0"
+                      title="View Profile & Manage Office Phone"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => handleOpenResetPasswordModal(user)}
                       className="px-3 py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50 text-slate-600 border border-slate-200 font-bold text-[10px] active:scale-95 transition-all shadow-sm shrink-0"
                       title="Reset Password"
@@ -418,8 +434,12 @@ export const EmployeeManagement: React.FC = () => {
                     >
                       {/* Employee info */}
                       <td className="py-2.5 pl-4 pr-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-2xs overflow-hidden shrink-0 text-xs">
+                        <div
+                          onClick={() => setInspectProfileUser(user)}
+                          className="flex items-center gap-2.5 min-w-0 cursor-pointer group/emp hover:opacity-95"
+                          title="Click to view & edit full profile details"
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-2xs overflow-hidden shrink-0 text-xs group-hover/emp:scale-105 transition-transform">
                             {user.avatar_url ? (
                               <img src={user.avatar_url} alt={user.name} className="w-full h-full object-cover" />
                             ) : (
@@ -427,13 +447,27 @@ export const EmployeeManagement: React.FC = () => {
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="font-bold text-slate-800 text-xs truncate max-w-[150px] lg:max-w-[200px]">{user.name}</div>
-                            <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 truncate">
-                              <span className="truncate max-w-[120px] lg:max-w-[160px]">{user.email}</span>
-                              {user.phone && (
-                                <span className="text-slate-300 hidden xl:inline">• {user.phone}</span>
+                            <div className="font-bold text-slate-800 text-xs truncate max-w-[150px] lg:max-w-[200px] group-hover/emp:text-blue-600 transition-colors flex items-center gap-1.5">
+                              <span>{user.name}</span>
+                              {user.blood_group && (
+                                <span className="inline-flex items-center gap-0.5 text-[9px] font-black text-rose-700 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
+                                  <Droplet className="w-2.5 h-2.5 fill-rose-500/20" /> {user.blood_group}
+                                </span>
                               )}
                             </div>
+                            <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 truncate mt-0.5">
+                              <span className="truncate max-w-[120px] lg:max-w-[150px]">{user.email}</span>
+                              {(user.personal_phone || user.phone) && (
+                                <span className="text-slate-500 font-semibold hidden xl:inline">
+                                  • {user.personal_phone || user.phone}
+                                </span>
+                              )}
+                            </div>
+                            {user.office_phone && (
+                              <div className="inline-flex items-center gap-1 mt-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100 font-mono">
+                                <Building2 className="w-2.5 h-2.5" /> Desk: {user.office_phone}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -560,6 +594,15 @@ export const EmployeeManagement: React.FC = () => {
                               Re-evaluate
                             </button>
                           )}
+
+                          {/* Inspect Profile & Office Desk Button */}
+                          <button
+                            onClick={() => setInspectProfileUser(user)}
+                            className="w-7 h-7 rounded-lg bg-slate-50 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
+                            title="View Full Profile, Personal Number, Blood Group & Manage Office Desk"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
 
                           {/* Password Reset Button */}
                           <button
@@ -854,6 +897,12 @@ export const EmployeeManagement: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Profile Details & Office Desk Modal */}
+      <ProfileModal
+        isOpen={Boolean(inspectProfileUser)}
+        onClose={() => setInspectProfileUser(null)}
+        targetUser={inspectProfileUser}
+      />
     </div>
   );
 };

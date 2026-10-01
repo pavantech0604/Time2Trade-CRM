@@ -10,13 +10,12 @@ import {
   Clock,
   UserCog,
   FileSpreadsheet,
-  Camera,
   Target,
   MessageSquare,
   Banknote,
+  CalendarDays,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { ProfileModal } from './ProfileModal';
 
 interface SidebarProps {
   activeTab: string;
@@ -26,7 +25,6 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, className = '' }) => {
   const { currentUser, payments, users, logout } = useAuth();
-  const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false);
 
   if (!currentUser) return null;
 
@@ -43,6 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, class
     if (role === 'employee') {
       return [
         { id: 'employee-dashboard', label: 'My Dashboard', icon: LayoutDashboard },
+        { id: 'monthly-sales', label: 'Monthly Sales', icon: CalendarDays },
         { id: 'team-chat', label: 'Team Chat', icon: MessageSquare },
         { id: 'public-payment-form', label: 'Submit Payment Proof', icon: CreditCard },
       ];
@@ -51,6 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, class
     if (role === 'manager') {
       return [
         { id: 'manager-dashboard', label: 'Manager Overview', icon: LayoutDashboard },
+        { id: 'monthly-sales', label: 'Monthly Sales', icon: CalendarDays },
         { id: 'employee-sales', label: 'Employee Sales', icon: FileSpreadsheet },
         { id: 'employee-scorecards', label: 'Employee Scorecards', icon: Target },
         { id: 'active-traders', label: 'Active Traders', icon: TrendingUp },
@@ -62,11 +62,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, class
     // Admin default
     return [
       { id: 'dashboard', label: 'Admin Overview', icon: LayoutDashboard },
+      { id: 'monthly-sales', label: 'Monthly Sales', icon: CalendarDays },
+      { id: 'employee-sales', label: 'Employee Sales', icon: FileSpreadsheet },
       { id: 'team-chat', label: 'Team Chat & Sales', icon: MessageSquare },
       { id: 'employee-scorecards', label: 'Employee Scorecards', icon: Target },
       { id: 'active-traders', label: 'Active Traders', icon: TrendingUp },
       { id: 'payment-verification', label: 'Payment Verification', icon: ShieldCheck, badge: pendingVerifications },
-      { id: 'employee-sales', label: 'Employee Sales', icon: FileSpreadsheet },
       { id: 'employee-management', label: 'Staff & Roles', icon: UserCog, badge: pendingReviews },
       { id: 'admin-attendance', label: 'Attendance Board', icon: Clock },
       { id: 'expenses', label: 'Expenses Manager', icon: Receipt },
@@ -127,44 +128,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, class
         </div>
       </div>
 
-      {/* User Role Card & Logout */}
-      <div className="p-4 border-t border-slate-100 bg-slate-50/50 space-y-2 shrink-0">
-        <button 
-          onClick={() => setIsProfileModalOpen(true)}
-          className="w-full flex items-center gap-3 p-2.5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all text-left cursor-pointer relative group"
-        >
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-primary to-brand-accent flex items-center justify-center text-white font-bold text-xs shadow-md overflow-hidden relative">
-            {currentUser.avatar_url ? (
-              <img src={currentUser.avatar_url} alt={currentUser.name} className="w-full h-full object-cover" />
-            ) : (
-              currentUser.name.charAt(0)
-            )}
-            <div className="absolute inset-0 bg-slate-900/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <Camera className="w-3.5 h-3.5 text-white" />
-            </div>
-          </div>
-          <div className="overflow-hidden flex-1">
-            <h4 className="text-xs font-bold text-slate-800 truncate group-hover:text-blue-600 transition-colors">{currentUser.name}</h4>
-            <p className="text-[10px] font-semibold text-slate-500 capitalize font-mono">
-              {currentUser.role.replace(/_/g, ' ')}
-            </p>
-          </div>
-        </button>
-
+      {/* Sign Out Action in Footer */}
+      <div className="p-3 border-t border-slate-100 bg-slate-50/60 shrink-0">
         <button
           onClick={logout}
           aria-label="Sign Out"
-          className="w-full flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold text-rose-500 hover:bg-rose-50 rounded-xl transition-all cursor-pointer border-none"
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-3.5 text-xs font-bold text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-50/70 border border-slate-200/80 hover:border-rose-200 rounded-xl shadow-2xs hover:shadow-xs transition-all cursor-pointer active:scale-98"
         >
-          <LogOut className="w-3.5 h-3.5" />
+          <LogOut className="w-3.5 h-3.5 text-rose-500" />
           <span>Sign Out</span>
         </button>
       </div>
-
-      <ProfileModal 
-        isOpen={isProfileModalOpen} 
-        onClose={() => setIsProfileModalOpen(false)} 
-      />
     </aside>
   );
 };

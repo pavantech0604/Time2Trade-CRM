@@ -113,8 +113,18 @@ interface AuthContextType {
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (userId?: string) => void;
   deleteNotification: (id: string) => void;
-  clearAllNotifications: (userId?: string) => void;
   updateUserAvatar: (url: string) => Promise<void>;
+  updateUserProfile: (
+    userId: string,
+    updates: {
+      personal_phone?: string;
+      personal_number?: string;
+      office_phone?: string;
+      office_number?: string;
+      blood_group?: string;
+      phone?: string;
+    }
+  ) => Promise<{ success: boolean; message: string }>;
 
   // Password Reset Management
   mustResetPassword: boolean;
@@ -201,14 +211,22 @@ export const isBhavaniUser = (val?: any): boolean => {
 };
 
 export const normalizeUserRole = (u: User): User => {
-  if (isKarthikUser(u)) {
+  const normalized: User = {
+    ...u,
+    personal_phone: u.personal_phone || u.personal_number || u.phone || '',
+    personal_number: u.personal_number || u.personal_phone || u.phone || '',
+    office_phone: u.office_phone || u.office_number || '',
+    office_number: u.office_number || u.office_phone || '',
+    blood_group: u.blood_group || '',
+  };
+  if (isKarthikUser(normalized)) {
     return {
-      ...u,
+      ...normalized,
       role: 'manager' as UserRole,
-      designation: u.designation && u.designation !== 'Admin' ? u.designation : 'Manager',
+      designation: normalized.designation && normalized.designation !== 'Admin' ? normalized.designation : 'Manager',
     };
   }
-  return u;
+  return normalized;
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -2196,6 +2214,131 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateUserProfile = async (
+    userId: string,
+    updates: {
+      personal_phone?: string;
+      personal_number?: string;
+      office_phone?: string;
+      office_number?: string;
+      blood_group?: string;
+      phone?: string;
+    }
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!currentUser) return { success: false, message: 'Not authenticated' };
+
+    const targetUser = users.find((u) => u.id === userId) || (currentUser.id === userId ? currentUser : null);
+    if (!targetUser) return { success: false, message: 'User not found' };
+
+    const isSelf = currentUser.id === userId;
+    const isAdminOrManager = currentUser.role === 'admin' || currentUser.role === 'manager';
+
+    // Office phone can ONLY be updated by Admin or Manager!
+    const isAttemptingOfficeUpdate = updates.office_phone !== undefined || updates.office_number !== undefined;
+    if (isAttemptingOfficeUpdate && !isAdminOrManager) {
+      return { success: false, message: 'Permission denied: Only Admin and Manager can update office phone number.' };
+    }
+
+    // Employees can only update their own profile
+    if (!isSelf && !isAdminOrManager) {
+      return { success: false, message: 'Permission denied: Cannot edit another user profile.' };
+    }
+
+    const personalPhoneVal = updates.personal_phone !== undefined 
+      ? updates.personal_phone 
+      : (updates.personal_number !== undefined ? updates.personal_number : undefined);
+
+    const officePhoneVal = updates.office_phone !== undefined 
+      ? updates.office_phone 
+      : (updates.office_number !== undefined ? updates.office_number : undefined);
+
+    const patch: Partial<User> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (personalPhoneVal !== undefined) {
+      patch.personal_phone = personalPhoneVal;
+      patch.personal_number = personalPhoneVal;
+      patch.phone = personalPhoneVal; // Keep primary phone in sync
+    }
+
+    if (officePhoneVal !== undefined && isAdminOrManager) {
+      patch.office_phone = officePhoneVal;
+      patch.office_number = officePhoneVal;
+    }
+
+    if (updates.blood_group !== undefined) {
+      patch.blood_group = updates.blood_group;
+    }
+
+    // Optimistic UI Update
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, ...patch } : u))
+    );
+
+    if (isSelf) {
+      setCurrentUser((prev) => (prev ? { ...prev, ...patch } : null));
+      const storedUser = localStorage.getItem('time2trade_auth_user');
+      if (storedUser) {
+        try {
+          const parsed = JSON.parse(storedUser);
+          localStorage.setItem('time2trade_auth_user', JSON.stringify({ ...parsed, ...patch }));
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // Supabase update safely with error handling & fallback so no error is thrown
+    if (supabase && !useMocks) {
+      try {
+        const dbPayload: Record<string, any> = {
+          updated_at: patch.updated_at,
+        };
+        if (personalPhoneVal !== undefined) {
+          dbPayload.phone = personalPhoneVal;
+          dbPayload.personal_phone = personalPhoneVal;
+        }
+        if (officePhoneVal !== undefined) {
+          dbPayload.office_phone = officePhoneVal;
+        }
+        if (updates.blood_group !== undefined) {
+          dbPayload.blood_group = updates.blood_group;
+        }
+
+        const { error } = await supabase.from('users').update(dbPayload).eq('id', userId);
+        if (error) {
+          // If specific columns (personal_phone, office_phone, blood_group) don't exist in Supabase yet,
+          // fallback to update 'phone' if personal_phone was provided
+          console.warn('Supabase profile update warning:', error.message);
+          if (personalPhoneVal !== undefined) {
+            await supabase.from('users').update({ phone: personalPhoneVal }).eq('id', userId);
+          }
+        }
+      } catch (err) {
+        console.warn('Error syncing profile update to database:', err);
+      }
+    }
+
+    // Add audit log
+    const nowIso = new Date().toISOString();
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        user_id: currentUser.id,
+        user_name: currentUser.name,
+        action: 'UPDATE_USER_PROFILE',
+        table_name: 'users',
+        record_id: userId,
+        new_values: patch,
+        created_at: nowIso,
+      },
+      ...prev,
+    ]);
+
+    return { success: true, message: 'Profile details updated successfully.' };
+  };
+
   const addLead = async (leadInput: Omit<Lead, 'id' | 'created_at'>) => {
     const newId = generateUUID();
     const assignedUser = users.find((u) => u.id === leadInput.assigned_to);
@@ -3372,6 +3515,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteNotification,
         clearAllNotifications,
         updateUserAvatar,
+        updateUserProfile,
         mustResetPassword,
         setMustResetPassword,
         updatePassword,

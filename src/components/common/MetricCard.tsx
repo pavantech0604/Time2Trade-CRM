@@ -71,20 +71,20 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   return (
     <div
       onClick={onClick}
-      className={`bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-sm transition-all duration-300 min-w-0 overflow-hidden ${
-        onClick ? 'cursor-pointer hover:-translate-y-1 hover:shadow-lg' : 'hover:shadow-md'
+      className={`bg-white p-3 sm:p-4 rounded-[14px] border border-slate-200 shadow-sm transition-all duration-300 min-w-0 flex flex-col ${
+        onClick ? 'cursor-pointer hover:-translate-y-1 hover:shadow-lg hover:border-slate-300' : 'hover:shadow-md'
       } ${gradient}`}
     >
       <div className="flex items-center justify-between gap-2.5">
-        <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">{title}</span>
-        <div className={`p-1.5 sm:p-2.5 rounded-xl border shrink-0 ${iconBg}`}>
-          <Icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">{title}</span>
+        <div className={`p-1.5 rounded-lg border shrink-0 ${iconBg}`}>
+          <Icon className="w-3.5 h-3.5" />
         </div>
       </div>
 
-      <div className="mt-2.5 sm:mt-4 flex items-baseline justify-between min-w-0 overflow-hidden">
+      <div className="mt-2 flex items-baseline justify-between min-w-0">
         <h3
-          className={`${fontSizeClass} font-black text-slate-800 tracking-tight truncate leading-tight tabular-nums`}
+          className={`text-lg sm:text-xl font-black text-slate-800 tracking-tight leading-tight tabular-nums whitespace-nowrap`}
           title={strVal}
         >
           {formattedValue}
@@ -92,13 +92,13 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       </div>
 
       {Boolean(subtitle) && (
-        <p className="mt-1 text-[11px] text-slate-400 font-medium truncate" title={subtitle}>
+        <p className="mt-1 text-[10px] text-slate-400 font-medium truncate" title={subtitle}>
           {subtitle}
         </p>
       )}
 
       {typeof change !== 'undefined' && (
-        <div className="mt-2 sm:mt-3 flex items-center gap-1.5 text-[10px] sm:text-xs font-medium">
+        <div className="mt-2 flex items-center gap-1.5 text-[10px] font-medium">
           <span
             className={`inline-flex items-center font-bold px-1.5 py-0.5 rounded-md ${
               change >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'

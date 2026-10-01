@@ -17,28 +17,54 @@ import { PublicPaymentForm } from './components/payments/PublicPaymentForm';
 import { TeamChat } from './components/chat/TeamChat';
 import { FloatingChatWidget } from './components/chat/FloatingChatWidget';
 import { LoginPage } from './components/auth/LoginPage';
+import { MonthlySalesPage } from './components/monthlySales/MonthlySalesPage';
 import { SignupPage } from './components/auth/SignupPage';
 import { PendingApprovalPage } from './components/auth/PendingApprovalPage';
 import { PasswordResetModal } from './components/auth/PasswordResetModal';
 import { Loader2, Building2 } from 'lucide-react';
 
+const getRoleHomeTab = (role?: string) => {
+  if (role === 'employee') return 'employee-dashboard';
+  if (role === 'manager') return 'manager-dashboard';
+  return 'dashboard';
+};
+
 const MainApp: React.FC = () => {
   const { currentUser, loading, mustResetPassword } = useAuth();
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab && tab !== 'monthly-sales') return tab;
+    } catch {}
+    return 'dashboard';
+  });
   const [authView, setAuthView] = useState<'login' | 'signup' | 'pending'>('login');
 
-  // Handle role defaults when authenticating or switching
+  // Handle role defaults when authenticating or switching (ensuring landing on respective dashboard)
   useEffect(() => {
     if (!currentUser) return;
 
-    if (currentUser.role === 'employee') {
-      setActiveTab('employee-dashboard');
-    } else if (currentUser.role === 'manager') {
-      setActiveTab('manager-dashboard');
-    } else if (currentUser.role === 'admin') {
-      setActiveTab('dashboard');
+    let explicitTab: string | null = null;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab === 'monthly-sales') {
+        // Clean up stale monthly-sales from URL to prevent hijacking subsequent landings
+        const url = new URL(window.location.href);
+        url.searchParams.delete('tab');
+        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+      } else if (tab) {
+        explicitTab = tab;
+      }
+    } catch {}
+
+    if (explicitTab) {
+      setActiveTab(explicitTab);
+    } else {
+      setActiveTab(getRoleHomeTab(currentUser.role));
     }
-  }, [currentUser?.role]);
+  }, [currentUser?.role, currentUser?.id]);
 
   // Loading state
   if (loading) {
@@ -105,6 +131,8 @@ const MainApp: React.FC = () => {
         return <ReportsModule onNavigate={setActiveTab} />;
       case 'employee-sales':
         return <EmployeeSalesDashboard />;
+      case 'monthly-sales':
+        return <MonthlySalesPage />;
 
       // Manager Views
       case 'manager-dashboard':

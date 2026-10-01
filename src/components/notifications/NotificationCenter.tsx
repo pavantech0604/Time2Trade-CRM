@@ -41,7 +41,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
 
   // State
   const [selectedUserId, setSelectedUserId] = useState<string>(currentUser?.id || 'me');
-  const [selectedCategory, setSelectedCategory] = useState<NotificationCategory | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('important');
   const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -91,28 +91,12 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const displayedNotifications = useMemo(() => {
     return userFilteredNotifications.filter((n) => {
       if (selectedCategory === 'all') return true;
-      if (selectedCategory === 'sales') {
-        return (
-          n.category === 'sales' ||
-          n.amount ||
-          n.title.toLowerCase().includes('payment') ||
-          n.title.toLowerCase().includes('credit')
-        );
+      if (selectedCategory === 'important') {
+        // Important: Sales, Leads, Unread
+        return n.category === 'sales' || n.category === 'leads' || n.amount || !n.is_read;
       }
-      if (selectedCategory === 'leads') {
-        return (
-          n.category === 'leads' ||
-          n.title.toLowerCase().includes('lead') ||
-          n.title.toLowerCase().includes('trader')
-        );
-      }
-      if (selectedCategory === 'system') {
-        return (
-          n.category === 'system' ||
-          n.title.toLowerCase().includes('account') ||
-          n.title.toLowerCase().includes('attendance') ||
-          n.title.toLowerCase().includes('break')
-        );
+      if (selectedCategory === 'unread') {
+        return !n.is_read;
       }
       return true;
     });
@@ -127,24 +111,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const categoryCounts = useMemo(() => {
     return {
       all: userFilteredNotifications.length,
-      sales: userFilteredNotifications.filter(
-        (n) =>
-          n.category === 'sales' ||
-          n.amount ||
-          n.title.toLowerCase().includes('payment') ||
-          n.title.toLowerCase().includes('credit')
-      ).length,
-      leads: userFilteredNotifications.filter(
-        (n) =>
-          n.category === 'leads' ||
-          n.title.toLowerCase().includes('lead') ||
-          n.title.toLowerCase().includes('trader')
-      ).length,
-      system: userFilteredNotifications.filter(
-        (n) =>
-          n.category === 'system' ||
-          n.title.toLowerCase().includes('account') ||
-          n.title.toLowerCase().includes('attendance')
+      important: userFilteredNotifications.filter(
+        (n) => n.category === 'sales' || n.category === 'leads' || n.amount || !n.is_read
       ).length,
     };
   }, [userFilteredNotifications]);
@@ -350,12 +318,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         </div>
 
         {/* Clean Category Tabs */}
-        <div className="p-2 bg-slate-50 border-b border-slate-100 grid grid-cols-4 gap-1 shrink-0">
+        <div className="p-2 bg-slate-50/50 backdrop-blur-md border-b border-slate-100 flex items-center justify-around shrink-0">
           {[
+            { id: 'important', label: 'Important', count: categoryCounts.important },
+            { id: 'unread', label: 'Unread', count: activeUnreadCount },
             { id: 'all', label: 'All', count: categoryCounts.all },
-            { id: 'sales', label: 'Sales', count: categoryCounts.sales },
-            { id: 'leads', label: 'Leads', count: categoryCounts.leads },
-            { id: 'system', label: 'System', count: categoryCounts.system },
           ].map((tab) => {
             const isSelected = selectedCategory === tab.id;
             return (
@@ -363,16 +330,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setSelectedCategory(tab.id as any)}
-                className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 ${
+                className={`flex-1 py-1.5 px-2 mx-1 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ${
                   isSelected
-                    ? 'bg-white text-blue-700 font-bold shadow-xs border border-slate-200/80'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                    : 'bg-white text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200/80 shadow-2xs'
                 }`}
               >
                 <span>{tab.label}</span>
                 <span
-                  className={`text-[10px] font-mono px-1 rounded ${
-                    isSelected ? 'bg-blue-50 text-blue-700' : 'bg-slate-200/80 text-slate-500'
+                  className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
+                    isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400'
                   }`}
                 >
                   {tab.count}
@@ -418,56 +385,58 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                 <div
                   key={n.id}
                   onClick={() => handleNotificationClick(n)}
-                  className={`group relative p-3 rounded-xl border transition-all cursor-pointer ${
+                  className={`group relative p-3.5 rounded-2xl border transition-all cursor-pointer ${
                     n.is_read
-                      ? 'bg-white border-slate-100 hover:border-slate-200'
-                      : 'bg-blue-50/20 border-blue-100 hover:border-blue-200 shadow-xs'
+                      ? 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-xs'
+                      : 'bg-gradient-to-br from-blue-50/50 to-indigo-50/30 border-blue-200/60 shadow-sm hover:shadow-md'
                   }`}
                 >
-                  <div className="flex items-start gap-2.5">
+                  <div className="flex items-start gap-3">
                     {/* Left Icon Badge */}
                     <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${iconColor}`}
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+                        n.is_read ? iconColor : 'bg-blue-600 text-white shadow-blue-500/30'
+                      }`}
                     >
                       <IconComp className="w-4 h-4" />
                     </div>
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-1.5">
+                      <div className="flex items-start justify-between gap-2">
                         <h4
-                          className={`text-xs font-semibold leading-snug truncate ${
-                            n.is_read ? 'text-slate-700' : 'text-slate-900 font-bold'
+                          className={`text-xs leading-snug truncate ${
+                            n.is_read ? 'text-slate-700 font-semibold' : 'text-slate-900 font-black'
                           }`}
                         >
                           {n.title}
                         </h4>
-                        <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0">
+                        <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap shrink-0">
                           {formatRelativeTime(n.created_at)}
                         </span>
                       </div>
 
-                      <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed break-words">
+                      <p className={`text-[11px] mt-0.5 leading-relaxed break-words ${n.is_read ? 'text-slate-500' : 'text-slate-700 font-medium'}`}>
                         {n.message}
                       </p>
 
                       {/* Simple Meta Tags */}
-                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
                         {n.amount && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black font-mono bg-emerald-100 text-emerald-800 border border-emerald-200">
                             ₹{Number(n.amount).toLocaleString('en-IN')}
                             {n.share_percentage ? ` (${n.share_percentage}%)` : ''}
                           </span>
                         )}
 
                         {n.client_name && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600">
-                            Client: {n.client_name}
+                          <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                            {n.client_name}
                           </span>
                         )}
 
                         {n.action_label && (
-                          <span className="inline-flex items-center gap-0.5 ml-auto text-[10px] font-bold text-blue-600 hover:underline">
+                          <span className="inline-flex items-center gap-0.5 ml-auto text-[10px] font-black text-blue-600 hover:text-blue-700">
                             {n.action_label}
                             <ArrowRight className="w-3 h-3" />
                           </span>
@@ -476,9 +445,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                     </div>
 
                     {/* Unread indicator / delete */}
-                    <div className="flex flex-col items-center gap-1.5 shrink-0">
+                    <div className="flex flex-col items-center gap-2 shrink-0">
                       {!n.is_read && (
-                        <div className="w-2 h-2 rounded-full bg-blue-600" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-600 ring-4 ring-blue-100 animate-pulse" />
                       )}
 
                       <button
@@ -488,7 +457,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                           deleteNotification(n.id);
                         }}
                         title="Dismiss"
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-pointer"
+                        className="p-1.5 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-all cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>

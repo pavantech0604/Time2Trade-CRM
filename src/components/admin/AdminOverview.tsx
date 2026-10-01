@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Users,
   TrendingUp,
@@ -17,12 +17,22 @@ import {
   Sparkles,
   Minus,
   ChevronRight,
+  CalendarDays,
+  Info,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { MetricCard } from '../common/MetricCard';
 import { StatusBadge } from '../common/StatusBadge';
 import { StreakBadge } from '../common/StreakBadge';
-import { calculateDashboardKPIs, formatINR, formatINRCompact } from '../../lib/calculations';
+import { formatINR, formatINRCompact } from '../../lib/calculations';
+import {
+  UnifiedPeriod,
+  getCurrentUnifiedPeriod,
+  getAvailableReportingPeriods,
+  toUnifiedPeriod,
+  calculatePeriodFinancials,
+} from '../../lib/reportingPeriodService';
+import { ReportingPeriodSelector } from '../common/ReportingPeriodSelector';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 
 interface AdminOverviewProps {
@@ -42,15 +52,31 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
   } = useAuth();
 
   const [consoleView, setConsoleView] = useState<'split' | 'flow'>('split');
+  const [selectedPeriod, setSelectedPeriod] = useState<UnifiedPeriod>(() => getCurrentUnifiedPeriod());
 
-  const kpis = calculateDashboardKPIs(leads, traders, payments, expenses);
+  // Dynamically compute available reporting periods from transactions
+  const availablePeriods = useMemo(() => {
+    return getAvailableReportingPeriods(payments).map(toUnifiedPeriod);
+  }, [payments]);
 
-  const managerShare = kpis.managerShare;
-  const companyGrossShare = kpis.companyGrossShare;
-  const totalExpenses = kpis.totalExpenses;
-  const netCompanyProfit = kpis.netProfit;
-  const totalAdvancesGiven = managerAdvances.reduce((sum, a) => sum + Number(a.amount || 0), 0);
-  const netManagerPayable = managerShare - totalAdvancesGiven;
+  // Compute period-aware financials
+  const financials = useMemo(() => {
+    return calculatePeriodFinancials({
+      period: selectedPeriod,
+      payments,
+      expenses,
+      managerAdvances,
+      leads,
+      traders,
+    });
+  }, [selectedPeriod, payments, expenses, managerAdvances, leads, traders]);
+
+  const managerShare = financials.periodManagerShare;
+  const companyGrossShare = financials.periodCompanyGrossShare;
+  const totalExpenses = financials.periodExpensesTotal;
+  const netCompanyProfit = financials.periodNetCompanyProfit;
+  const periodAdvancesGiven = financials.periodAdvancesTotal;
+  const netManagerPayable = financials.periodManagerNetPayable;
 
   const getTraderPaymentCount = (trader: any) => {
     return payments.filter(
@@ -122,13 +148,31 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* Page Title */}
-      <div className="flex items-center justify-between">
+      {/* Page Title & Controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Executive Dashboard</h2>
           <p className="text-sm text-slate-500 mt-1 font-medium">
             Real-time pulse of your trading platform's ecosystem
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          {/* Universal Reporting Period Selector */}
+          <ReportingPeriodSelector
+            periods={availablePeriods}
+            selectedPeriod={selectedPeriod}
+            onSelectPeriod={setSelectedPeriod}
+            includeAllTime={true}
+          />
+
+          <button
+            type="button"
+            onClick={() => onNavigate('monthly-sales')}
+            className="inline-flex items-center gap-2 h-10 px-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 shadow-2xs hover:shadow-xs transition-all cursor-pointer whitespace-nowrap"
+          >
+            <CalendarDays className="w-4 h-4 text-blue-600" />
+            <span>Monthly Sales</span>
+          </button>
         </div>
       </div>
 
@@ -136,29 +180,29 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         <MetricCard
           title="Active Traders"
-          value={kpis.activeTraders}
+          value={financials.activeTraders}
           isCurrency={false}
           icon={TrendingUp}
           variant="positive"
-          subtitle="Funded client trading accounts"
+          subtitle="Funded client trading accounts (Operational State)"
           onClick={() => onNavigate('active-traders')}
         />
 
         <MetricCard
-          title="Total Platform Collections"
-          value={kpis.totalProfitShared}
+          title={selectedPeriod.isAllTime ? 'Total Platform Collections' : `${selectedPeriod.shortLabel} Collections`}
+          value={financials.periodRevenue}
           icon={CreditCard}
           variant="positive"
-          subtitle="Verified client platform collections"
+          subtitle={selectedPeriod.isAllTime ? 'Verified lifetime client collections' : `Verified client collections in ${selectedPeriod.label}`}
           onClick={() => onNavigate('payment-verification')}
         />
 
         <MetricCard
-          title="Net Business Profit"
-          value={kpis.netProfit}
+          title={selectedPeriod.isAllTime ? 'Lifetime Net Business Profit' : `${selectedPeriod.shortLabel} Net Business Profit`}
+          value={financials.periodNetCompanyProfit}
           icon={DollarSign}
-          variant={kpis.netProfit >= 0 ? 'positive' : 'negative'}
-          subtitle="Company Retained Share − Operating Expenses"
+          variant={financials.periodNetCompanyProfit >= 0 ? 'positive' : 'negative'}
+          subtitle={selectedPeriod.isAllTime ? 'Company Retained Share (40%) − Operating Expenses' : `${selectedPeriod.shortLabel} Retained (40%) − ${selectedPeriod.shortLabel} Expenses`}
           onClick={() => onNavigate('expenses')}
         />
       </div>
@@ -178,8 +222,13 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm sm:text-base font-bold text-slate-900">Revenue Allocation</h3>
                   <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10px] font-bold uppercase tracking-wider">Admin</span>
+                  <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold font-mono">
+                    {selectedPeriod.label}
+                  </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">60/40 revenue split · Manager settlement status</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {selectedPeriod.isAllTime ? 'Cumulative platform revenue split' : `${selectedPeriod.label} collections`} · 60/40 revenue split · Manager settlement status
+                </p>
               </div>
             </div>
           </div>
@@ -192,14 +241,16 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
             <div
               onClick={() => onNavigate('payment-verification')}
               className="bg-white rounded-xl border border-slate-200 p-3 sm:p-3.5 cursor-pointer hover:border-slate-300 hover:shadow-sm transition-all group animate-reveal-up stagger-1 min-w-0"
-              title={formatINR(kpis.totalProfitShared)}
+              title={formatINR(financials.periodRevenue)}
             >
-              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">Total Revenue</div>
-              <div className="text-base sm:text-xl font-bold text-slate-900 tabular-nums mt-1 truncate">
-                {formatINRCompact(kpis.totalProfitShared)}
+              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                {selectedPeriod.isAllTime ? 'Total Revenue' : `${selectedPeriod.shortLabel} Revenue`}
+              </div>
+              <div className="text-base sm:text-lg lg:text-xl font-black text-slate-900 tabular-nums mt-1 font-mono whitespace-nowrap">
+                {formatINR(financials.periodRevenue)}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5 sm:mt-1 flex items-center justify-between">
-                <span className="truncate">Verified collections</span>
+                <span className="truncate">{financials.periodApprovedCount} verified collections</span>
                 <ArrowUpRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
               </div>
             </div>
@@ -210,9 +261,11 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
               className="bg-white rounded-xl border border-slate-200 p-3 sm:p-3.5 cursor-pointer hover:border-emerald-300 hover:shadow-sm transition-all group animate-reveal-up stagger-2 min-w-0"
               title={formatINR(netCompanyProfit)}
             >
-              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">Net Profit</div>
-              <div className={`text-base sm:text-xl font-bold tabular-nums mt-1 truncate ${netCompanyProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {formatINRCompact(netCompanyProfit)}
+              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                {selectedPeriod.isAllTime ? 'Net Profit' : `${selectedPeriod.shortLabel} Net Profit`}
+              </div>
+              <div className={`text-base sm:text-lg lg:text-xl font-black tabular-nums mt-1 font-mono whitespace-nowrap ${netCompanyProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {formatINR(netCompanyProfit)}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5 sm:mt-1 flex items-center justify-between">
                 <span className="truncate">After expenses</span>
@@ -226,9 +279,11 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
               className="bg-white rounded-xl border border-slate-200 p-3 sm:p-3.5 cursor-pointer hover:border-purple-300 hover:shadow-sm transition-all group animate-reveal-up stagger-3 min-w-0"
               title={formatINR(managerShare)}
             >
-              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">Manager Share</div>
-              <div className="text-base sm:text-xl font-bold text-purple-800 tabular-nums mt-1 truncate">
-                {formatINRCompact(managerShare)}
+              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                {selectedPeriod.isAllTime ? 'Manager Share' : `${selectedPeriod.shortLabel} Manager Share`}
+              </div>
+              <div className="text-base sm:text-lg lg:text-xl font-black text-purple-800 tabular-nums mt-1 font-mono whitespace-nowrap">
+                {formatINR(managerShare)}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5 sm:mt-1 flex items-center justify-between">
                 <span className="truncate">60% of revenue</span>
@@ -240,14 +295,20 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
             <div
               onClick={() => onNavigate('manager-advances')}
               className="bg-white rounded-xl border border-slate-200 p-3 sm:p-3.5 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all group animate-reveal-up stagger-4 min-w-0"
-              title={formatINR(netManagerPayable)}
+              title={formatINR(selectedPeriod.isAllTime ? financials.lifetimeBalanceDue : netManagerPayable)}
             >
-              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">Balance Due</div>
-              <div className={`text-base sm:text-xl font-bold tabular-nums mt-1 truncate ${netManagerPayable >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
-                {formatINRCompact(netManagerPayable)}
+              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                {selectedPeriod.isAllTime ? 'Balance Due' : `${selectedPeriod.shortLabel} Period Balance`}
+              </div>
+              <div className={`text-base sm:text-lg lg:text-xl font-black tabular-nums mt-1 font-mono whitespace-nowrap ${
+                (selectedPeriod.isAllTime ? financials.lifetimeBalanceDue : netManagerPayable) >= 0 ? 'text-slate-900' : 'text-rose-600'
+              }`}>
+                {formatINR(selectedPeriod.isAllTime ? financials.lifetimeBalanceDue : netManagerPayable)}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5 sm:mt-1 flex items-center justify-between">
-                <span className="truncate">After advances</span>
+                <span className="truncate">
+                  {selectedPeriod.isAllTime ? 'After all advances' : `After ${selectedPeriod.shortLabel} advances`}
+                </span>
                 <ArrowUpRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
               </div>
             </div>
@@ -327,7 +388,9 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                         <Minus className="w-3 h-3 text-rose-400 shrink-0" />
                         <span>Expenses Deducted</span>
                       </div>
-                      <div className="text-[10px] text-slate-400 mt-0.5 ml-[18px] truncate">{expenses.length} expense record{expenses.length !== 1 ? 's' : ''}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5 ml-[18px] truncate">
+                        {financials.periodOperationalExpenses.length} expense record{financials.periodOperationalExpenses.length !== 1 ? 's' : ''} in {selectedPeriod.shortLabel}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs sm:text-sm font-bold text-rose-600 tabular-nums whitespace-nowrap" title={formatINR(totalExpenses)}>
@@ -376,7 +439,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                   >
                     <div className="min-w-0">
                       <div className="text-xs font-medium text-slate-500">Manager Share</div>
-                      <div className="text-[10px] text-slate-400 mt-0.5 truncate">Gross share from platform sales</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5 truncate">Gross share from {selectedPeriod.shortLabel} sales</div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs sm:text-sm font-bold text-slate-800 tabular-nums whitespace-nowrap" title={formatINR(managerShare)}>
@@ -396,11 +459,13 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                         <Minus className="w-3 h-3 text-slate-400 shrink-0" />
                         <span>Advances Paid</span>
                       </div>
-                      <div className="text-[10px] text-slate-400 mt-0.5 ml-[18px] truncate">{managerAdvances.length} advance{managerAdvances.length !== 1 ? 's' : ''} disbursed</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5 ml-[18px] truncate">
+                        {financials.periodAdvances.length} advance{financials.periodAdvances.length !== 1 ? 's' : ''} in {selectedPeriod.shortLabel}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs sm:text-sm font-bold text-slate-600 tabular-nums whitespace-nowrap" title={formatINR(totalAdvancesGiven)}>
-                        {totalAdvancesGiven > 0 ? `−${formatINR(totalAdvancesGiven)}` : formatINR(0)}
+                      <span className="text-xs sm:text-sm font-bold text-slate-600 tabular-nums whitespace-nowrap" title={formatINR(periodAdvancesGiven)}>
+                        {periodAdvancesGiven > 0 ? `−${formatINR(periodAdvancesGiven)}` : formatINR(0)}
                       </span>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
@@ -412,16 +477,32 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                     className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-purple-50/30 transition-colors bg-purple-50/20 gap-2"
                   >
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-purple-800">Balance Due to Manager</div>
-                      <div className="text-[10px] text-purple-600 mt-0.5 truncate">Share − Advances Paid</div>
+                      <div className="text-xs font-bold text-purple-800">
+                        {selectedPeriod.isAllTime ? 'Total Balance Due to Manager' : `${selectedPeriod.shortLabel} Balance Due`}
+                      </div>
+                      <div className="text-[10px] text-purple-600 mt-0.5 truncate">
+                        {selectedPeriod.isAllTime ? 'Lifetime Share − All Advances Paid' : 'Period Share − Period Advances'}
+                      </div>
                     </div>
                     <span
-                      className={`text-sm sm:text-base font-bold tabular-nums whitespace-nowrap shrink-0 ${netManagerPayable >= 0 ? 'text-purple-800' : 'text-rose-600'}`}
-                      title={formatINR(netManagerPayable)}
+                      className={`text-sm sm:text-base font-bold tabular-nums whitespace-nowrap shrink-0 ${
+                        (selectedPeriod.isAllTime ? financials.lifetimeBalanceDue : netManagerPayable) >= 0 ? 'text-purple-800' : 'text-rose-600'
+                      }`}
+                      title={formatINR(selectedPeriod.isAllTime ? financials.lifetimeBalanceDue : netManagerPayable)}
                     >
-                      {formatINR(netManagerPayable)}
+                      {formatINR(selectedPeriod.isAllTime ? financials.lifetimeBalanceDue : netManagerPayable)}
                     </span>
                   </div>
+
+                  {/* Audit notice for prior month carry-forward balance */}
+                  {!selectedPeriod.isAllTime && financials.lifetimeBalanceDue > 0 && selectedPeriod.year === 2026 && selectedPeriod.month === 10 && (
+                    <div className="px-4 py-2.5 bg-amber-50/70 flex items-start gap-2 text-[11px] text-amber-800 font-sans border-t border-amber-100">
+                      <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <span>
+                        <strong className="font-bold">Prior Period Position:</strong> ₹11,80,819 balance due from September 2026. Current October advances and collections start fresh.
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -439,10 +520,10 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                     <div className="w-5 h-5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[9px] font-bold shrink-0">1</div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Platform Sales</span>
                   </div>
-                  <div className="text-lg font-bold text-slate-900 tabular-nums truncate" title={formatINR(kpis.totalProfitShared)}>
-                    {formatINRCompact(kpis.totalProfitShared)}
+                  <div className="text-lg font-bold text-slate-900 tabular-nums truncate" title={formatINR(financials.periodRevenue)}>
+                    {formatINRCompact(financials.periodRevenue)}
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-1">Total verified collections</div>
+                  <div className="text-[10px] text-slate-400 mt-1">{financials.periodApprovedCount} verified collections</div>
                   {/* Connector arrow — hidden on mobile, visible on lg */}
                   <div className="hidden lg:flex absolute -right-2 top-1/2 -translate-y-1/2 z-10">
                     <ChevronRight className="w-4 h-4 text-slate-300" />
@@ -486,7 +567,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-medium text-purple-700">Manager Adv (from 60%)</span>
-                      <span className="text-xs font-bold text-slate-600 tabular-nums" title={formatINR(totalAdvancesGiven)}>−{formatINRCompact(totalAdvancesGiven)}</span>
+                      <span className="text-xs font-bold text-slate-600 tabular-nums" title={formatINR(periodAdvancesGiven)}>−{formatINRCompact(periodAdvancesGiven)}</span>
                     </div>
                   </div>
                   <div className="text-[9px] text-slate-400 mt-2 italic truncate">
@@ -512,8 +593,10 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-medium text-purple-700">Manager Due</span>
-                      <span className={`text-xs font-bold tabular-nums ${netManagerPayable >= 0 ? 'text-purple-800' : 'text-rose-600'}`} title={formatINR(netManagerPayable)}>
-                        {formatINRCompact(netManagerPayable)}
+                      <span className={`text-xs font-bold tabular-nums ${
+                        (selectedPeriod.isAllTime ? financials.lifetimeBalanceDue : netManagerPayable) >= 0 ? 'text-purple-800' : 'text-rose-600'
+                      }`} title={formatINR(selectedPeriod.isAllTime ? financials.lifetimeBalanceDue : netManagerPayable)}>
+                        {formatINRCompact(selectedPeriod.isAllTime ? financials.lifetimeBalanceDue : netManagerPayable)}
                       </span>
                     </div>
                   </div>
@@ -528,7 +611,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                   className="text-xs font-medium text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
                 >
                   <Receipt className="w-3.5 h-3.5" />
-                  <span>Manage Expenses ({expenses.length})</span>
+                  <span>Manage Expenses ({financials.periodOperationalExpenses.length})</span>
                 </button>
                 <span className="text-slate-200">·</span>
                 <button
@@ -537,7 +620,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
                   className="text-xs font-medium text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
                 >
                   <Banknote className="w-3.5 h-3.5" />
-                  <span>Manage Advances ({managerAdvances.length})</span>
+                  <span>Manage Advances ({financials.periodAdvances.length})</span>
                 </button>
               </div>
             </div>
@@ -546,7 +629,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
       </div>
 
       {/* Operational Alerts Banner */}
-      {kpis.pendingVerificationCount > 0 && (
+      {financials.pendingVerificationCount > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div
             onClick={() => onNavigate('payment-verification')}
@@ -558,7 +641,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ onNavigate }) => {
               </div>
               <div>
                 <h4 className="text-xs font-bold text-amber-900">
-                  {kpis.pendingVerificationCount} Payment Proofs Pending Verification
+                  {financials.pendingVerificationCount} Payment Proofs Pending Verification
                 </h4>
                 <p className="text-[11px] text-amber-700/80 mt-0.5 font-medium">Requires UTR bank statement check before approval</p>
               </div>

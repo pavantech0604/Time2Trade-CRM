@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { calculateSalaryDistribution, formatINR } from '../../lib/calculations';
 import {
@@ -32,25 +32,54 @@ import {
   Cell,
   Legend,
 } from 'recharts';
+import {
+  UnifiedPeriod,
+  getCurrentUnifiedPeriod,
+  getAvailableReportingPeriods,
+  toUnifiedPeriod,
+  isDateInReportingPeriod,
+} from '../../lib/reportingPeriodService';
+import { ReportingPeriodSelector } from '../common/ReportingPeriodSelector';
 
 export const ManagerDashboard: React.FC = () => {
   const { payments, users, currentUser, managerAdvances } = useAuth();
+
+  const [selectedPeriod, setSelectedPeriod] = useState<UnifiedPeriod>(() => getCurrentUnifiedPeriod());
+
+  // Dynamically compute available reporting periods
+  const availablePeriods = useMemo(() => {
+    return getAvailableReportingPeriods(payments).map(toUnifiedPeriod);
+  }, [payments]);
 
   // Active employees
   const activeEmployees = useMemo(() => {
     return users.filter((u) => u.role === 'employee' && u.is_active);
   }, [users]);
 
-  // Approved payments
+  // All-time approved payments
   const approvedPayments = useMemo(() => {
     return payments.filter((p) => p.status === 'approved');
   }, [payments]);
 
-  // Salary distribution calculation (manager share, employee pool)
+  // Period approved payments
+  const periodApprovedPayments = useMemo(() => {
+    if (selectedPeriod.isAllTime) return approvedPayments;
+    return approvedPayments.filter((p) =>
+      isDateInReportingPeriod(p.transaction_time || p.created_at, selectedPeriod)
+    );
+  }, [approvedPayments, selectedPeriod]);
+
+  // Salary distribution calculation (manager share, employee pool) for the selected period
   const distribution = useMemo(() => {
     const empIds = activeEmployees.map((e) => e.id);
-    return calculateSalaryDistribution(payments, empIds);
-  }, [payments, activeEmployees]);
+    return calculateSalaryDistribution(periodApprovedPayments, empIds);
+  }, [periodApprovedPayments, activeEmployees]);
+
+  // All-time distribution for reference
+  const allTimeDistribution = useMemo(() => {
+    const empIds = activeEmployees.map((e) => e.id);
+    return calculateSalaryDistribution(approvedPayments, empIds);
+  }, [approvedPayments, activeEmployees]);
 
   // Filter advances taken by this specific manager
   const isManager = currentUser?.role === 'manager';
@@ -69,11 +98,24 @@ export const ManagerDashboard: React.FC = () => {
     return managerAdvances;
   }, [managerAdvances, currentUser, isManager]);
 
-  const totalAdvancesTaken = useMemo(() => {
+  // Period-specific advances taken
+  const periodMyAdvances = useMemo(() => {
+    if (selectedPeriod.isAllTime) return myAdvances;
+    return myAdvances.filter((a) =>
+      isDateInReportingPeriod(a.date || a.created_at, selectedPeriod)
+    );
+  }, [myAdvances, selectedPeriod]);
+
+  const periodAdvancesTaken = useMemo(() => {
+    return periodMyAdvances.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+  }, [periodMyAdvances]);
+
+  const totalAdvancesTakenLifetime = useMemo(() => {
     return myAdvances.reduce((sum, a) => sum + Number(a.amount || 0), 0);
   }, [myAdvances]);
 
-  const netManagerPayable = distribution.managerShare - totalAdvancesTaken;
+  const netManagerPayable = distribution.managerShare - periodAdvancesTaken;
+  const lifetimeBalanceDue = allTimeDistribution.managerShare - totalAdvancesTakenLifetime;
 
   // Bar chart data: sales per employee
   const barChartData = useMemo(() => {
@@ -117,8 +159,16 @@ export const ManagerDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <span className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-800 border border-purple-200 text-xs font-mono font-bold flex items-center gap-1.5 shadow-xs">
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          {/* Universal Reporting Period Selector */}
+          <ReportingPeriodSelector
+            periods={availablePeriods}
+            selectedPeriod={selectedPeriod}
+            onSelectPeriod={setSelectedPeriod}
+            includeAllTime={true}
+          />
+
+          <span className="px-3 py-2 rounded-xl bg-purple-50 text-purple-800 border border-purple-200 text-xs font-mono font-bold flex items-center gap-1.5 shadow-xs whitespace-nowrap">
             <Sparkles className="w-3.5 h-3.5 text-purple-600" />
             Revenue Share Active
           </span>
@@ -130,14 +180,16 @@ export const ManagerDashboard: React.FC = () => {
         {/* 1. Overall Platform Sales */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
           <div className="flex items-center justify-between text-slate-400 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Overall Platform Sales</span>
+            <span className="truncate">
+              {selectedPeriod.isAllTime ? 'Overall Platform Sales' : `${selectedPeriod.label} Sales`}
+            </span>
             <Receipt className="w-4 h-4 text-blue-600 shrink-0" />
           </div>
           <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono tracking-tight truncate leading-tight" title={formatINR(distribution.totalSales)}>
             {formatINR(distribution.totalSales)}
           </div>
           <p className="text-[11px] text-slate-400 font-mono truncate">
-            {approvedPayments.length} verified client transaction{approvedPayments.length !== 1 ? 's' : ''}
+            {periodApprovedPayments.length} verified transaction{periodApprovedPayments.length !== 1 ? 's' : ''} in {selectedPeriod.shortLabel}
           </p>
         </div>
 
@@ -145,7 +197,7 @@ export const ManagerDashboard: React.FC = () => {
         <div className="bg-gradient-to-br from-purple-50 via-white to-purple-50/30 border border-purple-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
           <div className="flex items-center justify-between text-purple-700 text-xs font-bold font-mono uppercase tracking-wider">
             <span className="flex items-center gap-1 truncate">
-              Manager Revenue Share
+              {selectedPeriod.isAllTime ? 'Manager Revenue Share' : `${selectedPeriod.shortLabel} Manager Share`}
               <span title="Manager receives executive revenue share from overall verified client payments.">
                 <Info className="w-3 h-3 text-purple-500 cursor-help shrink-0" />
               </span>
@@ -155,42 +207,63 @@ export const ManagerDashboard: React.FC = () => {
           <div className="text-xl sm:text-2xl font-black text-purple-700 font-mono tracking-tight truncate leading-tight" title={formatINR(distribution.managerShare)}>
             {formatINR(distribution.managerShare)}
           </div>
-          <p className="text-[11px] text-purple-600 font-medium truncate">Earned from platform sales</p>
+          <p className="text-[11px] text-purple-600 font-medium truncate">
+            60% of {selectedPeriod.shortLabel} sales
+          </p>
         </div>
 
         {/* 3. Salary Advances Taken */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Advances Taken</span>
+            <span className="truncate">
+              {selectedPeriod.isAllTime ? 'Advances Taken' : `${selectedPeriod.shortLabel} Advances Taken`}
+            </span>
             <Banknote className="w-4 h-4 text-blue-600 shrink-0" />
           </div>
-          <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono tracking-tight truncate leading-tight" title={formatINR(totalAdvancesTaken)}>
-            {formatINR(totalAdvancesTaken)}
+          <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono tracking-tight truncate leading-tight" title={formatINR(periodAdvancesTaken)}>
+            {periodAdvancesTaken > 0 ? `−${formatINR(periodAdvancesTaken)}` : formatINR(0)}
           </div>
           <p className="text-[11px] text-slate-400 font-mono truncate">
-            {myAdvances.length} advance payment{myAdvances.length !== 1 ? 's' : ''} received
+            {periodMyAdvances.length} advance{periodMyAdvances.length !== 1 ? 's' : ''} in {selectedPeriod.shortLabel}
           </p>
         </div>
 
         {/* 4. Net Manager Payable */}
         <div className="bg-gradient-to-br from-emerald-50/60 via-white to-emerald-50/20 border border-emerald-200 rounded-2xl p-5 space-y-1.5 shadow-sm min-w-0 overflow-hidden">
           <div className="flex items-center justify-between text-emerald-800 text-xs font-bold font-mono uppercase tracking-wider">
-            <span className="truncate">Net Manager Payable</span>
+            <span className="truncate">
+              {selectedPeriod.isAllTime ? 'Total Net Balance Due' : `${selectedPeriod.shortLabel} Period Payable`}
+            </span>
             <Briefcase className="w-4 h-4 text-emerald-600 shrink-0" />
           </div>
           <div
             className={`text-xl sm:text-2xl font-black font-mono tracking-tight truncate leading-tight ${
-              netManagerPayable >= 0 ? 'text-emerald-700' : 'text-rose-600'
+              (selectedPeriod.isAllTime ? lifetimeBalanceDue : netManagerPayable) >= 0 ? 'text-emerald-700' : 'text-rose-600'
             }`}
-            title={formatINR(netManagerPayable)}
+            title={formatINR(selectedPeriod.isAllTime ? lifetimeBalanceDue : netManagerPayable)}
           >
-            {formatINR(netManagerPayable)}
+            {formatINR(selectedPeriod.isAllTime ? lifetimeBalanceDue : netManagerPayable)}
           </div>
           <p className="text-[11px] text-emerald-700/80 font-medium truncate">
-            Revenue Share − Advances Taken
+            {selectedPeriod.isAllTime ? 'Lifetime Share − All Advances' : 'Period Share − Period Advances'}
           </p>
         </div>
       </div>
+
+      {/* Prior Period Carry-Forward Notice */}
+      {!selectedPeriod.isAllTime && lifetimeBalanceDue > 0 && selectedPeriod.year === 2026 && selectedPeriod.month === 10 && (
+        <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
+          <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider font-mono">
+              Historical Carry-Forward Settlement Position
+            </h4>
+            <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+              Your account has an outstanding net balance of <strong className="font-black">{formatINR(lifetimeBalanceDue)}</strong> from September 2026. Current October 2026 collections and advances are isolated and start fresh. Old advances are not re-deducted from new month settlements.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Revenue Share Formula Explainer Box */}
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -237,8 +310,12 @@ export const ManagerDashboard: React.FC = () => {
 
           <div className="flex items-center gap-4 self-start sm:self-auto">
             <div className="bg-white px-3.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs text-right">
-              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">Total Advances Received</span>
-              <span className="text-sm font-black font-mono text-slate-900">{formatINR(totalAdvancesTaken)}</span>
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">
+                {selectedPeriod.isAllTime ? 'Lifetime Advances' : `${selectedPeriod.label} Advances`}
+              </span>
+              <span className="text-sm font-black font-mono text-slate-900">
+                {formatINR(selectedPeriod.isAllTime ? totalAdvancesTakenLifetime : periodAdvancesTaken)}
+              </span>
             </div>
           </div>
         </div>

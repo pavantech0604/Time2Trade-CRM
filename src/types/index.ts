@@ -45,6 +45,11 @@ export interface User {
   name: string;
   email: string;
   phone?: string;
+  personal_phone?: string;
+  personal_number?: string;
+  office_phone?: string;
+  office_number?: string;
+  blood_group?: string;
   role: UserRole;
   employee_code?: string;
   designation?: string;
@@ -315,3 +320,74 @@ export interface ChatMessage {
   reactions?: { [emoji: string]: string[] }; // emoji -> array of user_ids
   created_at: string;
 }
+
+export interface MonthlyReportingPeriod {
+  year: number;
+  month: number; // 1-12
+  label: string; // e.g. "October 2026"
+  shortLabel: string; // e.g. "Oct 2026"
+  isCurrent: boolean;
+  startDateIso: string;
+  endDateIso: string;
+  totalDays: number;
+}
+
+export interface DailySalesTrendPoint {
+  day: number;
+  dateKey: string;
+  formattedDate: string;
+  revenue: number;
+  salesCount: number;
+  isFuture: boolean;
+  isToday: boolean;
+}
+
+export interface EmployeeMonthlyPerformance {
+  employeeId: string;
+  name: string;
+  email?: string;
+  role: string;
+  avatarUrl?: string;
+  revenue: number;
+  salesCount: number;
+  target: number;
+  achievementPercent: number;
+  conversionsCount: number;
+  rank: number;
+  isTopPerformer: boolean;
+  shareOfTotalPercent: number;
+}
+
+export interface MonthlySalesSummary {
+  period: MonthlyReportingPeriod;
+  totalRevenue: number;
+  totalSales: number;
+  dealsClosed: number;
+  averageDealSize: number;
+  monthlyTarget: number;
+  achievedAmount: number;
+  targetRemaining: number;
+  targetAchievementPercent: number;
+  prevMonthRevenue: number;
+  prevMonthSales: number;
+  revenueMomPercent: number | null;
+  revenueMomStatus: 'up' | 'down' | 'neutral' | 'no_baseline';
+  conversionsCount: number;
+  totalLeadsInPeriod: number;
+  conversionRate: number;
+  equitySales: number;
+  commoditySales: number;
+  sharedPaymentsCount: number;
+  managerShare: number; // 60%
+  companyRetainedShare: number; // 40%
+}
+
+export interface MonthlyTargetRecord {
+  id?: string;
+  year: number;
+  month: number;
+  target_amount: number;
+  employee_id?: string | null;
+  notes?: string;
+}
+

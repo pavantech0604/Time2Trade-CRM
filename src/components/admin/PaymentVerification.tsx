@@ -3,6 +3,15 @@ import { useAuth } from '../../context/AuthContext';
 import { Payment } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
 import { formatINR } from '../../lib/calculations';
+import { 
+  getReportingPeriodKey, 
+  UnifiedPeriod, 
+  getCurrentUnifiedPeriod, 
+  getAvailableReportingPeriods, 
+  toUnifiedPeriod, 
+  isDateInReportingPeriod 
+} from '../../lib/reportingPeriodService';
+import { ReportingPeriodSelector } from '../common/ReportingPeriodSelector';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -305,7 +314,9 @@ export const PaymentVerification: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending_verification' | 'approved' | 'rejected' | 'shared'>('all');
   const [modeFilter, setModeFilter] = useState<string>('all');
   const [employeeFilter, setEmployeeFilter] = useState<string>('all');
-  const [monthFilter, setMonthFilter] = useState<string>('all');
+  const [monthFilter, setMonthFilter] = useState<string>(() => {
+    return getReportingPeriodKey(new Date().toISOString()) || 'all';
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [dateSortOrder, setDateSortOrder] = useState<'asc' | 'desc'>('asc');
 
@@ -325,15 +336,23 @@ export const PaymentVerification: React.FC = () => {
     return { day, month, year, time, full, weekday, rawTime: d.getTime() };
   };
 
-  // Month filter options extracted from payments
+  // Month filter options extracted from payments using strict IST reporting keys
   const monthFilterOptions = useMemo(() => {
     const monthsMap = new Map<string, { label: string; count: number }>();
     payments.forEach((p) => {
-      if (p.transaction_time) {
-        const d = new Date(p.transaction_time);
-        if (!isNaN(d.getTime())) {
-          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-          const label = d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+      const dateVal = p.transaction_time || p.created_at;
+      if (dateVal) {
+        const key = getReportingPeriodKey(dateVal);
+        if (key) {
+          const parts = key.split('-');
+          const year = parseInt(parts[0], 10);
+          const monthIdx = parseInt(parts[1], 10) - 1;
+          const label = new Intl.DateTimeFormat('en-US', {
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'Asia/Kolkata',
+          }).format(new Date(year, monthIdx, 1));
+
           const existing = monthsMap.get(key);
           if (existing) {
             existing.count += 1;
@@ -343,6 +362,19 @@ export const PaymentVerification: React.FC = () => {
         }
       }
     });
+    
+    // Ensure current month is always an option if not present but we are filtering by it
+    const currentKey = getReportingPeriodKey(new Date().toISOString());
+    if (currentKey && !monthsMap.has(currentKey)) {
+      const parts = currentKey.split('-');
+      const label = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata',
+      }).format(new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1));
+      monthsMap.set(currentKey, { label, count: 0 });
+    }
+
     return Array.from(monthsMap.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([key, val]) => ({ key, label: val.label, count: val.count }));
@@ -525,12 +557,11 @@ export const PaymentVerification: React.FC = () => {
         }
       }
 
-      // 4. Month Filter
+      // 4. Month Filter (Aligned with IST Reporting Architecture)
       if (monthFilter !== 'all') {
-        if (!payment.transaction_time) return false;
-        const d = new Date(payment.transaction_time);
-        if (isNaN(d.getTime())) return false;
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const dateVal = payment.transaction_time || payment.created_at;
+        if (!dateVal) return false;
+        const key = getReportingPeriodKey(dateVal);
         if (key !== monthFilter) return false;
       }
 
@@ -607,11 +638,13 @@ export const PaymentVerification: React.FC = () => {
   const drawerPhone = selectedClientInfo ? selectedClientInfo.phone : '';
   const cleanDrawerDigits = drawerPhone.replace(/\D/g, '');
 
+  const currentMonthKey = getReportingPeriodKey(new Date().toISOString()) || 'all';
+
   const hasActiveFilters =
     statusFilter !== 'all' ||
     modeFilter !== 'all' ||
     employeeFilter !== 'all' ||
-    monthFilter !== 'all' ||
+    monthFilter !== currentMonthKey ||
     searchQuery.trim() !== '';
 
   return (
@@ -731,11 +764,14 @@ export const PaymentVerification: React.FC = () => {
 
           {/* Month Filter Selector */}
           {monthFilterOptions.length > 0 && (
-            <div className="relative flex-1 sm:flex-initial">
+            <div className="relative flex-1 sm:flex-initial group">
+              <Calendar className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${
+                monthFilter !== 'all' ? 'text-blue-500' : 'text-slate-400 group-hover:text-blue-400'
+              }`} />
               <select
                 value={monthFilter}
                 onChange={(e) => setMonthFilter(e.target.value)}
-                className={`w-full sm:w-auto appearance-none rounded-xl pl-3 pr-8 py-2.5 text-xs font-bold cursor-pointer transition-all shadow-2xs border ${
+                className={`w-full sm:w-auto appearance-none rounded-xl pl-8 pr-8 py-2.5 text-xs font-bold cursor-pointer transition-all shadow-2xs border ${
                   monthFilter !== 'all'
                     ? 'bg-blue-50/80 border-blue-300 text-blue-900 ring-1 ring-blue-400/20'
                     : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
@@ -744,7 +780,7 @@ export const PaymentVerification: React.FC = () => {
                 <option value="all">All Months</option>
                 {monthFilterOptions.map((m) => (
                   <option key={m.key} value={m.key}>
-                    {m.label} ({m.count})
+                    {m.label} {m.count > 0 ? `(${m.count})` : ''}
                   </option>
                 ))}
               </select>
@@ -781,13 +817,13 @@ export const PaymentVerification: React.FC = () => {
                 setStatusFilter('all');
                 setModeFilter('all');
                 setEmployeeFilter('all');
-                setMonthFilter('all');
+                setMonthFilter(currentMonthKey);
                 setSearchQuery('');
               }}
-              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0"
-              title="Reset all filters"
+              className="group flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 border border-slate-200 hover:border-slate-300 text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs hover:shadow-sm shrink-0 active:scale-95"
+              title="Clear filters & return to default view"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-3.5 h-3.5 group-hover:-rotate-90 transition-transform duration-300" />
               <span>Reset</span>
             </button>
           )}
@@ -818,13 +854,13 @@ export const PaymentVerification: React.FC = () => {
                   setStatusFilter('all');
                   setModeFilter('all');
                   setEmployeeFilter('all');
-                  setMonthFilter('all');
+                  setMonthFilter(currentMonthKey);
                   setSearchQuery('');
                 }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold hover:bg-blue-100 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-50 text-slate-600 border border-slate-200 text-xs font-bold hover:bg-slate-100 hover:text-slate-800 transition-all duration-200 cursor-pointer active:scale-95 group"
               >
-                <RotateCcw className="w-3 h-3" />
-                <span>Clear All Filters</span>
+                <RotateCcw className="w-3 h-3 group-hover:-rotate-90 transition-transform duration-300" />
+                <span>Return to Default View</span>
               </button>
             )}
           </div>

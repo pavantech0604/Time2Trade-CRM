@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth, isBhavaniUser } from '../../context/AuthContext';
 import { 
   Users, 
@@ -31,9 +31,19 @@ import {
   Layers,
   UserCheck,
   Clock,
+  CalendarDays,
 } from 'lucide-react';
 import { MetricCard } from '../common/MetricCard';
 import { LeadStatus } from '../../types';
+import {
+  UnifiedPeriod,
+  getCurrentUnifiedPeriod,
+  getAvailableReportingPeriods,
+  toUnifiedPeriod,
+  filterPaymentsByPeriod,
+  isDateInReportingPeriod,
+} from '../../lib/reportingPeriodService';
+import { ReportingPeriodSelector } from '../common/ReportingPeriodSelector';
 
 export const EmployeeDashboard: React.FC = () => {
   const {
@@ -49,6 +59,9 @@ export const EmployeeDashboard: React.FC = () => {
     isLiveSyncing,
   } = useAuth();
   const [activeTab, setActiveTab] = useState<'traders' | 'primary-payments' | 'shared-payments' | 'payments' | 'leads'>('traders');
+  const [selectedPeriod, setSelectedPeriod] = useState<UnifiedPeriod>(() => getCurrentUnifiedPeriod());
+  const [paymentFilterScope, setPaymentFilterScope] = useState<'period' | 'all'>('period');
+  const [clientFilterScope, setClientFilterScope] = useState<'period' | 'all'>('period');
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
@@ -183,16 +196,28 @@ export const EmployeeDashboard: React.FC = () => {
   // Derived Data: All payments where current employee is primary, submitting, or shared recipient
   const myLeads = leads.filter((l) => l.assigned_to === currentUser.id && l.status !== 'active_trader');
 
-  const myPayments = payments.filter((p) => {
-    const isDirect =
-      isEmployeeMatch(p.employee_id, p.employee_name, undefined, p.remarks) ||
-      isEmployeeMatch(p.submitted_by_employee_id, p.submitted_by_employee_name, undefined, p.remarks);
-    const isAllocated = p.allocations?.some((a) =>
-      isEmployeeMatch(a.employee_id, a.employee_name, a.employee_email)
-    );
-    const isTraderMatch = isMyTraderPayment(p);
-    return isDirect || isAllocated || isTraderMatch;
-  });
+  // Dynamically compute available reporting periods from payments
+  const availablePeriods = useMemo(() => {
+    return getAvailableReportingPeriods(payments).map(toUnifiedPeriod);
+  }, [payments]);
+
+  const myPayments = useMemo(() => {
+    return payments.filter((p) => {
+      const isDirect =
+        isEmployeeMatch(p.employee_id, p.employee_name, undefined, p.remarks) ||
+        isEmployeeMatch(p.submitted_by_employee_id, p.submitted_by_employee_name, undefined, p.remarks);
+      const isAllocated = p.allocations?.some((a) =>
+        isEmployeeMatch(a.employee_id, a.employee_name, a.employee_email)
+      );
+      const isTraderMatch = isMyTraderPayment(p);
+      return isDirect || isAllocated || isTraderMatch;
+    });
+  }, [payments, currentUser, traders]);
+
+  // Current selected period payments
+  const periodPayments = useMemo(() => {
+    return filterPaymentsByPeriod(myPayments, selectedPeriod);
+  }, [myPayments, selectedPeriod]);
 
   const getMyCreditedAmount = (p: typeof payments[0]) => {
     if (p.allocations && p.allocations.length > 0) {
@@ -233,8 +258,63 @@ export const EmployeeDashboard: React.FC = () => {
     return Boolean(p.is_shared || (p.allocations && p.allocations.length > 1));
   };
 
-  const primaryPayments = myPayments.filter((p) => isPrimaryPayment(p));
-  const sharedPayments = myPayments.filter((p) => isSharedPayment(p) && !isPrimaryPayment(p));
+  const primaryPayments = useMemo(() => myPayments.filter((p) => isPrimaryPayment(p)), [myPayments]);
+  const sharedPayments = useMemo(() => myPayments.filter((p) => isSharedPayment(p) && !isPrimaryPayment(p)), [myPayments]);
+
+  const periodPrimaryPayments = useMemo(() => periodPayments.filter((p) => isPrimaryPayment(p)), [periodPayments]);
+  const periodSharedPayments = useMemo(() => periodPayments.filter((p) => isSharedPayment(p) && !isPrimaryPayment(p)), [periodPayments]);
+
+  const periodApprovedPayments = useMemo(() => periodPayments.filter((p) => p.status === 'approved'), [periodPayments]);
+  const periodPendingPayments = useMemo(() => periodPayments.filter((p) => p.status === 'pending_verification'), [periodPayments]);
+
+  // Financial totals for the selected period
+  const periodApprovedSales = useMemo(
+    () => periodApprovedPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0),
+    [periodApprovedPayments]
+  );
+  const periodPendingSales = useMemo(
+    () => periodPendingPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0),
+    [periodPendingPayments]
+  );
+  const periodOverallSales = periodApprovedSales + periodPendingSales;
+
+  const periodPrimaryApprovedSales = useMemo(
+    () => periodPrimaryPayments.filter((p) => p.status === 'approved').reduce((sum, p) => sum + getMyCreditedAmount(p), 0),
+    [periodPrimaryPayments]
+  );
+  const periodPrimaryOverallSales = useMemo(
+    () => periodPrimaryPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0),
+    [periodPrimaryPayments]
+  );
+
+  const periodSharedApprovedSales = useMemo(
+    () => periodSharedPayments.filter((p) => p.status === 'approved').reduce((sum, p) => sum + getMyCreditedAmount(p), 0),
+    [periodSharedPayments]
+  );
+  const periodSharedOverallSales = useMemo(
+    () => periodSharedPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0),
+    [periodSharedPayments]
+  );
+
+  // All-time totals for reference and lifetime comparison
+  const allTimeApprovedPayments = useMemo(() => myPayments.filter((p) => p.status === 'approved'), [myPayments]);
+  const allTimePendingPayments = useMemo(() => myPayments.filter((p) => p.status === 'pending_verification'), [myPayments]);
+  const allTimeApprovedSales = useMemo(
+    () => allTimeApprovedPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0),
+    [allTimeApprovedPayments]
+  );
+  const allTimePendingSales = useMemo(
+    () => allTimePendingPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0),
+    [allTimePendingPayments]
+  );
+  const allTimeOverallSales = allTimeApprovedSales + allTimePendingSales;
+
+  // Active milestone deal: checks if a 5L+ deal occurred in this period (or in all-time if all-time is active)
+  const activeMilestoneDeal = useMemo(() => {
+    const pool = selectedPeriod.isAllTime ? myPayments : periodPayments;
+    const bigDeals = pool.filter((p) => Number(p.amount) >= 500000).sort((a, b) => Number(b.amount) - Number(a.amount));
+    return bigDeals[0] || null;
+  }, [selectedPeriod.isAllTime, myPayments, periodPayments]);
 
   const [paymentSubFilter, setPaymentSubFilter] = useState<'all' | 'direct' | 'shared' | 'approved' | 'pending'>('all');
 
@@ -335,29 +415,37 @@ export const EmployeeDashboard: React.FC = () => {
     );
   }, [myPayments, traders, currentUser]);
 
-  const filteredClients = React.useMemo(() => {
+  const periodClients = useMemo(() => {
+    if (selectedPeriod.isAllTime) return myClients;
+    return myClients.filter((c) =>
+      c.payments.some((p) => isDateInReportingPeriod(p.transaction_time || p.created_at, selectedPeriod))
+    );
+  }, [myClients, selectedPeriod]);
+
+  const filteredClients = useMemo(() => {
+    const base = (clientFilterScope === 'period' && !selectedPeriod.isAllTime) ? periodClients : myClients;
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return myClients;
-    return myClients.filter(
+    if (!q) return base;
+    return base.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
         c.phone.includes(q) ||
         c.serviceCategory.toLowerCase().includes(q) ||
         c.serviceType.toLowerCase().includes(q)
     );
-  }, [myClients, searchQuery]);
+  }, [clientFilterScope, selectedPeriod.isAllTime, periodClients, myClients, searchQuery]);
 
   const filteredLeads = myLeads.filter(
     (l) => l.name.toLowerCase().includes(searchQuery.toLowerCase()) || l.phone.includes(searchQuery)
   );
 
-  const filteredPayments = React.useMemo(() => {
-    let list = myPayments;
+  const filteredPayments = useMemo(() => {
+    let list = (paymentFilterScope === 'period' && !selectedPeriod.isAllTime) ? periodPayments : myPayments;
 
     if (paymentSubFilter === 'direct') {
-      list = primaryPayments;
+      list = list.filter((p) => isPrimaryPayment(p));
     } else if (paymentSubFilter === 'shared') {
-      list = sharedPayments;
+      list = list.filter((p) => isSharedPayment(p) && !isPrimaryPayment(p));
     } else if (paymentSubFilter === 'approved') {
       list = list.filter((p) => p.status === 'approved');
     } else if (paymentSubFilter === 'pending') {
@@ -386,25 +474,7 @@ export const EmployeeDashboard: React.FC = () => {
       const dateB = new Date(b.transaction_time || b.created_at || 0).getTime();
       return dateB - dateA;
     });
-  }, [myPayments, primaryPayments, sharedPayments, activeTab, paymentSubFilter, searchQuery, sortOrder]);
-
-  const approvedPayments = myPayments.filter((p) => p.status === 'approved');
-  const pendingPayments = myPayments.filter((p) => p.status === 'pending_verification');
-
-  // Sales totals (both approved and overall including review)
-  const totalApprovedSales = approvedPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0);
-  const totalPendingSales = pendingPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0);
-  const totalOverallSales = totalApprovedSales + totalPendingSales;
-
-  const primaryApprovedSales = primaryPayments
-    .filter((p) => p.status === 'approved')
-    .reduce((sum, p) => sum + getMyCreditedAmount(p), 0);
-  const primaryOverallSales = primaryPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0);
-
-  const sharedApprovedSales = sharedPayments
-    .filter((p) => p.status === 'approved')
-    .reduce((sum, p) => sum + getMyCreditedAmount(p), 0);
-  const sharedOverallSales = sharedPayments.reduce((sum, p) => sum + getMyCreditedAmount(p), 0);
+  }, [paymentFilterScope, selectedPeriod.isAllTime, periodPayments, myPayments, paymentSubFilter, searchQuery, sortOrder]);
 
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -481,31 +551,46 @@ export const EmployeeDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Header section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6 bg-white p-4 sm:p-6 rounded-3xl border border-slate-200/60 shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+      {/* Header section with Period Selector */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6 bg-white p-4 sm:p-6 rounded-3xl border border-slate-200/60 shadow-sm relative">
+        <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+        </div>
         <div className="space-y-1 relative z-10">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-slate-800">
-            Welcome back, {currentUser.name.split(' ')[0]} 👋
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-slate-800">
+              Welcome back, {currentUser.name.split(' ')[0]} 👋
+            </h1>
+            <span className="hidden sm:inline-flex px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-mono font-bold">
+              Desk Workspace
+            </span>
+          </div>
           <p className="text-xs sm:text-sm font-medium text-slate-500">
-            Here's what's happening with your pipeline today.
+            Real-time performance analytics and pipeline management for <span className="font-bold text-slate-700">{selectedPeriod.label}</span>
           </p>
         </div>
         
-        <div className="flex items-center gap-3 relative z-10">
+        <div className="flex flex-wrap items-center gap-2.5 relative z-10 self-start md:self-auto">
+          {/* Universal Reporting Period Selector */}
+          <ReportingPeriodSelector
+            periods={availablePeriods}
+            selectedPeriod={selectedPeriod}
+            onSelectPeriod={setSelectedPeriod}
+            includeAllTime={true}
+          />
+
           <button 
             onClick={() => setIsAddLeadModalOpen(true)}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
+            className="flex items-center justify-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
-            Add Warm Lead
+            <span>Add Warm Lead</span>
           </button>
         </div>
       </div>
 
-      {/* Interactive Milestone Spotlight Banner for High-Ticket Deals (e.g. Bhavani's ₹10,00,000 Solo Deal) */}
-      {primaryPayments.some((p) => Number(p.amount) >= 500000) && (
+      {/* Dynamic Milestone Spotlight Banner or Period Performance Tracker */}
+      {activeMilestoneDeal ? (
         <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-blue-500/10 border-2 border-amber-300 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-amber-500/5 animate-in slide-in-from-top-2">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-white flex items-center justify-center shadow-lg shadow-amber-500/25 shrink-0">
@@ -515,82 +600,141 @@ export const EmployeeDashboard: React.FC = () => {
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-black text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-amber-600 fill-amber-500" />
-                  Mega Milestone: ₹10,00,000 Solo Deal
+                  Mega Milestone: ₹{Number(activeMilestoneDeal.amount).toLocaleString('en-IN')} {isPrimaryPayment(activeMilestoneDeal) ? 'Solo Deal' : 'Shared Deal'}
                 </span>
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-mono uppercase font-black">
-                  100% Credited
+                  {isPrimaryPayment(activeMilestoneDeal) ? '100% Credited' : 'Verified Share'}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-mono font-bold">
+                  {selectedPeriod.label}
                 </span>
               </div>
               <p className="text-xs text-slate-600 mt-0.5">
-                Client <strong className="text-slate-800">Gopinath</strong> • Equity - Stock Option (Yearly) • UTR: <span className="font-mono font-bold text-slate-700">01236579942</span>
+                Client <strong className="text-slate-800">{resolveClientContact(activeMilestoneDeal).displayName}</strong> • {activeMilestoneDeal.service_category || 'Equity'} - {activeMilestoneDeal.service_type || 'Option'} ({activeMilestoneDeal.subscription_duration || 'Yearly'}) • UTR: <span className="font-mono font-bold text-slate-700">{activeMilestoneDeal.utr}</span>
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => {
-              setPaymentSubFilter('direct');
+              setPaymentFilterScope(selectedPeriod.isAllTime ? 'all' : 'period');
+              setPaymentSubFilter('all');
               setActiveTab('payments');
-              setSearchQuery('Gopinath');
+              setSearchQuery(resolveClientContact(activeMilestoneDeal).displayName);
             }}
             className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer whitespace-nowrap active:scale-95 flex items-center justify-center gap-2"
           >
-            <span>View Solo Deal</span>
+            <span>View Deal</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
+      ) : (
+        <div className="bg-gradient-to-r from-blue-500/10 via-teal-500/10 to-indigo-500/10 border border-blue-200/80 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-teal-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+              <Calendar className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-black text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-blue-600" />
+                  {selectedPeriod.label} Performance Cycle
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-300 text-blue-800 text-[10px] font-mono uppercase font-black">
+                  {selectedPeriod.isCurrent ? 'Current Month Active' : 'Archive Period'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5">
+                {periodOverallSales > 0 ? (
+                  <>
+                    <strong className="text-slate-800">₹{periodOverallSales.toLocaleString('en-IN')}</strong> in volume recorded in {selectedPeriod.shortLabel} across <strong className="text-slate-800">{periodPayments.length}</strong> deal{periodPayments.length === 1 ? '' : 's'}. Lifetime total: ₹{allTimeOverallSales.toLocaleString('en-IN')}.
+                  </>
+                ) : (
+                  <>
+                    No sales recorded yet for <strong className="text-slate-800">{selectedPeriod.label}</strong>. New payments submitted will credit immediately to your desk.
+                    {allTimeOverallSales > 0 && (
+                      <> Lifetime collections: ₹{allTimeOverallSales.toLocaleString('en-IN')} across {myPayments.length} transactions.</>
+                    )}
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setIsAddLeadModalOpen(true)}
+              className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95 flex items-center justify-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Log Warm Lead</span>
+            </button>
+          </div>
+        </div>
       )}
 
-      {/* KPI Cards */}
+      {/* KPI Cards — Period Driven */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         <MetricCard
-          title="Total Sales Volume"
-          value={totalOverallSales}
+          title={selectedPeriod.isAllTime ? 'Total Sales Volume' : `${selectedPeriod.shortLabel} Sales Volume`}
+          value={periodOverallSales}
           subtitle={
-            totalPendingSales > 0
-              ? `₹${totalApprovedSales.toLocaleString('en-IN')} Approved • ₹${totalPendingSales.toLocaleString('en-IN')} Review`
-              : `${myPayments.length} Total Payment${myPayments.length === 1 ? '' : 's'}`
+            periodPendingSales > 0
+              ? `₹${periodApprovedSales.toLocaleString('en-IN')} Approved • ₹${periodPendingSales.toLocaleString('en-IN')} Review`
+              : selectedPeriod.isAllTime
+                ? `${myPayments.length} Total Payment${myPayments.length === 1 ? '' : 's'}`
+                : `${periodPayments.length} Payment${periodPayments.length === 1 ? '' : 's'} in ${selectedPeriod.shortLabel} • Lifetime: ₹${allTimeOverallSales.toLocaleString('en-IN')}`
           }
           icon={Wallet}
           variant="positive"
           isCurrency={true}
           onClick={() => {
+            setPaymentFilterScope(selectedPeriod.isAllTime ? 'all' : 'period');
             setPaymentSubFilter('all');
             setActiveTab('payments');
           }}
         />
         <MetricCard
-          title="Primary (Solo) Sales"
-          value={primaryOverallSales}
-          subtitle={`${primaryPayments.length} Solo Deal${primaryPayments.length === 1 ? '' : 's'} (100% Credited)`}
+          title={selectedPeriod.isAllTime ? 'Primary (Solo) Sales' : `${selectedPeriod.shortLabel} Solo Sales`}
+          value={periodPrimaryOverallSales}
+          subtitle={`${periodPrimaryPayments.length} Solo Deal${periodPrimaryPayments.length === 1 ? '' : 's'} (100% Credited)`}
           icon={Star}
           variant="info"
           isCurrency={true}
           onClick={() => {
+            setPaymentFilterScope(selectedPeriod.isAllTime ? 'all' : 'period');
             setPaymentSubFilter('direct');
             setActiveTab('payments');
           }}
         />
         <MetricCard
-          title="Shared Sales Received"
-          value={sharedOverallSales}
-          subtitle={`${sharedPayments.length} Shared Deal${sharedPayments.length === 1 ? '' : 's'}`}
+          title={selectedPeriod.isAllTime ? 'Shared Sales Received' : `${selectedPeriod.shortLabel} Shared Sales`}
+          value={periodSharedOverallSales}
+          subtitle={`${periodSharedPayments.length} Shared Deal${periodSharedPayments.length === 1 ? '' : 's'}`}
           icon={TrendingUp}
           variant="neutral"
           isCurrency={true}
           onClick={() => {
+            setPaymentFilterScope(selectedPeriod.isAllTime ? 'all' : 'period');
             setPaymentSubFilter('shared');
             setActiveTab('payments');
           }}
         />
         <MetricCard
-          title="My Traders (Clients)"
-          value={myClients.length.toString()}
-          subtitle={`${myPayments.length} Payments from ${myClients.length} Clients`}
+          title={selectedPeriod.isAllTime ? 'My Traders (Clients)' : `${selectedPeriod.shortLabel} Active Clients`}
+          value={selectedPeriod.isAllTime ? myClients.length.toString() : periodClients.length.toString()}
+          subtitle={
+            selectedPeriod.isAllTime
+              ? `${myPayments.length} Payments from ${myClients.length} Clients`
+              : `${periodPayments.length} Payments • Lifetime: ${myClients.length} Clients`
+          }
           icon={Users}
           variant="positive"
           isCurrency={false}
-          onClick={() => setActiveTab('traders')}
+          onClick={() => {
+            setClientFilterScope(selectedPeriod.isAllTime ? 'all' : 'period');
+            setActiveTab('traders');
+          }}
         />
       </div>
 
@@ -612,7 +756,7 @@ export const EmployeeDashboard: React.FC = () => {
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                 activeTab === 'traders' ? 'bg-blue-50 text-blue-700' : 'bg-slate-200/70 text-slate-600'
               }`}>
-                {myClients.length}
+                {selectedPeriod.isAllTime ? myClients.length : periodClients.length}
               </span>
             </button>
 
@@ -629,7 +773,7 @@ export const EmployeeDashboard: React.FC = () => {
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                 activeTab === 'payments' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200/70 text-slate-600'
               }`}>
-                {myPayments.length}
+                {paymentFilterScope === 'period' && !selectedPeriod.isAllTime ? periodPayments.length : myPayments.length}
               </span>
             </button>
 
@@ -723,8 +867,42 @@ export const EmployeeDashboard: React.FC = () => {
           )}
 
           {activeTab === 'traders' && (
-            filteredClients.length > 0 ? (
-              filteredClients.map((client) => {
+            <div className="space-y-3">
+              {!selectedPeriod.isAllTime && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-slate-50/90 rounded-2xl border border-slate-200/80 shadow-2xs">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-slate-500 pl-2">Period Scope:</span>
+                    <button
+                      type="button"
+                      onClick={() => setClientFilterScope('period')}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        clientFilterScope === 'period'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200/80'
+                      }`}
+                    >
+                      {selectedPeriod.shortLabel} Traders ({periodClients.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setClientFilterScope('all')}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        clientFilterScope === 'all'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200/80'
+                      }`}
+                    >
+                      All Lifetime Traders ({myClients.length})
+                    </button>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-400 pr-2">
+                    Showing {filteredClients.length} client{filteredClients.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+              )}
+
+              {filteredClients.length > 0 ? (
+                filteredClients.map((client) => {
                 const isExpanded = expandedClientId === client.id;
                 return (
                   <div
@@ -865,12 +1043,26 @@ export const EmployeeDashboard: React.FC = () => {
                   </div>
                 );
               })
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3 py-12">
-                <Users className="w-12 h-12 text-slate-200" />
-                <p className="font-medium">No traders or clients found matching your search.</p>
-              </div>
-            )
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3 py-12">
+                  <Users className="w-12 h-12 text-slate-200" />
+                  <p className="font-medium">
+                    {clientFilterScope === 'period' && !selectedPeriod.isAllTime
+                      ? `No clients recorded for ${selectedPeriod.label}.`
+                      : 'No traders or clients found matching your search.'}
+                  </p>
+                  {clientFilterScope === 'period' && !selectedPeriod.isAllTime && myClients.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setClientFilterScope('all')}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200 cursor-pointer"
+                    >
+                      View All Lifetime Clients ({myClients.length})
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {(activeTab === 'payments' || (activeTab as any) === 'primary-payments' || (activeTab as any) === 'shared-payments') && (
@@ -878,6 +1070,33 @@ export const EmployeeDashboard: React.FC = () => {
               {/* Payment Sub-Filter Pills & Interactive Sort Control */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-1.5 bg-slate-50/90 rounded-2xl border border-slate-200/80 shadow-xs">
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full">
+                  {!selectedPeriod.isAllTime && (
+                    <div className="flex items-center gap-1 bg-white border border-slate-200/80 rounded-xl p-0.5 mr-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentFilterScope('period')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          paymentFilterScope === 'period'
+                            ? 'bg-blue-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        {selectedPeriod.shortLabel} ({periodPayments.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentFilterScope('all')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          paymentFilterScope === 'all'
+                            ? 'bg-blue-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        All History ({myPayments.length})
+                      </button>
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setPaymentSubFilter('all')}
@@ -892,7 +1111,7 @@ export const EmployeeDashboard: React.FC = () => {
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
                       paymentSubFilter === 'all' ? 'bg-blue-100 text-blue-700' : 'bg-slate-200/80 text-slate-600'
                     }`}>
-                      {myPayments.length}
+                      {paymentFilterScope === 'period' && !selectedPeriod.isAllTime ? periodPayments.length : myPayments.length}
                     </span>
                   </button>
 
@@ -910,7 +1129,7 @@ export const EmployeeDashboard: React.FC = () => {
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
                       paymentSubFilter === 'direct' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200/80 text-slate-600'
                     }`}>
-                      {primaryPayments.length}
+                      {paymentFilterScope === 'period' && !selectedPeriod.isAllTime ? periodPrimaryPayments.length : primaryPayments.length}
                     </span>
                   </button>
 
@@ -928,7 +1147,7 @@ export const EmployeeDashboard: React.FC = () => {
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
                       paymentSubFilter === 'shared' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200/80 text-slate-600'
                     }`}>
-                      {sharedPayments.length}
+                      {paymentFilterScope === 'period' && !selectedPeriod.isAllTime ? periodSharedPayments.length : sharedPayments.length}
                     </span>
                   </button>
 
@@ -948,7 +1167,7 @@ export const EmployeeDashboard: React.FC = () => {
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
                       paymentSubFilter === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200/80 text-slate-600'
                     }`}>
-                      {approvedPayments.length}
+                      {paymentFilterScope === 'period' && !selectedPeriod.isAllTime ? periodApprovedPayments.length : allTimeApprovedPayments.length}
                     </span>
                   </button>
 
@@ -966,7 +1185,7 @@ export const EmployeeDashboard: React.FC = () => {
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
                       paymentSubFilter === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200/80 text-slate-600'
                     }`}>
-                      {pendingPayments.length}
+                      {paymentFilterScope === 'period' && !selectedPeriod.isAllTime ? periodPendingPayments.length : allTimePendingPayments.length}
                     </span>
                   </button>
                 </div>
@@ -1167,7 +1386,20 @@ export const EmployeeDashboard: React.FC = () => {
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-3 py-12">
                   <Wallet className="w-12 h-12 text-slate-200" />
-                  <p className="font-medium">No payments matching this filter.</p>
+                  <p className="font-medium">
+                    {paymentFilterScope === 'period' && !selectedPeriod.isAllTime
+                      ? `No payments recorded for ${selectedPeriod.label}.`
+                      : 'No payments matching this filter.'}
+                  </p>
+                  {paymentFilterScope === 'period' && !selectedPeriod.isAllTime && myPayments.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentFilterScope('all')}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200 cursor-pointer"
+                    >
+                      View All Lifetime Payments ({myPayments.length})
+                    </button>
+                  )}
                 </div>
               )}
             </div>
