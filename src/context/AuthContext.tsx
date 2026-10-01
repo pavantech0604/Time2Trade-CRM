@@ -113,6 +113,7 @@ interface AuthContextType {
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (userId?: string) => void;
   deleteNotification: (id: string) => void;
+  clearAllNotifications: (userId?: string) => void;
   updateUserAvatar: (url: string) => Promise<void>;
   updateUserProfile: (
     userId: string,
