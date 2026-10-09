@@ -40,6 +40,8 @@ export type SubscriptionDuration = '3 Months' | '6 Months' | 'Yearly';
 
 export type TradingExperience = 'beginner' | 'intermediate' | 'advanced';
 
+export type BloodGroupType = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | 'Unknown';
+
 export interface User {
   id: string;
   name: string;
@@ -54,6 +56,9 @@ export interface User {
   employee_code?: string;
   designation?: string;
   department?: string;
+  manager_id?: string;
+  manager_name?: string;
+  joining_date?: string;
   is_active?: boolean;
   approval_status?: ApprovalStatus;
   approved_by?: string;
@@ -65,6 +70,44 @@ export interface User {
   temporary_password?: string;
   created_at: string;
   updated_at?: string;
+}
+
+export type ClientAssignmentStatus = 'active' | 'transferred' | 'reassigned' | 'completed' | 'closed';
+
+export interface ClientAssignment {
+  id: string;
+  client_id: string; // ID of active_trader or lead
+  client_type: 'trader' | 'lead';
+  client_name: string;
+  client_phone: string;
+  employee_id: string; // Employee currently or previously handling the client
+  employee_name: string;
+  assigned_by?: string;
+  assigned_by_name?: string;
+  start_date: string;
+  end_date?: string | null;
+  status: ClientAssignmentStatus;
+  transfer_reason?: string;
+  transferred_to_employee_id?: string;
+  transferred_to_employee_name?: string;
+  notes?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface ImportStagingRecord {
+  id: string;
+  raw_id: number;
+  employee_name: string;
+  personal_phone: string;
+  office_phone: string | null;
+  matched_user_id?: string | null;
+  matched_user_name?: string | null;
+  status: 'matched' | 'new' | 'duplicate' | 'conflict' | 'needs_review' | 'imported';
+  notes?: string;
+  verified_by?: string;
+  verified_at?: string;
+  created_at?: string;
 }
 
 export interface AttendanceLog {
@@ -137,6 +180,7 @@ export interface ActiveTrader {
   email?: string;
   language?: string;
   employee_id: string; // employee user_id
+  assigned_to?: string; // Supabase DB column alias
   employee_name?: string;
   status: TraderStatus;
   joined_at: string;

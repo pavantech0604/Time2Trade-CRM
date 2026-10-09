@@ -67,7 +67,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const mobileNavItems = getMobileNavItems();
 
   return (
-    <div className="min-h-screen h-[100dvh] w-full max-w-[100vw] bg-[#FAF8F5] text-slate-800 flex flex-col md:flex-row font-sans antialiased selection:bg-[#C5A028] selection:text-black relative overflow-hidden">
+    <div className="h-full w-full max-w-[100vw] bg-[#FAF8F5] text-slate-800 flex flex-col md:flex-row font-sans antialiased selection:bg-[#C5A028] selection:text-black relative overflow-hidden">
       <BackgroundEffects />
       {/* Sidebar for tablet & desktop */}
       <div className="hidden md:flex shrink-0">

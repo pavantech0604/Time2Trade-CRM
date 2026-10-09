@@ -20,6 +20,8 @@ import {
   FilterState,
   DateFilter,
   ChatMessage,
+  ClientAssignment,
+  ImportStagingRecord,
 } from '../types';
 import {
   INITIAL_USERS,
@@ -36,6 +38,7 @@ import {
 import { calculateTraderStreak } from '../lib/calculations';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { dispatchDeletePaymentFromGoogleSheets } from '../lib/googleSheets';
+import { buildStagingRecords, normalizePhone } from '../lib/employeeImportData';
 
 interface AuthResponse {
   success: boolean;
@@ -124,8 +127,27 @@ interface AuthContextType {
       office_number?: string;
       blood_group?: string;
       phone?: string;
+      name?: string;
+      designation?: string;
+      department?: string;
+      manager_id?: string;
+      manager_name?: string;
+      joining_date?: string;
+      employee_code?: string;
+      is_active?: boolean;
     }
   ) => Promise<{ success: boolean; message: string }>;
+
+  // Client Assignments & Transfers
+  clientAssignments: ClientAssignment[];
+  transferClient: (
+    clientId: string,
+    clientType: 'trader' | 'lead',
+    toEmployeeId: string,
+    reason: string
+  ) => Promise<{ success: boolean; message: string }>;
+  updateEmployeeManager: (employeeId: string, managerId: string) => Promise<{ success: boolean; message: string }>;
+  importApprovedEmployees: (approvedRawIds: number[]) => Promise<{ success: boolean; message: string; count: number }>;
 
   // Password Reset Management
   mustResetPassword: boolean;
@@ -164,8 +186,17 @@ const generateUUID = () => {
 
 const MOCK_USER_NAMES = ['Priya Verma', 'Ankit Kumar', 'Vikram Malhotra', 'Rahul Saxena', 'Rajesh Sharma'];
 
+const DELETED_DUPLICATE_IDS = [
+  '02abbc1d-7af8-45b1-a6dc-46c928b9f194',
+  'a5f41104-bc78-49ba-946d-007075ead6a9',
+  '7f90e43c-4148-4b8b-ae34-7547b158a5a6',
+  '60efb575-c991-4a4a-b82c-f96e599b880f',
+  '89d8ec24-13c5-4169-be6e-b2648d3e29bf',
+];
+
 const isMockId = (id?: string | null) => {
   if (!id) return false;
+  if (DELETED_DUPLICATE_IDS.includes(id)) return true;
   return (
     id === '10000000-0000-0000-0000-000000000002' ||
     id === '10000000-0000-0000-0000-000000000003' ||
@@ -180,6 +211,8 @@ const isMockId = (id?: string | null) => {
 
 const isMockUser = (u: any) => {
   if (!u) return false;
+  if (DELETED_DUPLICATE_IDS.includes(u.id)) return true;
+  if (u.approval_status === 'rejected') return true;
   if (u.email === 'karthik@time2trade.com') return false;
   if (u.email?.includes('capitalgrow.com')) return true;
   if (isMockId(u.id)) return true;
@@ -201,14 +234,7 @@ export const isBhavaniUser = (val?: any): boolean => {
   if (!val) return false;
   const str = typeof val === 'string' ? val : `${val.id || ''} ${val.name || val.full_name || ''} ${val.email || ''}`;
   const s = str.toLowerCase().trim();
-  return (
-    s.includes('bhavani') ||
-    s.includes('bavani') ||
-    s.includes('02abbc1d') ||
-    s.includes('99b02b72') ||
-    s.includes('7f90e43c') ||
-    s.includes('a5f41104')
-  );
+  return s.includes('99b02b72') || (s.includes('bhavani') && !s.includes('gmail'));
 };
 
 export const normalizeUserRole = (u: User): User => {
@@ -219,6 +245,14 @@ export const normalizeUserRole = (u: User): User => {
     office_phone: u.office_phone || u.office_number || '',
     office_number: u.office_number || u.office_phone || '',
     blood_group: u.blood_group || '',
+    manager_id: u.manager_id || (u.role === 'employee' ? '10000000-0000-0000-0000-000000000001' : undefined),
+    manager_name: u.manager_name || (u.role === 'employee' ? 'Karthik Muni' : (u.manager_id ? 'Assigned Manager' : undefined)),
+    joining_date: u.joining_date || (u.created_at ? u.created_at.split('T')[0] : '2026-01-01'),
+    employee_code: u.employee_code
+      ? (u.employee_code.startsWith('T2T-') ? u.employee_code : `T2T-${u.employee_code.replace(/^T2T-?/i, '').toUpperCase()}`)
+      : (u.id ? `T2T-${u.id.substring(0, 4).toUpperCase()}` : undefined),
+    designation: u.designation || (u.role === 'manager' ? 'Branch Manager' : (u.role === 'admin' ? 'System Administrator' : 'Relationship Manager')),
+    department: u.department || 'Client Operations & Advisory',
   };
   if (isKarthikUser(normalized)) {
     return {
@@ -262,6 +296,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [leads, setLeads] = useState<Lead[]>([]);
   const [traders, setTraders] = useState<ActiveTrader[]>(INITIAL_TRADERS);
   const [tradingDays, setTradingDays] = useState<TradingDay[]>([]);
+  const [clientAssignments, setClientAssignments] = useState<ClientAssignment[]>(() => {
+    try {
+      const stored = localStorage.getItem('time2trade_client_assignments');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [payments, setPayments] = useState<Payment[]>(() => {
     try {
       const stored = localStorage.getItem('time2trade_payments_cache');
@@ -604,19 +648,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let userList = users;
       if (uRes.data && Array.isArray(uRes.data)) {
-        userList = (uRes.data as User[])
-          .filter((u) => !isMockUser(u))
+        const rawFiltered = (uRes.data as User[])
+          .filter((u) => !isMockUser(u) && !DELETED_DUPLICATE_IDS.includes(u.id))
           .map((u) => {
             let normalized = normalizeUserRole(u);
             if (isBhavaniUser(normalized)) {
               normalized = {
                 ...normalized,
                 name: 'Bhavani N',
-                email: normalized.email?.includes('bhavani') ? normalized.email : 'bhavani@time2trade.com',
+                email: 'bhavani@time2trade.com',
+                phone: '9591268897',
+                personal_phone: '9591268897',
               };
             }
             return normalized;
           });
+
+        // Deterministic deduplication prioritizing official @time2trade.com and active accounts
+        const sorted = [...rawFiltered].sort((a, b) => {
+          if (a.id === '99b02b72-2886-4257-acc5-6ce655f8e4dc') return -1;
+          if (b.id === '99b02b72-2886-4257-acc5-6ce655f8e4dc') return 1;
+          const aTime = a.email?.includes('@time2trade.com') ? 1 : 0;
+          const bTime = b.email?.includes('@time2trade.com') ? 1 : 0;
+          if (aTime !== bTime) return bTime - aTime;
+          const aAct = a.is_active !== false && a.approval_status !== 'rejected' ? 1 : 0;
+          const bAct = b.is_active !== false && b.approval_status !== 'rejected' ? 1 : 0;
+          return bAct - aAct;
+        });
+
+        const seenPhones = new Set<string>();
+        const seenEmails = new Set<string>();
+        const seenNames = new Set<string>();
+        const seenIds = new Set<string>();
+        const deduped: User[] = [];
+
+        for (const u of sorted) {
+          if (seenIds.has(u.id)) continue;
+
+          const phoneDigits = (u.phone || u.personal_phone || '').replace(/\D/g, '');
+          const emailLower = (u.email || '').toLowerCase().trim();
+          const cleanName = (u.name || '').toLowerCase().replace(/[^a-z]/g, '');
+
+          if (phoneDigits && phoneDigits.length >= 10 && seenPhones.has(phoneDigits)) {
+            continue;
+          }
+          if (emailLower && seenEmails.has(emailLower)) {
+            continue;
+          }
+          if (cleanName && (cleanName.includes('bhavani') || cleanName.includes('lokesh') || cleanName.includes('madhan'))) {
+            const alreadyHas = deduped.some((existing) => {
+              const exName = (existing.name || '').toLowerCase().replace(/[^a-z]/g, '');
+              if (cleanName.includes('bhavani') && exName.includes('bhavani')) return true;
+              if (cleanName.includes('lokesh') && exName.includes('lokesh')) return true;
+              if (cleanName.includes('madhan') && exName.includes('madhan')) return true;
+              return false;
+            });
+            if (alreadyHas) continue;
+          }
+
+          if (phoneDigits && phoneDigits.length >= 10) seenPhones.add(phoneDigits);
+          if (emailLower) seenEmails.add(emailLower);
+          seenIds.add(u.id);
+          deduped.push(u);
+        }
+
+        userList = deduped;
         setUsers(userList);
 
         // Auto-heal / sync Karthik's role in Supabase database public.users table
@@ -647,7 +743,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (lRes.data && Array.isArray(lRes.data)) {
-        setLeads((lRes.data as Lead[]).filter((l) => !isMockId(l.id) && !isMockId(l.assigned_to)));
+        setLeads(
+          (lRes.data as Lead[])
+            .filter((l) => !isMockId(l.id) && !isMockId(l.assigned_to))
+            .map((l) => {
+              let assigned = l.assigned_to;
+              if (assigned === '02abbc1d-7af8-45b1-a6dc-46c928b9f194') {
+                assigned = '99b02b72-2886-4257-acc5-6ce655f8e4dc';
+              }
+              return {
+                ...l,
+                assigned_to: assigned,
+              };
+            })
+        );
       }
 
       const safeStr = (v: any): string => (v !== null && v !== undefined ? String(v).trim() : '');
@@ -664,17 +773,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (phone === '7702749867' || phone === '7989628479') return false;
             return true;
           })
-          .map((t: any) => ({
-            ...t,
-            name: safeStr(t.name) || 'Active Trader',
-            phone: safeStr(t.phone),
-            employee_id: t.assigned_to || t.employee_id,
-          })) as ActiveTrader[];
+          .map((t: any) => {
+            let empId = t.assigned_to || t.employee_id;
+            if (empId === '02abbc1d-7af8-45b1-a6dc-46c928b9f194') {
+              empId = '99b02b72-2886-4257-acc5-6ce655f8e4dc';
+            }
+            return {
+              ...t,
+              name: safeStr(t.name) || 'Active Trader',
+              phone: safeStr(t.phone),
+              assigned_to: empId,
+              employee_id: empId,
+            };
+          }) as ActiveTrader[];
 
         const traderMap = new Map<string, ActiveTrader>();
         tradersList.forEach((t) => traderMap.set(t.id, t));
         remoteTraders.forEach((t) => traderMap.set(t.id, { ...traderMap.get(t.id), ...t }));
         tradersList = Array.from(traderMap.values());
+      }
+
+      // Synchronize client assignments (both current active and historical transfers)
+      try {
+        const asgRes = await supabase.from('client_assignments').select('*').order('created_at', { ascending: false });
+        if (asgRes.data && Array.isArray(asgRes.data) && asgRes.data.length > 0) {
+          const remoteAsgs = asgRes.data as ClientAssignment[];
+          setClientAssignments(remoteAsgs);
+          try {
+            localStorage.setItem('time2trade_client_assignments', JSON.stringify(remoteAsgs));
+          } catch {}
+        } else {
+          // Fallback / auto-seed from tradersList & local history
+          setClientAssignments((prev) => {
+            const map = new Map<string, ClientAssignment>();
+            prev.forEach((a) => map.set(a.id, a));
+            tradersList.forEach((t) => {
+              const empId = t.employee_id || t.assigned_to;
+              const emp = userList.find((u) => u.id === empId);
+              const exists = Array.from(map.values()).some((a) => a.client_id === t.id && a.status === 'active');
+              if (!exists && empId) {
+                const asgId = `asg-${t.id}`;
+                map.set(asgId, {
+                  id: asgId,
+                  client_id: t.id,
+                  client_type: 'trader',
+                  client_name: t.name,
+                  client_phone: t.phone,
+                  employee_id: empId,
+                  employee_name: emp?.name || 'Assigned Staff',
+                  start_date: t.joined_at ? `${t.joined_at}T00:00:00.000Z` : new Date().toISOString(),
+                  end_date: null,
+                  status: 'active',
+                  created_at: t.joined_at ? `${t.joined_at}T00:00:00.000Z` : new Date().toISOString(),
+                });
+              }
+            });
+            const merged = Array.from(map.values());
+            try {
+              localStorage.setItem('time2trade_client_assignments', JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
+        }
+      } catch {
+        // Table may not exist yet; gracefully handled via local cache
       }
 
       if (pRes.data && Array.isArray(pRes.data)) {
@@ -2224,6 +2386,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       office_number?: string;
       blood_group?: string;
       phone?: string;
+      name?: string;
+      designation?: string;
+      department?: string;
+      manager_id?: string;
+      manager_name?: string;
+      joining_date?: string;
+      employee_code?: string;
+      is_active?: boolean;
     }
   ): Promise<{ success: boolean; message: string }> => {
     if (!currentUser) return { success: false, message: 'Not authenticated' };
@@ -2232,17 +2402,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!targetUser) return { success: false, message: 'User not found' };
 
     const isSelf = currentUser.id === userId;
-    const isAdminOrManager = currentUser.role === 'admin' || currentUser.role === 'manager';
+    const isAdmin = currentUser.role === 'admin';
+    const isManager = currentUser.role === 'manager';
+    const isEmployee = currentUser.role === 'employee';
 
-    // Office phone can ONLY be updated by Admin or Manager!
-    const isAttemptingOfficeUpdate = updates.office_phone !== undefined || updates.office_number !== undefined;
-    if (isAttemptingOfficeUpdate && !isAdminOrManager) {
-      return { success: false, message: 'Permission denied: Only Admin and Manager can update office phone number.' };
+    // 1. Employee permission enforcement
+    if (isEmployee) {
+      if (!isSelf) {
+        return { success: false, message: 'Permission denied: Employees cannot view or edit another staff profile.' };
+      }
+      if (updates.office_phone !== undefined || updates.office_number !== undefined) {
+        return { success: false, message: 'Permission denied: Office phone number is assigned by management and cannot be modified by employees.' };
+      }
+      if (updates.manager_id !== undefined || updates.employee_code !== undefined || updates.designation !== undefined || updates.department !== undefined || updates.name !== undefined) {
+        return { success: false, message: 'Permission denied: Management fields are read-only for employees.' };
+      }
     }
 
-    // Employees can only update their own profile
-    if (!isSelf && !isAdminOrManager) {
-      return { success: false, message: 'Permission denied: Cannot edit another user profile.' };
+    // 2. Manager permission enforcement
+    if (isManager && !isAdmin) {
+      // If editing another user
+      if (!isSelf) {
+        // Must be an employee in reporting hierarchy
+        const isTeamMember = targetUser.role === 'employee';
+        if (!isTeamMember) {
+          return { success: false, message: 'Permission denied: Managers can manage their team employees only.' };
+        }
+        // Managers can only update office phone, not personal phone or blood group of team members
+        if (updates.personal_phone !== undefined || updates.personal_number !== undefined || updates.blood_group !== undefined) {
+          return { success: false, message: 'Permission denied: Managers can update office phone numbers only. Personal phone and blood group are employee self-service.' };
+        }
+      }
     }
 
     const personalPhoneVal = updates.personal_phone !== undefined 
@@ -2257,19 +2447,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updated_at: new Date().toISOString(),
     };
 
-    if (personalPhoneVal !== undefined) {
-      patch.personal_phone = personalPhoneVal;
-      patch.personal_number = personalPhoneVal;
-      patch.phone = personalPhoneVal; // Keep primary phone in sync
+    if (personalPhoneVal !== undefined && (isSelf || isAdmin)) {
+      patch.personal_phone = personalPhoneVal.trim();
+      patch.personal_number = personalPhoneVal.trim();
+      patch.phone = personalPhoneVal.trim();
     }
 
-    if (officePhoneVal !== undefined && isAdminOrManager) {
-      patch.office_phone = officePhoneVal;
-      patch.office_number = officePhoneVal;
+    if (officePhoneVal !== undefined && (isAdmin || isManager)) {
+      patch.office_phone = officePhoneVal.trim();
+      patch.office_number = officePhoneVal.trim();
     }
 
-    if (updates.blood_group !== undefined) {
-      patch.blood_group = updates.blood_group;
+    if (updates.blood_group !== undefined && (isSelf || isAdmin)) {
+      patch.blood_group = updates.blood_group.trim();
+    }
+
+    if (isAdmin) {
+      if (updates.name !== undefined) patch.name = updates.name.trim();
+      if (updates.designation !== undefined) patch.designation = updates.designation.trim();
+      if (updates.department !== undefined) patch.department = updates.department.trim();
+      if (updates.employee_code !== undefined) patch.employee_code = updates.employee_code.trim();
+      if (updates.joining_date !== undefined) patch.joining_date = updates.joining_date.trim();
+      if (updates.is_active !== undefined) patch.is_active = updates.is_active;
+      if (updates.manager_id !== undefined) {
+        patch.manager_id = updates.manager_id;
+        const mgrUser = users.find((u) => u.id === updates.manager_id);
+        patch.manager_name = mgrUser?.name || 'Assigned Manager';
+      }
     }
 
     // Optimistic UI Update
@@ -2284,37 +2488,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const parsed = JSON.parse(storedUser);
           localStorage.setItem('time2trade_auth_user', JSON.stringify({ ...parsed, ...patch }));
-        } catch {
-          // ignore
-        }
+        } catch {}
       }
     }
 
-    // Supabase update safely with error handling & fallback so no error is thrown
+    // Sync to Supabase users table with safe fallback
     if (supabase && !useMocks) {
       try {
         const dbPayload: Record<string, any> = {
           updated_at: patch.updated_at,
         };
-        if (personalPhoneVal !== undefined) {
-          dbPayload.phone = personalPhoneVal;
-          dbPayload.personal_phone = personalPhoneVal;
-        }
-        if (officePhoneVal !== undefined) {
-          dbPayload.office_phone = officePhoneVal;
-        }
-        if (updates.blood_group !== undefined) {
-          dbPayload.blood_group = updates.blood_group;
-        }
+        if (patch.phone !== undefined) dbPayload.phone = patch.phone;
+        if (patch.name !== undefined) dbPayload.name = patch.name;
+        if (patch.designation !== undefined) dbPayload.designation = patch.designation;
+        if (patch.department !== undefined) dbPayload.department = patch.department;
+        if (patch.employee_code !== undefined) dbPayload.employee_code = patch.employee_code;
+        if (patch.is_active !== undefined) dbPayload.is_active = patch.is_active;
+
+        // Extended columns
+        if (patch.personal_phone !== undefined) dbPayload.personal_phone = patch.personal_phone;
+        if (patch.office_phone !== undefined) dbPayload.office_phone = patch.office_phone;
+        if (patch.blood_group !== undefined) dbPayload.blood_group = patch.blood_group;
+        if (patch.manager_id !== undefined) dbPayload.manager_id = patch.manager_id;
+        if (patch.joining_date !== undefined) dbPayload.joining_date = patch.joining_date;
 
         const { error } = await supabase.from('users').update(dbPayload).eq('id', userId);
         if (error) {
-          // If specific columns (personal_phone, office_phone, blood_group) don't exist in Supabase yet,
-          // fallback to update 'phone' if personal_phone was provided
           console.warn('Supabase profile update warning:', error.message);
-          if (personalPhoneVal !== undefined) {
-            await supabase.from('users').update({ phone: personalPhoneVal }).eq('id', userId);
-          }
+          // Fallback to basic columns if extended schema columns not yet present in live DB
+          const basicPayload: Record<string, any> = { updated_at: patch.updated_at };
+          if (patch.phone !== undefined) basicPayload.phone = patch.phone;
+          if (patch.name !== undefined) basicPayload.name = patch.name;
+          if (patch.designation !== undefined) basicPayload.designation = patch.designation;
+          if (patch.department !== undefined) basicPayload.department = patch.department;
+          if (patch.employee_code !== undefined) basicPayload.employee_code = patch.employee_code;
+          if (patch.is_active !== undefined) basicPayload.is_active = patch.is_active;
+          await supabase.from('users').update(basicPayload).eq('id', userId);
         }
       } catch (err) {
         console.warn('Error syncing profile update to database:', err);
@@ -2328,16 +2537,225 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: `aud-${Date.now()}`,
         user_id: currentUser.id,
         user_name: currentUser.name,
-        action: 'UPDATE_USER_PROFILE',
+        action: 'UPDATE_EMPLOYEE_PROFILE',
         table_name: 'users',
         record_id: userId,
+        old_values: {
+          previous_office_phone: targetUser.office_phone,
+          previous_personal_phone: targetUser.personal_phone,
+        },
         new_values: patch,
         created_at: nowIso,
       },
       ...prev,
     ]);
 
-    return { success: true, message: 'Profile details updated successfully.' };
+    return { success: true, message: 'Employee profile details updated successfully.' };
+  };
+
+  const updateEmployeeManager = async (
+    employeeId: string,
+    managerId: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { success: false, message: 'Permission denied: Only Admin can assign or change employee managers.' };
+    }
+    const mgrUser = users.find((u) => u.id === managerId);
+    return await updateUserProfile(employeeId, {
+      manager_id: managerId,
+      manager_name: mgrUser?.name || 'Assigned Manager',
+    });
+  };
+
+  const transferClient = async (
+    clientId: string,
+    clientType: 'trader' | 'lead',
+    toEmployeeId: string,
+    reason: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!currentUser) return { success: false, message: 'Not authenticated' };
+
+    if (currentUser.role === 'employee') {
+      return { success: false, message: 'Permission denied: Only Admin and Managers can initiate client transfers.' };
+    }
+
+    const targetEmp = users.find((u) => u.id === toEmployeeId);
+    if (!targetEmp) return { success: false, message: 'Destination employee not found.' };
+
+    const clientObj = clientType === 'trader' 
+      ? traders.find((t) => t.id === clientId) 
+      : leads.find((l) => l.id === clientId);
+
+    if (!clientObj) return { success: false, message: 'Client not found.' };
+
+    const currentEmployeeId = (clientObj as any).assigned_to || (clientObj as any).employee_id;
+    if (currentEmployeeId === toEmployeeId) {
+      return { success: false, message: 'Client is already assigned to this employee.' };
+    }
+
+    const prevEmp = users.find((u) => u.id === currentEmployeeId);
+    const nowIso = new Date().toISOString();
+    const newAssignmentId = generateUUID();
+
+    // 1. Update clientAssignments state: mark active as transferred, add new active assignment
+    setClientAssignments((prev) => {
+      const updated = prev.map((a) => {
+        if (a.client_id === clientId && a.status === 'active') {
+          return {
+            ...a,
+            status: 'transferred' as const,
+            end_date: nowIso,
+            transfer_reason: reason.trim() || 'Client reassignment / transfer',
+            transferred_to_employee_id: toEmployeeId,
+            transferred_to_employee_name: targetEmp.name,
+            updated_at: nowIso,
+          };
+        }
+        return a;
+      });
+
+      const newAssignment: ClientAssignment = {
+        id: newAssignmentId,
+        client_id: clientId,
+        client_type: clientType,
+        client_name: clientObj.name,
+        client_phone: clientObj.phone,
+        employee_id: toEmployeeId,
+        employee_name: targetEmp.name,
+        assigned_by: currentUser.id,
+        assigned_by_name: currentUser.name,
+        start_date: nowIso,
+        end_date: null,
+        status: 'active',
+        transfer_reason: reason.trim() || 'Client transfer',
+        created_at: nowIso,
+        updated_at: nowIso,
+      };
+
+      const nextList = [newAssignment, ...updated];
+      try {
+        localStorage.setItem('time2trade_client_assignments', JSON.stringify(nextList));
+      } catch {}
+      return nextList;
+    });
+
+    // 2. Atomically update client ownership on trader or lead
+    if (clientType === 'trader') {
+      setTraders((prev) =>
+        prev.map((t) => (t.id === clientId ? { ...t, assigned_to: toEmployeeId, employee_id: toEmployeeId } : t))
+      );
+      if (supabase && !useMocks) {
+        try {
+          await supabase.from('active_traders').update({ assigned_to: toEmployeeId }).eq('id', clientId);
+        } catch (err) {
+          console.warn('Could not update active_traders assigned_to:', err);
+        }
+      }
+    } else {
+      setLeads((prev) =>
+        prev.map((l) => (l.id === clientId ? { ...l, assigned_to: toEmployeeId, assigned_to_name: targetEmp.name } : l))
+      );
+      if (supabase && !useMocks) {
+        try {
+          await supabase.from('leads').update({ assigned_to: toEmployeeId }).eq('id', clientId);
+        } catch (err) {
+          console.warn('Could not update leads assigned_to:', err);
+        }
+      }
+    }
+
+    // 3. Persist to Supabase client_assignments if table exists
+    if (supabase && !useMocks) {
+      try {
+        await supabase.from('client_assignments').update({
+          status: 'transferred',
+          end_date: nowIso,
+          transfer_reason: reason.trim(),
+          transferred_to_employee_id: toEmployeeId,
+          transferred_to_employee_name: targetEmp.name,
+          updated_at: nowIso,
+        }).eq('client_id', clientId).eq('status', 'active');
+
+        await supabase.from('client_assignments').insert({
+          id: newAssignmentId,
+          client_id: clientId,
+          client_type: clientType,
+          client_name: clientObj.name,
+          client_phone: clientObj.phone,
+          employee_id: toEmployeeId,
+          employee_name: targetEmp.name,
+          assigned_by: currentUser.id,
+          assigned_by_name: currentUser.name,
+          start_date: nowIso,
+          status: 'active',
+          transfer_reason: reason.trim(),
+        });
+      } catch (err) {
+        console.warn('Supabase client_assignments sync warning:', err);
+      }
+    }
+
+    // 4. Add audit log
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        user_id: currentUser.id,
+        user_name: currentUser.name,
+        action: 'CLIENT_TRANSFER',
+        table_name: 'client_assignments',
+        record_id: clientId,
+        old_values: { previous_employee: prevEmp?.name || currentEmployeeId },
+        new_values: { new_employee: targetEmp.name, reason },
+        created_at: nowIso,
+      },
+      ...prev,
+    ]);
+
+    return {
+      success: true,
+      message: `Successfully transferred ${clientObj.name} to ${targetEmp.name}. Historical handling preserved.`,
+    };
+  };
+
+  const importApprovedEmployees = async (
+    approvedRawIds: number[]
+  ): Promise<{ success: boolean; message: string; count: number }> => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { success: false, message: 'Permission denied: Only Admin can approve employee imports.', count: 0 };
+    }
+
+    const stagingItems = buildStagingRecords(users);
+    let importedCount = 0;
+
+    for (const rawId of approvedRawIds) {
+      const item = stagingItems.find((s) => s.raw_id === rawId);
+      if (!item || !item.matched_user_id) continue;
+
+      const userToUpdate = users.find((u) => u.id === item.matched_user_id);
+      if (userToUpdate) {
+        const patch: Partial<User> = {
+          updated_at: new Date().toISOString(),
+        };
+        if (item.office_phone) {
+          patch.office_phone = normalizePhone(item.office_phone);
+          patch.office_number = normalizePhone(item.office_phone);
+        }
+        if (item.personal_phone && (!userToUpdate.phone || !userToUpdate.personal_phone)) {
+          patch.personal_phone = normalizePhone(item.personal_phone);
+          patch.personal_number = normalizePhone(item.personal_phone);
+          patch.phone = normalizePhone(item.personal_phone);
+        }
+
+        await updateUserProfile(userToUpdate.id, patch);
+        importedCount++;
+      }
+    }
+
+    return {
+      success: true,
+      message: `Successfully approved and imported ${importedCount} employee record(s).`,
+      count: importedCount,
+    };
   };
 
   const addLead = async (leadInput: Omit<Lead, 'id' | 'created_at'>) => {
@@ -3517,6 +3935,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearAllNotifications,
         updateUserAvatar,
         updateUserProfile,
+        clientAssignments,
+        transferClient,
+        updateEmployeeManager,
+        importApprovedEmployees,
         mustResetPassword,
         setMustResetPassword,
         updatePassword,

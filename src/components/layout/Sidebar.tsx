@@ -14,6 +14,8 @@ import {
   MessageSquare,
   Banknote,
   CalendarDays,
+  Users,
+  UserCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -41,6 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, class
     if (role === 'employee') {
       return [
         { id: 'employee-dashboard', label: 'My Dashboard', icon: LayoutDashboard },
+        { id: 'my-profile', label: 'My Profile', icon: UserCheck },
         { id: 'monthly-sales', label: 'Monthly Sales', icon: CalendarDays },
         { id: 'team-chat', label: 'Team Chat', icon: MessageSquare },
         { id: 'public-payment-form', label: 'Submit Payment Proof', icon: CreditCard },
@@ -50,6 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, class
     if (role === 'manager') {
       return [
         { id: 'manager-dashboard', label: 'Manager Overview', icon: LayoutDashboard },
+        { id: 'employee-details', label: 'Employee Details', icon: Users },
         { id: 'monthly-sales', label: 'Monthly Sales', icon: CalendarDays },
         { id: 'employee-sales', label: 'Employee Sales', icon: FileSpreadsheet },
         { id: 'employee-scorecards', label: 'Employee Scorecards', icon: Target },
@@ -62,6 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, class
     // Admin default
     return [
       { id: 'dashboard', label: 'Admin Overview', icon: LayoutDashboard },
+      { id: 'employee-details', label: 'Employee Details', icon: Users },
       { id: 'monthly-sales', label: 'Monthly Sales', icon: CalendarDays },
       { id: 'employee-sales', label: 'Employee Sales', icon: FileSpreadsheet },
       { id: 'team-chat', label: 'Team Chat & Sales', icon: MessageSquare },
@@ -83,13 +88,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, class
     <aside
       role="navigation"
       aria-label="Main sidebar navigation"
-      className={`w-64 bg-white border-r border-slate-200/80 flex flex-col h-screen sticky top-0 font-sans shadow-sm ${className}`}
+      className={`w-64 bg-white border-r border-slate-200/80 flex flex-col h-full shrink-0 font-sans shadow-sm ${className}`}
     >
       {/* Scrollable Navigation Area */}
       <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
         {/* Brand Header */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-center shrink-0">
-          <img src="/logo-tight.png" alt="Time2Trade Logo" className="h-12 w-auto object-contain shrink-0 drop-shadow-sm" />
+        <div className="h-16 border-b border-slate-100 px-4 flex items-center justify-center shrink-0">
+          <img src="/logo-tight.png" alt="Time2Trade Logo" className="h-10 w-auto object-contain shrink-0 drop-shadow-sm" />
         </div>
 
         {/* Navigation Section */}

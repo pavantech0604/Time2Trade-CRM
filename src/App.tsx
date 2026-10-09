@@ -21,6 +21,8 @@ import { MonthlySalesPage } from './components/monthlySales/MonthlySalesPage';
 import { SignupPage } from './components/auth/SignupPage';
 import { PendingApprovalPage } from './components/auth/PendingApprovalPage';
 import { PasswordResetModal } from './components/auth/PasswordResetModal';
+import { EmployeeDetailsView } from './components/employeeDetails/EmployeeDetailsView';
+import { EmployeeSelfProfile } from './components/employeeDetails/EmployeeSelfProfile';
 import { Loader2, Building2 } from 'lucide-react';
 
 const getRoleHomeTab = (role?: string) => {
@@ -133,6 +135,14 @@ const MainApp: React.FC = () => {
         return <EmployeeSalesDashboard />;
       case 'monthly-sales':
         return <MonthlySalesPage />;
+
+      // Employee Details Module (Admin & Manager) & Self Profile (Employee)
+      case 'employee-details':
+        if (currentUser.role === 'employee') return <EmployeeSelfProfile />;
+        return <EmployeeDetailsView role={currentUser.role === 'manager' ? 'manager' : 'admin'} />;
+
+      case 'my-profile':
+        return <EmployeeSelfProfile />;
 
       // Manager Views
       case 'manager-dashboard':

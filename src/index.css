@@ -10,9 +10,18 @@
   }
 
   html, body {
-    overflow-x: hidden;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
     width: 100%;
     max-width: 100vw;
+  }
+
+  #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
   }
 
   *, ::before, *::after {

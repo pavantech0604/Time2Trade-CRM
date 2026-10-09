@@ -552,17 +552,21 @@ export const EmployeeDashboard: React.FC = () => {
       )}
 
       {/* Header section with Period Selector */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sm:gap-6 bg-white p-4 sm:p-6 rounded-3xl border border-slate-200/60 shadow-sm relative">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-sm relative z-30">
         <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+          <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-blue-500/10 via-indigo-500/5 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
         </div>
-        <div className="space-y-1 relative z-10">
-          <div className="flex items-center gap-2">
+        <div className="space-y-1.5 relative z-10">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-slate-800">
               Welcome back, {currentUser.name.split(' ')[0]} 👋
             </h1>
-            <span className="hidden sm:inline-flex px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-mono font-bold">
-              Desk Workspace
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-blue-50 via-indigo-50/70 to-blue-50 border border-blue-200/80 text-blue-700 text-xs font-semibold whitespace-nowrap shadow-xs">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
+              </span>
+              <span>Desk Workspace</span>
             </span>
           </div>
           <p className="text-xs sm:text-sm font-medium text-slate-500">
@@ -570,7 +574,7 @@ export const EmployeeDashboard: React.FC = () => {
           </p>
         </div>
         
-        <div className="flex flex-wrap items-center gap-2.5 relative z-10 self-start md:self-auto">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 relative z-10 self-stretch sm:self-auto shrink-0">
           {/* Universal Reporting Period Selector */}
           <ReportingPeriodSelector
             periods={availablePeriods}
@@ -580,11 +584,17 @@ export const EmployeeDashboard: React.FC = () => {
           />
 
           <button 
+            type="button"
             onClick={() => setIsAddLeadModalOpen(true)}
-            className="flex items-center justify-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer whitespace-nowrap"
+            className="group relative inline-flex items-center justify-center gap-2.5 h-10 px-4.5 sm:px-5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 bg-[length:200%_auto] hover:bg-right text-white text-xs sm:text-sm font-bold rounded-xl shadow-md shadow-blue-500/25 hover:shadow-xl hover:shadow-indigo-500/35 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer whitespace-nowrap overflow-hidden"
           >
-            <Plus className="w-4 h-4" />
-            <span>Add Warm Lead</span>
+            {/* Ambient shimmer reflection */}
+            <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out pointer-events-none" />
+            
+            <div className="w-5 h-5 rounded-lg bg-white/20 flex items-center justify-center group-hover:scale-110 group-hover:rotate-90 transition-all duration-300 shadow-2xs">
+              <Plus className="w-3.5 h-3.5 text-white stroke-[3]" />
+            </div>
+            <span className="tracking-tight drop-shadow-xs">Add Warm Lead</span>
           </button>
         </div>
       </div>

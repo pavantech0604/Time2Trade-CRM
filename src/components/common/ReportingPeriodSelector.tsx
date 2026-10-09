@@ -125,24 +125,24 @@ export const ReportingPeriodSelector: React.FC<ReportingPeriodSelectorProps> = (
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         disabled={isLoading}
-        className={`group flex items-center gap-2 rounded-xl border transition-all duration-150 cursor-pointer active:scale-95 ${
-          isSmall ? 'h-8 px-2.5 text-xs' : 'h-9 sm:h-10 px-3 sm:px-3.5 text-xs sm:text-sm'
+        className={`group flex items-center gap-2.5 rounded-xl border transition-all duration-200 cursor-pointer active:scale-95 ${
+          isSmall ? 'h-8 px-2.5 text-xs' : 'h-10 px-3.5 text-xs sm:text-sm'
         } ${
           isOpen
-            ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/10 shadow-xs'
-            : 'bg-white hover:bg-slate-50 border-slate-200/90 hover:border-slate-300 shadow-2xs hover:shadow-xs'
+            ? 'bg-blue-50/90 border-blue-400 ring-2 ring-blue-500/15 shadow-sm'
+            : 'bg-white hover:bg-slate-50/90 border-slate-200/90 hover:border-slate-300 shadow-2xs hover:shadow-md hover:shadow-blue-500/5 hover:-translate-y-0.5'
         }`}
         aria-expanded={isOpen}
         aria-haspopup="dialog"
       >
         {/* Subtle Icon Box */}
         <div
-          className={`rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+          className={`rounded-lg flex items-center justify-center shrink-0 transition-all duration-200 ${
             isSmall ? 'w-5 h-5' : 'w-6 h-6'
           } ${
             isViewingAllTime
-              ? 'bg-purple-50 text-purple-600 group-hover:bg-purple-600 group-hover:text-white'
-              : 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white'
+              ? 'bg-purple-50 text-purple-600 group-hover:bg-purple-600 group-hover:text-white group-hover:shadow-xs group-hover:shadow-purple-500/20'
+              : 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white group-hover:shadow-xs group-hover:shadow-blue-500/20'
           }`}
         >
           {isViewingAllTime ? (
@@ -159,16 +159,19 @@ export const ReportingPeriodSelector: React.FC<ReportingPeriodSelectorProps> = (
 
         {/* Status Badge */}
         {isViewingAllTime ? (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 font-mono shrink-0">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 font-mono shrink-0">
             Cumulative
           </span>
         ) : isViewingCurrent ? (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono shrink-0">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+            </span>
             Live
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200 font-mono shrink-0">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200 font-mono shrink-0">
             <Clock className="w-2.5 h-2.5 text-amber-600" />
             Archive
           </span>
