@@ -28,3 +28,18 @@ if receipt viewing is added to the expense screen.
 
 Run `node scripts/check-access-control.mjs` and `npm run build` for local checks.
 These do not validate deployed database policies or replace multi-account checks.
+
+## Internal email-shaped login identifiers
+
+Addresses such as `pavan@time2trade.com` do not need a working mailbox for
+password login. In Supabase Authentication > Sign In / Providers, disable
+**Confirm email** and save to avoid mailbox verification for future signups.
+This is a hosted Auth setting; deploying frontend code cannot change it.
+
+For existing unconfirmed accounts, run `confirm_approved_staff_accounts.sql`.
+It confirms only active, approved `@time2trade.com` staff whose Auth IDs and
+emails match their CRM profiles, and reports Pavan's account status. It does
+not create accounts, change passwords, assign roles or approve employees.
+Accounts that do not match must be reviewed rather than automatically merged.
+Password recovery by email will not work for an identifier without a mailbox;
+an administrator must manage those passwords through Supabase Auth.
