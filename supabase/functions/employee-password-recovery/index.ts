@@ -54,13 +54,14 @@ Deno.serve(async (request: Request) => {
       }
       const random = crypto.getRandomValues(new Uint8Array(32));
       const ticket = [...random].map(byte => byte.toString(16).padStart(2, '0')).join('');
+      const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
       const { error: ticketError } = await admin.from('employee_recovery_tickets').insert({
         token_hash: await digest(ticket), user_id: profile.id,
-        expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+        expires_at: expiresAt,
       });
       if (ticketError) return reply({ success: false, message: 'Recovery could not be started. Contact an administrator.' });
       // No Auth session or employee records are returned to this caller.
-      return reply({ success: true, recoveryToken: ticket });
+      return reply({ success: true, recoveryToken: ticket, expiresAt });
     }
 
     if (body.action === 'finish') {

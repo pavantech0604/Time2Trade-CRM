@@ -51,6 +51,7 @@ interface AuthResponse {
   status?: 'approved' | 'pending' | 'rejected' | 'disabled' | 'error' | 'password_reset_required';
   message?: string;
   recoveryToken?: string;
+  recoveryExpiresAt?: string;
 }
 
 interface AuthContextType {
@@ -1581,7 +1582,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const recovery = await employeeRecovery({ action: 'start', email: normalizedEmail, password: passwordInput });
         if (recovery.success && recovery.recoveryToken) {
           setLoading(false);
-          return { success: false, status: 'password_reset_required', recoveryToken: recovery.recoveryToken };
+          return { success: false, status: 'password_reset_required', recoveryToken: recovery.recoveryToken, recoveryExpiresAt: recovery.expiresAt };
         }
         recoveryMessage = recovery.message;
       }

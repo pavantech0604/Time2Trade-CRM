@@ -12,7 +12,8 @@ globalThis.recoveryFormFixture = {
   employeeRecovery: async () => { serverCalls++; return serverResult; },
 };
 let source = await readFile(new URL('../src/components/auth/EmployeeRecoveryForm.tsx', import.meta.url), 'utf8');
-source = source.replace(/^import React.*?;$/m, 'const React = globalThis.recoveryFormFixture.React; const {useState} = React;')
+source = source.replace(/^import React.*?;$/m, 'const React = globalThis.recoveryFormFixture.React; const {useState,useEffect,useRef} = React;')
+  .replace(/^import \{ (.*?) \} from 'lucide-react';$/m, (_line,names) => names.split(',').map(name=>`const ${name.trim()} = () => null;`).join('\n'))
   .replace(/^import \{ employeeRecovery \}.*?;$/m, 'const employeeRecovery = globalThis.recoveryFormFixture.employeeRecovery;');
 const { outputText } = ts.transpileModule(source, { compilerOptions: {
   module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2020,
@@ -37,4 +38,10 @@ serverResult = { success: true };
 await act(async () => { await submit(); });
 assert.equal(savedPassword, 'T2T@Test-only!982', 'Sign-in follows only a confirmed server password update');
 await act(async () => renderer.unmount());
+await act(async () => { renderer = create(React.createElement(EmployeeRecoveryForm, {
+ ticket:'b'.repeat(64), expiresAt:new Date(Date.now()-1000).toISOString(), onComplete:async()=>{}, onCancel(){},
+})); });
+assert.equal(renderer.root.findByProps({type:'submit'}).props.disabled,true,'Expired requests must not submit');
+assert.equal(renderer.root.findAllByType('button').some(node=>node.children.includes('Start recovery again')),true);
+await act(async()=>renderer.unmount());
 console.log('Recovery form checks passed: matching passwords, visible failures and mandatory successful save.');

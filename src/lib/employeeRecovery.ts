@@ -1,9 +1,11 @@
 import { supabase } from './supabase';
 
-export const isEmployeeRecoveryEnabled = import.meta.env.VITE_EMPLOYEE_RECOVERY_ENABLED === 'true';
+// The deployed server controls recovery eligibility and validates its secret.
+// No separate Vercel flag is needed to make the employee flow available.
+export const isEmployeeRecoveryEnabled = true;
 
 export async function employeeRecovery(body: Record<string, string>): Promise<{
-  success: boolean; recoveryToken?: string; restart?: boolean; message?: string; userId?: string; email?: string;
+  success: boolean; recoveryToken?: string; expiresAt?: string; restart?: boolean; message?: string; userId?: string; email?: string;
 }> {
   if (!supabase || !isEmployeeRecoveryEnabled) {
     return { success: false, message: 'Employee recovery is not enabled. Contact an administrator.' };

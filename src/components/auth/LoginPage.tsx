@@ -13,7 +13,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { AuthShell } from './AuthShell';
 import { EmployeeRecoveryForm } from './EmployeeRecoveryForm';
-import { isEmployeeRecoveryEnabled } from '../../lib/employeeRecovery';
+import { normalizeLoginIdentifier } from '../../lib/loginIdentifier';
+import { employeeRecovery, isEmployeeRecoveryEnabled } from '../../lib/employeeRecovery';
 
 interface LoginPageProps {
   onNavigateToSignup?: () => void;
@@ -35,6 +36,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   useEffect(() => { if (errorMsg) { errorRef.current?.focus(); errorRef.current?.scrollIntoView({ block: 'nearest' }); } }, [errorMsg]);
   const [pendingMsg, setPendingMsg] = useState<string | null>(null);
   const [recoveryTicket, setRecoveryTicket] = useState<string | null>(null);
+  const [recoveryExpiresAt, setRecoveryExpiresAt] = useState<string | undefined>();
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const recoveryView = isRecoveryMode || Boolean(recoveryTicket);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,12 +52,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
     setLocalLoading(true);
     try {
+      if (isRecoveryMode) {
+        const recovery = await employeeRecovery({ action: 'start', email: normalizeLoginIdentifier(email), password });
+        if (recovery.success && recovery.recoveryToken) {
+          setRecoveryTicket(recovery.recoveryToken);
+          setRecoveryExpiresAt(recovery.expiresAt);
+          setPassword('');
+        } else {
+          setErrorMsg(recovery.message || 'Your email or recovery code was not accepted. Use your approved employee account.');
+        }
+        return;
+      }
       const res = await login(email.trim(), password);
 
       if (!res.success) {
         if (res.status === 'password_reset_required' && res.recoveryToken) {
           setPassword('');
           setRecoveryTicket(res.recoveryToken);
+          setRecoveryExpiresAt(res.recoveryExpiresAt);
+          setIsRecoveryMode(true);
           return;
         }
         if (res.status === 'pending') {
@@ -72,13 +89,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const isLoading = localLoading || authLoading;
 
   return (
-    <AuthShell mode="login">
+    <AuthShell mode={recoveryView ? "recovery" : "login"}>
         {/* Card Form */}
         <div className="auth-card">
           <div className="space-y-1 text-center sm:text-left">
-            <h2 className="text-lg font-bold text-[#312e81]">Staff Sign In</h2>
+            <h2 className="text-lg font-bold text-[#312e81]">{recoveryView ? "Reset your password" : "Staff Sign In"}</h2>
             <p className="text-xs text-slate-500">
-              Enter your authorized staff credentials to continue to your workspace.
+              {recoveryView ? "For approved employees. Your mailbox is not needed." : "Enter your authorized staff credentials to continue to your workspace."}
             </p>
           </div>
 
@@ -110,12 +127,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
           )}
 
-          {recoveryTicket ? <EmployeeRecoveryForm ticket={recoveryTicket}
-            onCancel={() => { setRecoveryTicket(null); setErrorMsg(null); }}
+          {recoveryTicket ? <EmployeeRecoveryForm key={recoveryTicket} ticket={recoveryTicket} email={normalizeLoginIdentifier(email)} expiresAt={recoveryExpiresAt}
+            onCancel={() => { setRecoveryTicket(null); setPassword(''); setErrorMsg(null); }}
             onComplete={async newPassword => {
               const result = await login(email.trim(), newPassword);
               if (!result.success) {
                 setRecoveryTicket(null);
+                setIsRecoveryMode(false);
                 setErrorMsg(`Your password was saved. ${result.message || 'Sign in with your new password.'}`);
               }
             }} /> : <form onSubmit={handleSubmit} className="space-y-4">
@@ -144,27 +162,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 Use the email assigned to your account, including internal staff login addresses.
               </p>
               {isEmployeeRecoveryEnabled && <p className="text-[11px] text-blue-700">
-                Forgot your password? Enter your employee email and the shared recovery code provided by your administrator. You will choose a new password before signing in.
+                {isRecoveryMode ? "Step 1 of 2: enter the recovery code provided by your administrator. You will choose your own password next." : "Employee password recovery works here without an email inbox."}
               </p>}
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label htmlFor="login-password" className="text-xs font-semibold text-slate-600 block font-mono uppercase">
-                  Password
+                  {isRecoveryMode ? "Recovery code" : "Password"}
                 </label>
+                {isEmployeeRecoveryEnabled && <button type="button" onClick={() => { setIsRecoveryMode(!isRecoveryMode); setPassword(''); setErrorMsg(null); setPendingMsg(null); }} className="min-h-9 px-1 text-xs font-semibold text-teal-700 hover:underline">{isRecoveryMode ? "Use my password" : "Forgot password?"}</button>}
               </div>
               <div className="relative group">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-[#14B8A6] transition-colors" />
                 <input
                   id="login-password"
-                  name="password"
-                  autoComplete="current-password"
+                  name={isRecoveryMode ? 'recovery-code' : 'password'}
+                  autoComplete={isRecoveryMode ? 'off' : 'current-password'}
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
+                  placeholder={isRecoveryMode ? "Enter your employee recovery code" : "••••••••••••"}
                   className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#0ea5e9] focus:ring-1 focus:ring-[#0ea5e9] transition-all shadow-inner"
                 />
                 <button
@@ -192,7 +211,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </>
               ) : (
                 <>
-                  Sign In to Workspace
+                  {isRecoveryMode ? "Continue to new password" : "Sign In to Workspace"}
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -200,7 +219,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </form>}
 
           {/* New Employee Signup Link */}
-          {onNavigateToSignup && (
+          {onNavigateToSignup && !recoveryView && (
             <div className="pt-4 border-t border-slate-100 text-center">
               <p className="text-xs text-slate-500">
                 New staff member?{' '}

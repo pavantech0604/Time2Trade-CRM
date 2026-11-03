@@ -23,7 +23,7 @@ import {LoginPage} from './src/components/auth/LoginPage';
 import {SignupPage} from './src/components/auth/SignupPage';
 import {PendingApprovalPage} from './src/components/auth/PendingApprovalPage';
 import {NotificationCenter} from './src/components/notifications/NotificationCenter';
-window.__AuthContext=React.createContext(null); window.__events=[];
+window.__AuthContext=React.createContext(null); window.__events=[]; window.__recoveryCalls=0; window.__passwordSaved=false;
 function Fixture(){
  const params=new URLSearchParams(location.search); const role=params.get('role')||'employee';
  const [view,setView]=useState(params.get('view')||'login'); const [open,setOpen]=useState(false);
@@ -35,15 +35,23 @@ function Fixture(){
   {id:'private',user_id:'another-user',title:'Private other employee',message:'Must never be displayed',category:'sales',is_read:false,created_at:'2026-11-03T01:00:00Z'}
  ]);
  const auth={currentUser:view==='notifications'?user:null,loading:false,notifications:notices,
- login:async()=>({success:false,status:'error',message:'Fixture login rejected'}), signup:async()=>({success:false,message:'Fixture signup rejected'}),
+ login:async(_email,password)=>{if(window.__passwordSaved){setView('success');return {success:true};} if(password==='FixtureRecovery!982')return {success:false,status:'password_reset_required',recoveryToken:'a'.repeat(64),recoveryExpiresAt:new Date(Date.now()+300000).toISOString()}; return {success:false,status:'error',message:'Fixture login rejected'};}, signup:async()=>({success:false,message:'Fixture signup rejected'}),
  markNotificationRead:(id,is_read=true)=>setNotices(n=>n.map(item=>item.id===id?{...item,is_read}:item)),
  markAllNotificationsRead:()=>setNotices(n=>n.map(item=>item.user_id===role?{...item,is_read:true}:item)),
  deleteNotification:id=>setNotices(n=>n.filter(item=>item.id!==id)),clearAllNotifications:()=>setNotices(n=>n.filter(item=>item.user_id!==role))};
+ if(view==='success')return <div role="status">Signed in successfully</div>;
  return <window.__AuthContext.Provider value={auth}>{view==='pending'?<PendingApprovalPage onBackToLogin={()=>setView('login')}/>:view==='signup'?<SignupPage onNavigateToLogin={()=>setView('login')} onSignupSuccess={()=>{}}/>:view==='login'?<LoginPage onNavigateToSignup={()=>setView('signup')}/>:<><button id="open-alerts" onClick={()=>setOpen(true)}>Open notifications</button><NotificationCenter isOpen={open} onClose={()=>setOpen(false)} onNavigate={tab=>{window.__events.push(tab);setOpen(false)}}/></>}</window.__AuthContext.Provider>;
 } createRoot(document.getElementById('root')).render(<Fixture/>);`;
 const result = await build({ stdin: { contents: entry, resolveDir: root, loader: 'tsx' }, bundle: true, write: false,
   format: 'iife', platform: 'browser', define: { 'import.meta.env': '{}' },
   plugins: [{ name: 'mock-auth', setup(plugin) {
+    plugin.onResolve({ filter: /lib\/employeeRecovery$/ }, () => ({ path: 'mock-recovery', namespace: 'recovery-fixture' }));
+    plugin.onLoad({ filter: /.*/, namespace: 'recovery-fixture' }, () => ({ contents: `
+      export const isEmployeeRecoveryEnabled=true;
+      export async function employeeRecovery(body){window.__recoveryCalls++;
+       if(body.action==='start')return body.password==='FixtureRecovery!982'?{success:true,recoveryToken:'a'.repeat(64),expiresAt:new Date(Date.now()+300000).toISOString()}:{success:false,message:'Recovery code rejected'};
+       window.__passwordSaved=true;return {success:true};
+      }`,loader:'js'}));
     plugin.onResolve({ filter: /context\/AuthContext$/ }, () => ({ path: 'mock-auth', namespace: 'fixture' }));
     plugin.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `import React from 'react'; export const useAuth=()=>React.useContext(window.__AuthContext);`, loader: 'js', resolveDir: root }));
   } }] });
@@ -89,6 +97,34 @@ try {
   await page.keyboard.press('Escape'); assert.equal(await dialog.count(),0); assert.equal(await page.locator('#open-alerts').evaluate(node=>node===document.activeElement),true);
   await page.close();
  }
+ for (const [width,height] of sizes) {
+  const page=await browser.newPage({viewport:{width,height}});
+  await page.goto(origin+'/?view=login');
+  await page.locator('#login-email').fill('staff@example.test');
+  await page.getByRole('button',{name:'Forgot password?',exact:true}).click();
+  await page.locator('#login-password').fill('Incorrect fixture code');
+  await page.getByRole('button',{name:'Continue to new password',exact:true}).click();
+  await page.getByRole('alert').waitFor();
+  assert.equal(await page.locator('#employee-new-password').count(),0,'Wrong code must not open reset form');
+  await page.locator('#login-password').fill('FixtureRecovery!982');
+  await page.getByRole('button',{name:'Continue to new password',exact:true}).click();
+  await page.locator('#employee-new-password').waitFor();
+  assert.equal(await page.evaluate(()=>window.__passwordSaved),false);
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  const save=page.getByRole('button',{name:'Save password & sign in',exact:true});
+  await save.scrollIntoViewIfNeeded();const box=await save.boundingBox();assert.ok(box.y>=0&&box.y+box.height<=height);
+  if(width===390||width===1366)await page.screenshot({path:join(output,'recovery-'+width+'.png')});
+  await page.getByRole('button',{name:'Suggest a strong password',exact:true}).click();
+  const suggested=await page.locator('#employee-new-password').inputValue();
+  assert.ok(suggested.length>=16);assert.equal(await page.locator('#employee-confirm-password').inputValue(),suggested);
+  await save.click();await page.getByText('Signed in successfully',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.__passwordSaved),true);
+  await page.close();
+ }
+ const direct=await browser.newPage();await direct.goto(origin+'/?view=login');
+ await direct.locator('#login-email').fill('staff@example.test');await direct.locator('#login-password').fill('FixtureRecovery!982');
+ await direct.getByRole('button',{name:'Sign In to Workspace',exact:true}).click();await direct.locator('#employee-new-password').waitFor();
+ assert.equal(await direct.evaluate(()=>window.__passwordSaved),false);await direct.close();
  for (const role of ['employee','manager','admin']) {
   const page=await browser.newPage({viewport:{width:390,height:844}});
   await page.goto(origin+'/?view=notifications&role='+role); await page.locator('#open-alerts').click();
@@ -103,6 +139,6 @@ try {
   assert.deepEqual(await page.evaluate(()=>window.__events),[role==='employee'?'employee-dashboard':role==='admin'?'payment-verification':'employee-sales']);
   await page.close();
  }
- console.log('Browser QA passed: 7 viewport sizes, auth reachability, notification boundaries, account privacy, filters, read/unread, dismiss, role navigation and Escape/focus.');
+ console.log('Browser QA passed: 7 viewport sizes, auth/recovery reachability, mailbox-free reset, notification boundaries, account privacy, filters, read/unread, dismiss, role navigation and Escape/focus.');
  console.log('Screenshots: '+output);
 } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }

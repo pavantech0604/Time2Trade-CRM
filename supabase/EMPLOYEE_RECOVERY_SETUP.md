@@ -26,16 +26,19 @@ employee's password. This is the user-requested shared-code recovery model.
    supabase functions deploy employee-password-recovery --project-ref lqydkbfxbaxrgbvdznxn --no-verify-jwt
    ```
 
-5. In Vercel, add `VITE_EMPLOYEE_RECOVERY_ENABLED=true` for Production and
-   redeploy. Enable this only after steps 1–4 are complete. Ordinary password
-   login remains available when recovery is disabled.
+5. Deploy the frontend. Recovery is now available without a separate Vercel
+   feature flag. The server secret and employee eligibility checks control the
+   recovery flow. Ordinary personal-password login remains available.
 
 ## Employee flow
 
 Enter the registered employee email and the shared code in the normal login
-form. The code is checked on the server before normal password authentication.
+form, or select **Forgot password?** to open the dedicated recovery form.
+The code is checked on the server before normal password authentication.
 A matching code opens the new-password form. Set and confirm a personal password
-(8–128 characters, different from the shared code). Saving it signs the employee
+(8–128 characters, different from the shared code). The reset screen shows a
+server-issued expiry countdown, strength and matching feedback, and an optional
+cryptographically random password suggestion. Saving it signs the employee
 in using the new Auth password. A working mailbox is not needed.
 
 Recovery tickets expire after five minutes, are stored only as SHA-256 hashes,
