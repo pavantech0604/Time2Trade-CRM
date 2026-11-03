@@ -102,7 +102,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
           {/* Error Alert */}
           {errorMsg && (
-            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-800 text-xs flex items-start gap-2.5">
+            <div role="alert" className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-800 text-xs flex items-start gap-2.5">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               <div className="font-medium leading-relaxed">{errorMsg}</div>
             </div>
@@ -110,31 +110,43 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 block font-mono uppercase">
+              <label htmlFor="login-email" className="text-xs font-semibold text-slate-600 block font-mono uppercase">
                 Login Email
               </label>
               <div className="relative group">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-[#14B8A6] transition-colors" />
                 <input
+                  id="login-email"
+                  name="email"
                   type="email"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="pavan@time2trade.com or your registered email"
+                  placeholder="Enter your registered login email"
+                  aria-describedby="login-email-help"
                   className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#0ea5e9] focus:ring-1 focus:ring-[#0ea5e9] transition-all shadow-inner"
                 />
               </div>
+              <p id="login-email-help" className="text-[11px] text-slate-500">
+                Use the email assigned to your account, including internal staff login addresses.
+              </p>
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-600 block font-mono uppercase">
+                <label htmlFor="login-password" className="text-xs font-semibold text-slate-600 block font-mono uppercase">
                   Password
                 </label>
               </div>
               <div className="relative group">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-[#14B8A6] transition-colors" />
                 <input
+                  id="login-password"
+                  name="password"
+                  autoComplete="current-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
@@ -144,6 +156,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 />
                 <button
                   type="button"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 transition-colors"
                 >

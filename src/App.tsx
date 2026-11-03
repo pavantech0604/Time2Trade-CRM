@@ -34,6 +34,10 @@ const getRoleHomeTab = (role?: string) => {
 
 const MainApp: React.FC = () => {
   const { currentUser, loading, mustResetPassword } = useAuth();
+  const [isCheckingInitialSession, setIsCheckingInitialSession] = useState(true);
+  useEffect(() => {
+    if (!loading) setIsCheckingInitialSession(false);
+  }, [loading]);
   const [activeTab, setActiveTab] = useState<string>(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -70,7 +74,7 @@ const MainApp: React.FC = () => {
   }, [currentUser?.role, currentUser?.id]);
 
   // Loading state
-  if (loading) {
+  if (isCheckingInitialSession) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-800 font-sans space-y-4">
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-700 to-teal-500 flex items-center justify-center shadow-xl shadow-blue-500/20 animate-pulse">
