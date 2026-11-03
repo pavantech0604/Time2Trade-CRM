@@ -37,6 +37,7 @@ import {
 } from '../lib/mockData';
 import { ownsPayment } from '../lib/accessControl';
 import { saveAuthPassword } from '../lib/passwordService';
+import { getAccountAccessIssue } from '../lib/accountAccess';
 import { calculateTraderStreak } from '../lib/calculations';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { dispatchDeletePaymentFromGoogleSheets } from '../lib/googleSheets';
@@ -1518,7 +1519,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      let newUserId = generateUUID();
+      if (!supabase) throw new Error('Authentication service is not configured.');
+      let newUserId: string;
 
       // Supabase Signup
       if (supabase) {
@@ -1551,30 +1553,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 message: 'An account with this email address already exists. Please sign in instead.',
               };
             }
-            // Supabase auth signup notice — non-blocking
+            throw sbError;
           }
-
-          if (authData?.user) {
-            newUserId = authData.user.id;
+          if (!authData?.user || authData.user.identities?.length === 0) {
+            throw new Error('Registration could not be completed. If you already have an account, sign in with your existing password.');
           }
-
-          // Persist user record to public.users table so administrator can review and approve
-          const { error: upsertErr } = await supabase.from('users').upsert({
-            id: newUserId,
-            name: fullName.trim(),
-            email: normalizedEmail,
-            phone: phoneInput?.trim() || null,
-            role: 'employee',
-            is_active: false,
-            approval_status: 'pending_admin_review',
-          });
-
-          if (upsertErr) {
-            // Profile sync to public.users failed — non-blocking
+          newUserId = authData.user.id;
+          // The server trigger creates the pending profile with the Auth ID,
+          // even when signup has not returned an authenticated session yet.
+          if (authData.session) {
+            const { data: newProfile, error: profileError } = await supabase.from('users')
+              .select('id').eq('id', newUserId).maybeSingle();
+            await supabase.auth.signOut();
+            if (profileError || !newProfile) {
+              throw new Error('Your login account was created, but its staff profile needs repair. Ask an administrator to apply employee_login_readiness.sql before trying again.');
+            }
           }
-        } catch {
-          // Supabase signup integration error — non-blocking
+        } catch (signupError) {
+          throw signupError;
         }
+      } else {
+        throw new Error('Authentication service is not configured.');
       }
 
       const newPendingUser: User = {
@@ -1582,7 +1581,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: fullName.trim(),
         email: normalizedEmail,
         phone: phoneInput?.trim() || undefined,
-        role: 'employee',
+        role: 'pending',
         is_active: false,
         approval_status: 'pending_admin_review',
         created_at: new Date().toISOString(),
@@ -1675,16 +1674,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
 
           if (authError) {
-            lastAuthError = authError.message;
+            lastAuthError = authError.code === 'invalid_credentials'
+              ? 'The email or password was not accepted. Use your existing Supabase password; ask an administrator to run the employee login audit if it still fails.'
+              : authError.code === 'email_not_confirmed'
+              ? 'Your login needs administrator confirmation. Ask an administrator to run the employee account repair; a working mailbox is not required.'
+              : authError.message;
           }
 
           if (!authError && authData?.user) {
-            // Fetch user profile from public.users table (contains role: admin / employee)
-            const { data: profile } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', authData.user.id)
-              .maybeSingle();
+            const { data: profile, error: profileError } = await supabase
+              .from('users').select('*').eq('id', authData.user.id).maybeSingle();
+            if (profileError || !profile) {
+              await supabase.auth.signOut();
+              setLoading(false);
+              return {
+                success: false, status: 'error',
+                message: profileError
+                  ? 'Your password was accepted, but your staff profile could not be loaded. Ask an administrator to check account permissions.'
+                  : 'Your password was accepted, but your login is not linked to a staff profile. Ask an administrator to run the employee login audit.',
+              };
+            }
 
             if (profile) {
               authenticatedUser = {
@@ -1694,207 +1703,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 phone: profile.phone,
                 role: profile.role as UserRole,
                 must_reset_password: Boolean(profile.must_reset_password),
-                is_active: profile.is_active !== false,
-                approval_status: (profile.approval_status || 'approved') as ApprovalStatus,
+                is_active: profile.is_active === true,
+                approval_status: (profile.approval_status || 'pending_admin_review') as ApprovalStatus,
                 avatar_url: profile.avatar_url,
                 created_at: profile.created_at || new Date().toISOString(),
-              };
-            } else {
-              // Fallback if profile row is not yet found
-              authenticatedUser = {
-                id: authData.user.id,
-                name: authData.user.user_metadata?.full_name || authData.user.email?.split('@')[0] || 'User',
-                email: authData.user.email || normalizedEmail,
-                phone: authData.user.user_metadata?.phone,
-                role: 'pending' as UserRole,
-                is_active: false,
-                approval_status: 'approved',
-                created_at: authData.user.created_at || new Date().toISOString(),
               };
             }
           }
         } catch (sbErr: any) {
           lastAuthError = sbErr?.message || null;
-        }
-      }
-
-      // Password contents never determine account privileges or reset requirements.
-      const isTemporaryPassword = false;
-
-      // Fallback for CRM staff/admins when Supabase auth.users account is missing, unconfirmed, or dummy
-      if (!authenticatedUser && !isSupabaseConfigured) {
-        // Step A: Search existing loaded users in React state
-        let foundStaff = users.find((u) => u.email.toLowerCase() === normalizedEmail);
-
-        // Step B: Query Supabase users table directly if not in memory (handles RLS or unpopulated state)
-        if (!foundStaff && supabase) {
-          try {
-            const { data: dbStaff } = await supabase
-              .from('users')
-              .select('*')
-              .ilike('email', normalizedEmail)
-              .maybeSingle();
-
-            if (dbStaff) {
-              foundStaff = {
-                id: dbStaff.id,
-                name: dbStaff.name || dbStaff.full_name || normalizedEmail.split('@')[0],
-                email: dbStaff.email || normalizedEmail,
-                phone: dbStaff.phone,
-                role: (dbStaff.role || 'employee') as UserRole,
-                is_active: dbStaff.is_active !== false,
-                approval_status: (dbStaff.approval_status || 'approved') as ApprovalStatus,
-                avatar_url: dbStaff.avatar_url,
-                created_at: dbStaff.created_at || new Date().toISOString(),
-              };
-            }
-          } catch {
-            // Supabase user query by email failed — non-blocking
-          }
-        }
-
-        // Step C: If still not found, check by username prefix (e.g. 'madhan' vs 'mahaan')
-        if (!foundStaff && supabase) {
-          try {
-            const prefix = normalizedEmail.split('@')[0];
-            const { data: prefixStaff } = await supabase
-              .from('users')
-              .select('*')
-              .or(`email.ilike.%${prefix}%,name.ilike.%${prefix}%`)
-              .maybeSingle();
-
-            if (prefixStaff) {
-              foundStaff = {
-                id: prefixStaff.id,
-                name: prefixStaff.name || prefixStaff.full_name || prefix,
-                email: prefixStaff.email || normalizedEmail,
-                phone: prefixStaff.phone,
-                role: (prefixStaff.role || 'employee') as UserRole,
-                is_active: prefixStaff.is_active !== false,
-                approval_status: (prefixStaff.approval_status || 'approved') as ApprovalStatus,
-                avatar_url: prefixStaff.avatar_url,
-                created_at: prefixStaff.created_at || new Date().toISOString(),
-              };
-            }
-          } catch {
-            // Supabase user query by prefix failed — non-blocking
-          }
-        }
-
-        // Step D: If user used a valid temporary recovery key but profile is missing, auto-provision
-        if (!foundStaff && isTemporaryPassword) {
-          const rawName = normalizedEmail.split('@')[0];
-          const friendlyName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-          foundStaff = {
-            id: generateUUID(),
-            name: friendlyName,
-            email: normalizedEmail,
-            role: 'employee',
-            is_active: true,
-            approval_status: 'approved',
-            must_reset_password: true,
-            created_at: new Date().toISOString(),
-          };
-
-          // Background sync to Supabase public.users
-          if (supabase) {
-            supabase
-              .from('users')
-              .upsert({
-                id: foundStaff.id,
-                name: foundStaff.name,
-                email: foundStaff.email,
-                role: 'employee',
-                is_active: true,
-                approval_status: 'approved',
-              })
-              .then();
-          }
-
-          setUsers((prev) => [foundStaff!, ...prev.filter((u) => u.email.toLowerCase() !== normalizedEmail)]);
-        }
-
-        if (foundStaff) {
-          const isUserTemp =
-            isTemporaryPassword ||
-            (foundStaff.temporary_password && foundStaff.temporary_password === passwordInput) ||
-            Boolean(foundStaff.must_reset_password);
-
-          if (isUserTemp) {
-            // Temporary password login automatically activates and grants entry with must_reset_password flag!
-            authenticatedUser = {
-              ...foundStaff,
-              role: foundStaff.role === 'pending' ? 'employee' : foundStaff.role,
-              is_active: true,
-              approval_status: 'approved',
-              must_reset_password: true,
-            };
-            setMustResetPassword(true);
-            localStorage.setItem('time2trade_must_reset_active', 'true');
-            localStorage.setItem(`time2trade_must_reset_${authenticatedUser.id}`, 'true');
-            localStorage.setItem(`time2trade_must_reset_${normalizedEmail}`, 'true');
-
-            // If user in database was previously rejected or disabled, unblock them now
-            if (supabase) {
-              supabase
-                .from('users')
-                .update({
-                  is_active: true,
-                  approval_status: 'approved',
-                  role: authenticatedUser.role,
-                })
-                .eq('id', authenticatedUser.id)
-                .then();
-
-              // Background attempt to auto-create user in Supabase auth
-              supabase.auth
-                .signUp({
-                  email: normalizedEmail,
-                  password: passwordInput,
-                  options: { data: { full_name: foundStaff.name } },
-                })
-                .catch(() => {});
-            }
-          } else {
-            // Normal password checks
-            if (foundStaff.approval_status === 'pending_admin_review' || foundStaff.role === 'pending') {
-              setLoading(false);
-              return {
-                success: false,
-                status: 'pending',
-                message: 'Your account is under administrative review. Access will be unlocked once an administrator assigns your role.',
-              };
-            }
-            if (foundStaff.approval_status === 'rejected') {
-              setLoading(false);
-              return {
-                success: false,
-                status: 'rejected',
-                message: `Your account application was rejected. Reason: ${foundStaff.rejection_reason || 'Compliance check failure.'}`,
-              };
-            }
-            if (foundStaff.is_active === false) {
-              setLoading(false);
-              return {
-                success: false,
-                status: 'disabled',
-                message: 'Your account has been deactivated. Please contact an administrator.',
-              };
-            }
-
-            if (
-              foundStaff.approval_status === 'approved' &&
-              passwordInput.length >= 6
-            ) {
-              authenticatedUser = {
-                ...foundStaff,
-                role: foundStaff.role || 'employee',
-                is_active: true,
-                approval_status: 'approved',
-                must_reset_password: Boolean(foundStaff.must_reset_password),
-              };
-            }
-          }
         }
       }
 
@@ -1907,42 +1724,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      // 3. Verify Account Status & Approvals (Only for non-temp passwords, as temp password overrides for account recovery)
-      {
-        if (authenticatedUser.is_active === false) {
-          if (supabase) await supabase.auth.signOut().catch(() => {});
-          setLoading(false);
-          return {
-            success: false,
-            status: 'disabled',
-            message: 'Your account has been deactivated. Please contact an administrator.',
-          };
-        }
-
-        if (authenticatedUser.approval_status === 'pending_admin_review' || authenticatedUser.role === 'pending') {
-          if (supabase) await supabase.auth.signOut().catch(() => {});
-          setLoading(false);
-          return {
-            success: false,
-            status: 'pending',
-            message: 'Your account is under administrative review. Access will be unlocked once an administrator assigns your role.',
-          };
-        }
-
-        if (authenticatedUser.approval_status === 'rejected') {
-          if (supabase) await supabase.auth.signOut().catch(() => {});
-          setLoading(false);
-          return {
-            success: false,
-            status: 'rejected',
-            message: `Your account application was rejected. Reason: ${authenticatedUser.rejection_reason || 'Compliance check failure.'}`,
-          };
-        }
+      const accessIssue = getAccountAccessIssue(authenticatedUser);
+      if (accessIssue) {
+        if (supabase) await supabase.auth.signOut().catch(() => {});
+        setLoading(false);
+        return accessIssue;
       }
 
       // Check whether user must reset password
       const needsPasswordReset =
-        isTemporaryPassword ||
         Boolean(authenticatedUser.must_reset_password) ||
         localStorage.getItem(`time2trade_must_reset_${authenticatedUser.id}`) === 'true' ||
         localStorage.getItem(`time2trade_must_reset_${normalizedEmail}`) === 'true';
