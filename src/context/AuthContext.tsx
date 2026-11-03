@@ -36,6 +36,7 @@ import {
   INITIAL_ATTENDANCE_LOGS,
 } from '../lib/mockData';
 import { ownsPayment } from '../lib/accessControl';
+import { saveAuthPassword } from '../lib/passwordService';
 import { calculateTraderStreak } from '../lib/calculations';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { dispatchDeletePaymentFromGoogleSheets } from '../lib/googleSheets';
@@ -1692,6 +1693,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 email: profile.email || authData.user.email || '',
                 phone: profile.phone,
                 role: profile.role as UserRole,
+                must_reset_password: Boolean(profile.must_reset_password),
                 is_active: profile.is_active !== false,
                 approval_status: (profile.approval_status || 'approved') as ApprovalStatus,
                 avatar_url: profile.avatar_url,
@@ -1716,14 +1718,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // 2. Check if user entered a temporary access password
-      const isTemporaryPassword =
-        passwordInput.toLowerCase() === 't2t@name2026' ||
-        passwordInput.toLowerCase().startsWith('t2t@') ||
-        passwordInput.toLowerCase().startsWith('t2t#') ||
-        passwordInput === 'Time2trade@2026' ||
-        localStorage.getItem(`time2trade_temp_pass_${normalizedEmail}`) === passwordInput ||
-        localStorage.getItem(`time2trade_must_reset_${normalizedEmail}`) === 'true';
+      // Password contents never determine account privileges or reset requirements.
+      const isTemporaryPassword = false;
 
       // Fallback for CRM staff/admins when Supabase auth.users account is missing, unconfirmed, or dummy
       if (!authenticatedUser && !isSupabaseConfigured) {
@@ -1912,7 +1908,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // 3. Verify Account Status & Approvals (Only for non-temp passwords, as temp password overrides for account recovery)
-      if (!isTemporaryPassword) {
+      {
         if (authenticatedUser.is_active === false) {
           if (supabase) await supabase.auth.signOut().catch(() => {});
           setLoading(false);
@@ -2246,12 +2242,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUser) return { success: false, message: 'No active user session found.' };
 
     try {
-      if (supabase) {
-        try {
-          await supabase.auth.updateUser({ password: newPassword });
-        } catch {
-          // Supabase auth password update failed — non-blocking
-        }
+      if (!supabase) return { success: false, message: 'Authentication service is not configured.' };
+      await saveAuthPassword(supabase, currentUser.id, newPassword);
+      const { error: profileError } = await supabase.from('users')
+        .update({ must_reset_password: false }).eq('id', currentUser.id);
+      if (profileError) {
+        return { success: false, message: 'Your new password was saved, but the reset flag could not be cleared. Use the new password for your next login and ask an administrator to clear the reset flag.' };
       }
 
       // Clear reset flags
@@ -2314,42 +2310,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     userId: string,
     customTempPassword?: string
   ): Promise<{ success: boolean; tempPassword: string; message: string }> => {
+    if (currentUser?.role !== 'admin') {
+      return { success: false, tempPassword: '', message: 'Administrator access required.' };
+    }
     const target = users.find((u) => u.id === userId);
     if (!target) return { success: false, tempPassword: '', message: 'Employee not found.' };
-
-    const firstName = target.name.split(' ')[0].replace(/[^A-Za-z]/g, '');
-    const tempPassword = customTempPassword || `T2T@${firstName || 'Staff'}2026`;
-
-    localStorage.setItem('time2trade_must_reset_active', 'true');
-    localStorage.setItem(`time2trade_must_reset_${userId}`, 'true');
-    localStorage.setItem(`time2trade_must_reset_${target.email.toLowerCase()}`, 'true');
-    localStorage.setItem(`time2trade_temp_pass_${userId}`, tempPassword);
-    localStorage.setItem(`time2trade_temp_pass_${target.email.toLowerCase()}`, tempPassword);
-
-    setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, must_reset_password: true, temporary_password: tempPassword } : u))
-    );
-
-    const nowIso = new Date().toISOString();
-    setAuditLogs((prev) => [
-      {
-        id: `aud-${Date.now()}`,
-        user_id: currentUser?.id || 'admin-system',
-        user_name: currentUser?.name || 'Administrator',
-        action: 'ADMIN_TRIGGER_PASSWORD_RESET',
-        table_name: 'users',
-        record_id: userId,
-        new_values: { temporary_password_issued: true, target_email: target.email },
-        created_at: nowIso,
-      },
-      ...prev,
-    ]);
-
-    return {
-      success: true,
-      tempPassword,
-      message: `Temporary password for ${target.name} set to ${tempPassword}`,
-    };
+    if (!supabase) return { success: false, tempPassword: '', message: 'Authentication service is not configured.' };
+    if (!customTempPassword || customTempPassword.length < 6) {
+      return { success: false, tempPassword: '', message: 'Enter a password with at least 6 characters.' };
+    }
+    try {
+      const { data, error: resetError } = await supabase.functions.invoke('admin-reset-password', {
+        body: { userId, password: customTempPassword },
+      });
+      if (resetError || !data?.success) {
+        let message = data?.error || 'Password reset failed. Ensure the admin-reset-password Edge Function is deployed in Supabase.';
+        if (resetError?.context instanceof Response) {
+          const details = await resetError.context.json().catch(() => null);
+          message = details?.error || message;
+        }
+        return { success: false, tempPassword: '', message };
+      }
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, must_reset_password: true } : u));
+      return { success: true, tempPassword: customTempPassword, message: `Password saved in Supabase for ${target.name}. A password change is required at next login.` };
+    } catch (err: any) {
+      return { success: false, tempPassword: '', message: err?.message || 'Password reset failed.' };
+    }
   };
 
   const toggleDarkMode = () => {

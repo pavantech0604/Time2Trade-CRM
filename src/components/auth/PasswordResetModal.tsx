@@ -175,7 +175,7 @@ export const PasswordResetModal: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Welcome, <strong className="text-slate-800">{currentUser.name}</strong>! You authenticated with a temporary credential (<code className="text-blue-700 font-mono font-bold">T2T@...</code>). Please establish your secure personal password.
+                  Welcome, <strong className="text-slate-800">{currentUser.name}</strong>! Your account requires a password update. Choose your password below; passwords containing T2T@ are supported.
                 </p>
               </div>
             </div>

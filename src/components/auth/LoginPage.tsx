@@ -9,7 +9,6 @@ import {
   Loader2,
   Clock,
   ShieldCheck,
-  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BackgroundEffects } from '../common/BackgroundEffects';
@@ -112,7 +111,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600 block font-mono uppercase">
-                Official Email
+                Login Email
               </label>
               <div className="relative group">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-[#14B8A6] transition-colors" />
@@ -121,7 +120,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@time2trade.com or gmail.com"
+                  placeholder="pavan@time2trade.com or your registered email"
                   className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#0ea5e9] focus:ring-1 focus:ring-[#0ea5e9] transition-all shadow-inner"
                 />
               </div>
@@ -152,19 +151,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </button>
               </div>
 
-              {Boolean(
-                password.toLowerCase().startsWith('t2t@') ||
-                password.toLowerCase().startsWith('t2t#') ||
-                password.toLowerCase() === 't2t@name2026' ||
-                password === 'Time2trade@2026'
-              ) && (
-                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-[11px] flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
-                  <KeyRound className="w-3.5 h-3.5 text-blue-600 shrink-0 animate-pulse" />
-                  <span className="leading-snug font-medium">
-                    <strong className="text-blue-900">Temporary Access Key Detected:</strong> You will be prompted to set your permanent password upon entry.
-                  </span>
-                </div>
-              )}
+
             </div>
 
             <button

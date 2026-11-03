@@ -51,6 +51,7 @@ export const EmployeeManagement: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<UserRole>('employee');
   const [rejectReason, setRejectReason] = useState('');
   const [tempPasswordToAssign, setTempPasswordToAssign] = useState('');
+  const [resetError, setResetError] = useState<string | null>(null);
   const [copiedPassword, setCopiedPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -169,7 +170,12 @@ export const EmployeeManagement: React.FC = () => {
     if (!selectedUser || !tempPasswordToAssign.trim()) return;
     setActionLoading(true);
     try {
-      const res = await adminResetEmployeePassword(selectedUser.id, tempPasswordToAssign.trim());
+      setResetError(null);
+      const res = await adminResetEmployeePassword(selectedUser.id, tempPasswordToAssign);
+      if (!res.success) {
+        setResetError(res.message);
+        return;
+      }
       showToast(res.message);
       setModalMode(null);
       setSelectedUser(null);
@@ -813,6 +819,7 @@ export const EmployeeManagement: React.FC = () => {
               </button>
             </div>
 
+            {resetError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{resetError}</div>}
             {/* Employee Target Summary */}
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-1.5 text-xs text-slate-700">
               <div className="flex justify-between">
@@ -866,7 +873,7 @@ export const EmployeeManagement: React.FC = () => {
                 </button>
               </div>
               <p className="text-[10px] text-slate-400 leading-normal">
-                Standard format: <code className="text-slate-600 font-mono font-bold">T2T@[Name]2026</code>. When the employee logs in with this temporary key, the CRM will pop up an interactive screen prompting them to set their permanent password.
+                The password is saved in Supabase Authentication. The employee will be asked to change it after signing in, regardless of the password prefix.
               </p>
             </div>
 
