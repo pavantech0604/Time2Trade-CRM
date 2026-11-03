@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Lock,
   Mail,
@@ -11,7 +11,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { BackgroundEffects } from '../common/BackgroundEffects';
+import { AuthShell } from './AuthShell';
 import { EmployeeRecoveryForm } from './EmployeeRecoveryForm';
 import { isEmployeeRecoveryEnabled } from '../../lib/employeeRecovery';
 
@@ -31,6 +31,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (errorMsg) { errorRef.current?.focus(); errorRef.current?.scrollIntoView({ block: 'nearest' }); } }, [errorMsg]);
   const [pendingMsg, setPendingMsg] = useState<string | null>(null);
   const [recoveryTicket, setRecoveryTicket] = useState<string | null>(null);
 
@@ -70,17 +72,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const isLoading = localLoading || authLoading;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex items-center justify-center p-4 sm:p-6 font-sans relative overflow-hidden">
-      <BackgroundEffects />
-
-      <div className="max-w-md w-full relative z-10 space-y-6 animate-fade-in">
-        {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <img src="/logo-tight.png" alt="Time2Trade Logo" className="w-56 h-auto object-contain mx-auto mb-1 drop-shadow-md" />
-        </div>
-
+    <AuthShell mode="login">
         {/* Card Form */}
-        <div className="bg-white/95 backdrop-blur-xl border border-[#0ea5e9]/20 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-[#312e81]/10 space-y-6">
+        <div className="auth-card">
           <div className="space-y-1 text-center sm:text-left">
             <h2 className="text-lg font-bold text-[#312e81]">Staff Sign In</h2>
             <p className="text-xs text-slate-500">
@@ -110,7 +104,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
           {/* Error Alert */}
           {errorMsg && (
-            <div role="alert" className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-800 text-xs flex items-start gap-2.5">
+            <div role="alert" ref={errorRef} tabIndex={-1} className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-800 text-xs flex items-start gap-2.5">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               <div className="font-medium leading-relaxed">{errorMsg}</div>
             </div>
@@ -222,12 +216,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           )}
         </div>
 
-        {/* Security Footer Notice */}
-        <div className="flex items-center justify-center gap-2 text-slate-400 text-[11px] font-mono">
-          <ShieldCheck className="w-3.5 h-3.5 text-[#14B8A6]" />
-          <span>Encrypted Session • Automatic Role Detection</span>
-        </div>
-      </div>
-    </div>
+    </AuthShell>
   );
 };

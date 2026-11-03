@@ -15,6 +15,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { canAccessTab } from '../../lib/accessControl';
 import { UserPresenceStatus } from '../../types';
 import { NotificationCenter } from '../notifications/NotificationCenter';
 import { ProfileModal } from './ProfileModal';
@@ -40,18 +41,14 @@ export const Header: React.FC<HeaderProps> = ({
     setMustResetPassword,
   } = useAuth();
 
-  // Employee sees only their own unread alerts, Admin sees all pending
-  const unreadCount = notifications.filter((n) => {
-    if (currentUser?.role === 'admin') {
-      return !n.is_read;
-    }
-    return n.user_id === currentUser?.id && !n.is_read;
-  }).length;
+  const unreadCount = notifications.filter(n => n.user_id === currentUser?.id && !n.is_read && !n.dismissed_at).length;
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const [statusToast, setStatusToast] = useState<string | null>(null);
   const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setIsNotifOpen(false); setIsStatusOpen(false); }, [currentUser?.id]);
 
   // Close status dropdown on click outside or Escape
   useEffect(() => {
@@ -207,7 +204,7 @@ export const Header: React.FC<HeaderProps> = ({
               className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${currentConfig.bg} ${currentConfig.text}`}
             >
               <span className={`w-2 h-2 rounded-full ${currentConfig.dot} animate-pulse`} />
-              <span>{currentConfig.label}</span>
+              <span className="hidden sm:inline">{currentConfig.label}</span>
               <ChevronDown className="w-3.5 h-3.5 opacity-70" />
             </button>
 
@@ -288,7 +285,7 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         {/* Quick Team Chat Action */}
-        {onNavigate && (
+        {onNavigate && currentUser && canAccessTab(currentUser.role, 'team-chat') && (
           <button
             type="button"
             onClick={() => onNavigate('team-chat')}
@@ -304,7 +301,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="relative">
           <button
             onClick={() => setIsNotifOpen(!isNotifOpen)}
-            aria-label="Trading Desk Alerts"
+            aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
             aria-expanded={isNotifOpen}
             className={`relative p-2 rounded-xl border transition-all cursor-pointer ${
               isNotifOpen

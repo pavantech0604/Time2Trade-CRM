@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import ts from 'typescript';
+const transpile = source => ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText;
+const access = transpile(await readFile(new URL('../src/lib/accessControl.ts', import.meta.url), 'utf8'));
+let source = await readFile(new URL('../src/lib/notificationService.ts', import.meta.url), 'utf8');
+source = source.replace("'./accessControl'", `'data:text/javascript;base64,${Buffer.from(access).toString('base64')}'`);
+const { buildAccountNotifications, accountNotificationFeed } = await import(`data:text/javascript;base64,${Buffer.from(transpile(source)).toString('base64')}`);
+const employee = { id: 'employee', name: 'Employee', role: 'employee' };
+const payment = { id: 'payment', employee_id: 'employee', client_name: 'Own client', amount: 1000, status: 'pending_verification', created_at: '2026-11-03T01:00:00Z', allocations: [{ employee_id: 'employee', allocation_amount: 600 }] };
+const other = { ...payment, id: 'other-payment', employee_id: 'other', client_name: 'Private other client', allocations: [] };
+const leads = [{ id: 'lead', name: 'My lead', assigned_to: 'employee', created_at: payment.created_at }, { id: 'private-lead', name: 'Private lead', assigned_to: 'other' }];
+const pending = { id: 'applicant', name: 'Applicant', approval_status: 'pending_admin_review', created_at: payment.created_at };
+const own = buildAccountNotifications(employee, [payment,other], leads, [pending]);
+assert.equal(own.length, 2);
+assert.equal(own[0].amount, 600);
+assert.equal(own[0].action_tab, 'employee-dashboard');
+assert.equal(JSON.stringify(own).includes('Private'), false);
+const read = { ...own[0], is_read: true };
+assert.equal(accountNotificationFeed(employee, own, [read])[0].is_read, true);
+assert.equal(accountNotificationFeed(employee, own, [{ ...read, dismissed_at: 'now' }]).length, 1);
+assert.equal(accountNotificationFeed(employee, own, [{ ...read, user_id: 'other' }])[0].is_read, false);
+const approved = buildAccountNotifications(employee, [{ ...payment, status: 'approved' }], [], []);
+assert.equal(accountNotificationFeed(employee, approved, [read])[0].is_read, false, 'Status changes produce a fresh alert');
+for (const role of ['admin','manager']) {
+  const user = { id: role, name: role, role };
+  const notices = buildAccountNotifications(user, [payment,other], leads, [pending]);
+  assert.equal(notices.every(n => n.user_id === role), true);
+  assert.equal(notices.filter(n => n.category === 'sales').length, 2);
+  assert.equal(notices.some(n => n.action_tab === 'employee-management'), role === 'admin');
+  assert.equal(notices.some(n => n.action_tab === 'expenses'), false);
+  assert.notEqual(notices[0].id, own[0].id, 'Read states must not collide between logins');
+}
+const unsafe = { id: 'real-system-event', user_id: 'employee', category: 'system', action_tab: 'expenses', created_at: payment.created_at };
+const sample = { ...unsafe, id: 'sample-employee-1' };
+assert.equal(accountNotificationFeed(employee, [], [unsafe,sample]).length, 0, 'Restricted alert text must also be hidden');
+assert.deepEqual(accountNotificationFeed(null, own, [read]), []);
+console.log('Notification checks passed: ownership, role actions, real activity, read/dismiss state and account isolation.');

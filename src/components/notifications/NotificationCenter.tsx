@@ -1,500 +1,110 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  Bell,
-  CheckCheck,
-  CheckCircle2,
-  Clock,
-  X,
-  ChevronDown,
-  DollarSign,
-  ArrowRight,
-  User,
-  ShieldAlert,
-  Inbox,
-  UserCheck,
-} from 'lucide-react';
+import { ArrowUpRight, Bell, CheckCheck, CheckCircle2, Clock, Inbox, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { NotificationItem, NotificationCategory } from '../../types';
+import { canAccessTab } from '../../lib/accessControl';
+import type { NotificationItem } from '../../types';
 
-interface NotificationCenterProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onNavigate?: (tab: string) => void;
-}
+interface NotificationCenterProps { isOpen: boolean; onClose: () => void; onNavigate?: (tab: string) => void; }
 
-export const NotificationCenter: React.FC<NotificationCenterProps> = ({
-  isOpen,
-  onClose,
-  onNavigate,
-}) => {
-  const {
-    currentUser,
-    users,
-    notifications,
-    markNotificationRead,
-    markAllNotificationsRead,
-    deleteNotification,
-  } = useAuth();
-
-  const isAdmin = currentUser?.role === 'admin';
-
-  // State
-  const [selectedUserId, setSelectedUserId] = useState<string>(currentUser?.id || 'me');
-  const [selectedCategory, setSelectedCategory] = useState<string>('important');
-  const [isEmployeeDropdownOpen, setIsEmployeeDropdownOpen] = useState(false);
-
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  // Close on Escape key & Lock body scroll on mobile
+export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, onClose, onNavigate }) => {
+  const { currentUser, notifications, markNotificationRead, markAllNotificationsRead, deleteNotification, clearAllNotifications } = useAuth();
+  const [filter, setFilter] = useState('all');
+  const [now, setNow] = useState(Date.now());
+  const panel = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => { setFilter('all'); }, [currentUser?.id]);
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
+    if (!isOpen) return;
+    setNow(Date.now());
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    panel.current?.querySelector<HTMLButtonElement>('[data-close-notifications]')?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); close.current(); }
+      if (event.key !== 'Tab') return;
+      const items = Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [href], [tabindex="0"]') || []);
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
-    if (isOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-      if (window.innerWidth < 768) {
-        document.body.style.overflow = 'hidden';
-      }
-    }
+    document.addEventListener('keydown', handleKey);
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
+      document.removeEventListener('keydown', handleKey);
+      window.clearInterval(timer);
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus();
     };
-  }, [isOpen, onClose]);
-
-  // Target user
-  const activeTargetUserId = isAdmin ? selectedUserId : currentUser?.id || '';
-
-  // Employee details for admin
-  const targetEmployee = useMemo(() => {
-    if (!isAdmin || activeTargetUserId === 'all') return null;
-    return users.find((u) => u.id === activeTargetUserId) || null;
-  }, [isAdmin, activeTargetUserId, users]);
-
-  // User-filtered notifications
-  const userFilteredNotifications = useMemo(() => {
-    return notifications.filter((n) => {
-      if (!isAdmin) {
-        return n.user_id === currentUser?.id;
-      }
-      if (activeTargetUserId === 'all') {
-        return true;
-      }
-      return n.user_id === activeTargetUserId;
-    });
-  }, [notifications, isAdmin, currentUser, activeTargetUserId]);
-
-  // Category filter
-  const displayedNotifications = useMemo(() => {
-    return userFilteredNotifications.filter((n) => {
-      if (selectedCategory === 'all') return true;
-      if (selectedCategory === 'important') {
-        // Important: Sales, Leads, Unread
-        return n.category === 'sales' || n.category === 'leads' || n.amount || !n.is_read;
-      }
-      if (selectedCategory === 'unread') {
-        return !n.is_read;
-      }
-      return true;
-    });
-  }, [userFilteredNotifications, selectedCategory]);
-
-  // Unread count
-  const activeUnreadCount = useMemo(() => {
-    return userFilteredNotifications.filter((n) => !n.is_read).length;
-  }, [userFilteredNotifications]);
-
-  // Category counts
-  const categoryCounts = useMemo(() => {
-    return {
-      all: userFilteredNotifications.length,
-      important: userFilteredNotifications.filter(
-        (n) => n.category === 'sales' || n.category === 'leads' || n.amount || !n.is_read
-      ).length,
-    };
-  }, [userFilteredNotifications]);
-
-  const handleNotificationClick = (item: NotificationItem) => {
-    if (!item.is_read) {
-      markNotificationRead(item.id);
-    }
-    if (item.action_tab && onNavigate) {
-      onNavigate(item.action_tab);
-      onClose();
-    }
+  }, [isOpen, currentUser?.id]);
+  if (!isOpen || !currentUser) return null;
+  const own = notifications.filter(n => n.user_id === currentUser.id && !n.dismissed_at && (!n.action_tab || canAccessTab(currentUser.role, n.action_tab)));
+  const unread = own.filter(n => !n.is_read).length;
+  const displayed = own.filter(n => filter === 'all' || (filter === 'unread' ? !n.is_read : n.category === filter));
+  const relativeTime = (date: string) => {
+    const timestamp = Date.parse(date);
+    if (!Number.isFinite(timestamp)) return 'Recent';
+    const minutes = Math.max(0, Math.floor((now - timestamp) / 60_000));
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
+    return new Date(timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   };
-
-  const handleMarkAllRead = () => {
-    if (activeTargetUserId === 'all') {
-      markAllNotificationsRead();
-    } else {
-      markAllNotificationsRead(activeTargetUserId);
-    }
+  const openNotification = (item: NotificationItem) => {
+    markNotificationRead(item.id);
+    if (item.action_tab && canAccessTab(currentUser.role, item.action_tab) && onNavigate) { onNavigate(item.action_tab); onClose(); }
   };
-
-  const formatRelativeTime = (isoString: string) => {
-    try {
-      const date = new Date(isoString);
-      const now = new Date();
-      const diffMs = now.getTime() - date.getTime();
-      const diffSecs = Math.floor(diffMs / 1000);
-      const diffMins = Math.floor(diffSecs / 60);
-      const diffHours = Math.floor(diffMins / 60);
-      const diffDays = Math.floor(diffHours / 24);
-
-      if (diffSecs < 60) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (diffDays === 1) return 'Yesterday';
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    } catch {
-      return 'Recent';
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return createPortal(
-    <>
-      {/* Soft Backdrop */}
-      <div
-        onClick={onClose}
-        className="fixed inset-0 z-[100] bg-slate-900/30 backdrop-blur-sm md:bg-black/10 md:backdrop-blur-none transition-opacity"
-      />
-
-      {/* Main Notification Card */}
-      <div
-        ref={panelRef}
-        className="fixed z-[101] inset-x-0 bottom-0 max-h-[85vh] w-full rounded-t-3xl md:rounded-2xl md:inset-auto md:top-16 md:right-6 md:bottom-auto md:left-auto md:w-[410px] md:max-h-[80vh] bg-white border-t md:border border-slate-200 shadow-2xl flex flex-col font-sans overflow-hidden"
-      >
-        {/* Mobile Pull Handle */}
-        <div
-          onClick={onClose}
-          className="w-full pt-2.5 pb-1 md:hidden flex items-center justify-center cursor-pointer active:opacity-60 bg-white shrink-0"
-        >
-          <div className="w-10 h-1 rounded-full bg-slate-300" />
-        </div>
-
-        {/* Clean Header Bar */}
-        <div className="px-4 py-3 border-b border-slate-100 bg-white shrink-0">
-          <div className="flex items-center justify-between">
-            {/* Title & Badge */}
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                <Bell className="w-4 h-4" />
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                    Notifications
-                  </h3>
-                  {activeUnreadCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
-                      {activeUnreadCount} new
-                    </span>
-                  )}
-                </div>
-
-                {/* Subtitle / Admin Selector */}
-                <div className="text-[11px] text-slate-500 mt-0.5">
-                  {isAdmin ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
-                      className="font-medium text-slate-700 hover:text-blue-600 flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <span>
-                        {targetEmployee
-                          ? `Viewing: ${targetEmployee.name}`
-                          : activeTargetUserId === 'all'
-                          ? 'All Employees'
-                          : 'My Admin Alerts'}
-                      </span>
-                      <ChevronDown className="w-3 h-3 text-slate-400" />
-                    </button>
-                  ) : (
-                    <span>Recent updates & alerts</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Actions: Mark All Read & Close */}
-            <div className="flex items-center gap-1">
-              {activeUnreadCount > 0 && (
-                <button
-                  type="button"
-                  onClick={handleMarkAllRead}
-                  title="Mark all as read"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-                >
-                  <CheckCheck className="w-4 h-4" />
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={onClose}
-                title="Close"
-                className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer ml-1"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
+  const tabs = [{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'sales', label: 'Payments' },
+    ...(currentUser.role === 'employee' ? [{ id: 'leads', label: 'Leads' }] : []), { id: 'system', label: 'Account' }];
+  return createPortal(<>
+    <div onClick={onClose} aria-hidden="true" className="fixed inset-0 z-[100] bg-slate-950/30 backdrop-blur-sm" />
+    <div ref={panel} role="dialog" aria-modal="true" aria-labelledby="notification-title"
+      className="fixed inset-x-3 top-3 bottom-3 z-[101] flex min-h-0 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl md:inset-x-auto md:left-auto md:right-6 md:top-20 md:bottom-6 md:w-[420px] md:max-h-[640px]">
+      <div className="shrink-0 border-b border-slate-100 bg-gradient-to-br from-teal-50 via-white to-blue-50 px-4 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-2xl bg-teal-100 p-2.5 text-teal-800"><Bell size={19} /></div>
+            <div className="min-w-0"><h2 id="notification-title" className="font-bold text-slate-900">Your notifications</h2>
+              <p className="truncate text-xs text-slate-500">{currentUser.name} · {currentUser.role} workspace</p></div>
           </div>
-
-          {/* Admin Switcher Dropdown */}
-          {isAdmin && isEmployeeDropdownOpen && (
-            <div className="mt-2 bg-white border border-slate-200 rounded-xl shadow-lg p-1 max-h-52 overflow-y-auto z-50 animate-in fade-in">
-              <button
-                onClick={() => {
-                  setSelectedUserId(currentUser?.id || 'me');
-                  setIsEmployeeDropdownOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                  activeTargetUserId === currentUser?.id
-                    ? 'bg-blue-50 text-blue-800 font-bold'
-                    : 'text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                <span className="flex items-center gap-1.5">
-                  <ShieldAlert className="w-3.5 h-3.5 text-blue-600" />
-                  My Admin Alerts
-                </span>
-                {activeTargetUserId === currentUser?.id && (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                )}
-              </button>
-
-              <button
-                onClick={() => {
-                  setSelectedUserId('all');
-                  setIsEmployeeDropdownOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                  activeTargetUserId === 'all'
-                    ? 'bg-blue-50 text-blue-800 font-bold'
-                    : 'text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                <span className="flex items-center gap-1.5">
-                  <Inbox className="w-3.5 h-3.5 text-indigo-600" />
-                  All Employees
-                </span>
-                {activeTargetUserId === 'all' && (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                )}
-              </button>
-
-              <div className="h-px bg-slate-100 my-1" />
-
-              {users
-                .filter((u) => u.id !== currentUser?.id)
-                .map((emp) => (
-                  <button
-                    key={emp.id}
-                    onClick={() => {
-                      setSelectedUserId(emp.id);
-                      setIsEmployeeDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                      activeTargetUserId === emp.id
-                        ? 'bg-blue-50 text-blue-800 font-bold'
-                        : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 truncate">
-                      <UserCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{emp.name}</span>
-                    </div>
-                  </button>
-                ))}
-            </div>
-          )}
+          <button data-close-notifications type="button" onClick={onClose} aria-label="Close notifications" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-white focus-visible:ring-2 focus-visible:ring-teal-500"><X size={18} /></button>
         </div>
-
-        {/* Clean Category Tabs */}
-        <div className="p-2 bg-slate-50/50 backdrop-blur-md border-b border-slate-100 flex items-center justify-around shrink-0">
-          {[
-            { id: 'important', label: 'Important', count: categoryCounts.important },
-            { id: 'unread', label: 'Unread', count: activeUnreadCount },
-            { id: 'all', label: 'All', count: categoryCounts.all },
-          ].map((tab) => {
-            const isSelected = selectedCategory === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setSelectedCategory(tab.id as any)}
-                className={`flex-1 py-1.5 px-2 mx-1 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ${
-                  isSelected
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                    : 'bg-white text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200/80 shadow-2xs'
-                }`}
-              >
-                <span>{tab.label}</span>
-                <span
-                  className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
-                    isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400'
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Notification Cards List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-white min-h-0">
-          {displayedNotifications.length === 0 ? (
-            /* Simple Empty State */
-            <div className="py-12 px-4 flex flex-col items-center justify-center text-center">
-              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-2.5">
-                <Bell className="w-6 h-6 text-slate-400" />
-              </div>
-              <h4 className="text-sm font-semibold text-slate-800">No notifications</h4>
-              <p className="text-xs text-slate-500 mt-1 max-w-[220px]">
-                You are all caught up! There are no alerts in this category.
-              </p>
-            </div>
-          ) : (
-            displayedNotifications.map((n) => {
-              const isSales = n.category === 'sales' || n.amount;
-              const isLeads = n.category === 'leads';
-
-              let IconComp: any = CheckCircle2;
-              let iconColor = 'bg-emerald-50 text-emerald-600';
-
-              if (isSales) {
-                IconComp = DollarSign;
-                iconColor = 'bg-emerald-50 text-emerald-600';
-              } else if (isLeads) {
-                IconComp = User;
-                iconColor = 'bg-blue-50 text-blue-600';
-              } else {
-                IconComp = Clock;
-                iconColor = 'bg-slate-100 text-slate-600';
-              }
-
-              return (
-                <div
-                  key={n.id}
-                  onClick={() => handleNotificationClick(n)}
-                  className={`group relative p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                    n.is_read
-                      ? 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-xs'
-                      : 'bg-gradient-to-br from-blue-50/50 to-indigo-50/30 border-blue-200/60 shadow-sm hover:shadow-md'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Left Icon Badge */}
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
-                        n.is_read ? iconColor : 'bg-blue-600 text-white shadow-blue-500/30'
-                      }`}
-                    >
-                      <IconComp className="w-4 h-4" />
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <h4
-                          className={`text-xs leading-snug truncate ${
-                            n.is_read ? 'text-slate-700 font-semibold' : 'text-slate-900 font-black'
-                          }`}
-                        >
-                          {n.title}
-                        </h4>
-                        <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap shrink-0">
-                          {formatRelativeTime(n.created_at)}
-                        </span>
-                      </div>
-
-                      <p className={`text-[11px] mt-0.5 leading-relaxed break-words ${n.is_read ? 'text-slate-500' : 'text-slate-700 font-medium'}`}>
-                        {n.message}
-                      </p>
-
-                      {/* Simple Meta Tags */}
-                      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-                        {n.amount && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black font-mono bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            ₹{Number(n.amount).toLocaleString('en-IN')}
-                            {n.share_percentage ? ` (${n.share_percentage}%)` : ''}
-                          </span>
-                        )}
-
-                        {n.client_name && (
-                          <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                            {n.client_name}
-                          </span>
-                        )}
-
-                        {n.action_label && (
-                          <span className="inline-flex items-center gap-0.5 ml-auto text-[10px] font-black text-blue-600 hover:text-blue-700">
-                            {n.action_label}
-                            <ArrowRight className="w-3 h-3" />
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Unread indicator / delete */}
-                    <div className="flex flex-col items-center gap-2 shrink-0">
-                      {!n.is_read && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-blue-600 ring-4 ring-blue-100 animate-pulse" />
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteNotification(n.id);
-                        }}
-                        title="Dismiss"
-                        className="p-1.5 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-all cursor-pointer"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Clean Footer */}
-        <div className="px-4 py-2.5 pb-4 md:pb-2.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs text-slate-500 shrink-0">
-          <span>{displayedNotifications.length} notifications</span>
-
-          <div className="flex items-center gap-2">
-            {activeUnreadCount > 0 && (
-              <button
-                type="button"
-                onClick={handleMarkAllRead}
-                className="text-xs text-blue-600 hover:text-blue-700 font-semibold cursor-pointer"
-              >
-                Mark all read
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="md:hidden px-2.5 py-0.5 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 hover:bg-slate-50 active:scale-95 transition-all"
-            >
-              Close
-            </button>
-          </div>
+        <div className="mt-4 flex items-center justify-between gap-2">
+          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-teal-800" aria-live="polite">{unread} unread</span>
+          <button type="button" disabled={!unread} onClick={() => markAllNotificationsRead(currentUser.id)} className="flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-teal-700 hover:bg-teal-50 disabled:opacity-40"><CheckCheck size={15} /> Mark all read</button>
         </div>
       </div>
-    </>,
-    document.body
-  );
+      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-100 p-2" aria-label="Notification filters">
+        {tabs.map(tab => <button key={tab.id} type="button" aria-pressed={filter === tab.id} onClick={() => setFilter(tab.id)} className={`min-h-10 flex-1 whitespace-nowrap rounded-xl px-2.5 text-xs font-semibold transition-colors ${filter === tab.id ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>{tab.label}</button>)}
+      </div>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-slate-50/50 p-3">
+        {!displayed.length ? <div className="px-4 py-12 text-center"><Inbox size={32} className="mx-auto mb-3 text-teal-600" />
+          <h3 className="text-sm font-semibold text-slate-800">{filter === 'unread' ? 'You’re all caught up' : 'No updates here yet'}</h3>
+          <p className="mx-auto mt-2 max-w-64 text-xs leading-relaxed text-slate-500">Payment, account and assignment updates for your login will appear here.</p>
+        </div> : displayed.map(item => <article key={item.id} className={`overflow-hidden rounded-2xl border bg-white ${item.is_read ? 'border-slate-200' : 'border-teal-200 shadow-sm'}`}>
+          <button type="button" onClick={() => openNotification(item)} className="w-full p-3.5 text-left hover:bg-teal-50/40 focus-visible:outline-teal-600">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${item.is_read ? 'text-slate-400' : 'text-teal-700'}`}>{item.is_read ? <CheckCircle2 size={12} /> : <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />}{item.category || 'Account'}</span>
+              <time dateTime={item.created_at} className="flex items-center gap-1 whitespace-nowrap text-[10px] text-slate-400"><Clock size={11} />{relativeTime(item.created_at)}</time>
+            </div>
+            <h3 className="break-words text-sm font-semibold text-slate-900">{item.title}</h3>
+            <p className="mt-1 break-words text-xs leading-relaxed text-slate-500">{item.message}</p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              {item.amount !== undefined && <span className="rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">₹{Number(item.amount).toLocaleString('en-IN')}</span>}
+              {item.action_tab && canAccessTab(currentUser.role, item.action_tab) && <span className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700">{item.action_label || 'Open'}<ArrowUpRight size={13} /></span>}
+            </div>
+          </button>
+          <div className="flex items-center justify-between border-t border-slate-100 px-2">
+            <button type="button" onClick={() => markNotificationRead(item.id, !item.is_read)} className="min-h-10 rounded-lg px-2 text-[11px] font-medium text-slate-500 hover:text-teal-700">{item.is_read ? 'Mark unread' : 'Mark read'}</button>
+            <button type="button" onClick={() => deleteNotification(item.id)} aria-label={`Dismiss ${item.title}`} className="flex min-h-10 items-center gap-1 rounded-lg px-2 text-[11px] text-slate-400 hover:text-rose-600"><X size={12} />Dismiss</button>
+          </div>
+        </article>)}
+      </div>
+      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400"><span>Only updates for your account</span>
+        <button type="button" disabled={!own.length} onClick={() => clearAllNotifications(currentUser.id)} className="min-h-10 px-2 font-semibold hover:text-rose-600 disabled:opacity-40">Dismiss all</button>
+      </div>
+    </div>
+  </>, document.body);
 };

@@ -35,7 +35,7 @@ globalThis.window = { location: { search: '' } };
 async function loadComponent(path, isApp = false) {
   let source = await readFile(new URL(path, import.meta.url), 'utf8');
   source = source.replace(/^import\s+([\s\S]+?)\s+from\s+['"](.+?)['"];?$/gm, (_line, names, module) => {
-    if (module === 'react') return 'const React = globalThis.loginFixture.React; const {useState,useEffect} = React;';
+    if (module === 'react') return 'const React = globalThis.loginFixture.React; const {useState,useEffect,useRef} = React;';
     const named = [...names.matchAll(/\b[A-Za-z][A-Za-z0-9_]*\b/g)].map(match => match[0]);
     return named.map(name => {
       if (name === 'useAuth') return `const useAuth = globalThis.loginFixture.useAuth;`;

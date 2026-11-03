@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   User,
   UserRole,
@@ -36,6 +36,7 @@ import {
   INITIAL_ATTENDANCE_LOGS,
 } from '../lib/mockData';
 import { ownsPayment } from '../lib/accessControl';
+import { accountNotificationFeed, buildAccountNotifications } from '../lib/notificationService';
 import { saveAuthPassword } from '../lib/passwordService';
 import { getAccountAccessIssue } from '../lib/accountAccess';
 import { normalizeLoginIdentifier, isLoginIdentifier } from '../lib/loginIdentifier';
@@ -119,7 +120,7 @@ interface AuthContextType {
   deletePayment: (paymentId: string) => Promise<void>;
   clearAllPayments: () => Promise<void>;
   addExpense: (expenseInput: Omit<Expense, 'id' | 'created_at'>) => void;
-  markNotificationRead: (id: string) => void;
+  markNotificationRead: (id: string, isRead?: boolean) => void;
   markAllNotificationsRead: (userId?: string) => void;
   deleteNotification: (id: string) => void;
   clearAllNotifications: (userId?: string) => void;
@@ -525,82 +526,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Silently handle localStorage write failure
     }
   }, [notifications]);
-
-  const seededUsersRef = useRef<Set<string>>(new Set());
-
-  // Seed helpful sample notifications for active user if empty (only once per session)
-  useEffect(() => {
-    if (!currentUser) return;
-    if (seededUsersRef.current.has(currentUser.id)) return;
-    seededUsersRef.current.add(currentUser.id);
-
-    const userNotifs = notifications.filter((n) => n.user_id === currentUser.id);
-    if (userNotifs.length === 0) {
-      const now = new Date();
-      const subMins = (m: number) => new Date(now.getTime() - m * 60 * 1000).toISOString();
-      const subHours = (h: number) => new Date(now.getTime() - h * 60 * 60 * 1000).toISOString();
-
-      const sampleNotifs: NotificationItem[] = [
-        {
-          id: `sample-${currentUser.id}-1`,
-          user_id: currentUser.id,
-          user_name: currentUser.name,
-          title: 'Payment Credited',
-          message: 'Payment proof of ₹25,000 for client Rahul Sharma verified. Your 10% commission share of ₹2,500 has been credited.',
-          type: 'success',
-          category: 'sales',
-          amount: 2500,
-          share_percentage: 10,
-          client_name: 'Rahul Sharma',
-          action_tab: 'employee-dashboard',
-          action_label: 'View Credit',
-          is_read: false,
-          created_at: subMins(12),
-        },
-        {
-          id: `sample-${currentUser.id}-2`,
-          user_id: currentUser.id,
-          user_name: currentUser.name,
-          title: 'New Lead Assigned',
-          message: 'High-intent trader lead Priya Patel (₹5,00,000 capital) assigned to your desk for onboarding.',
-          type: 'info',
-          category: 'leads',
-          client_name: 'Priya Patel',
-          action_tab: 'employee-dashboard',
-          action_label: 'View Lead',
-          is_read: false,
-          created_at: subHours(1),
-        },
-        {
-          id: `sample-${currentUser.id}-3`,
-          user_id: currentUser.id,
-          user_name: currentUser.name,
-          title: 'Target Milestone Reached',
-          message: 'Trader Vikram Malhotra achieved daily profit target with 4 winning trades today.',
-          type: 'success',
-          category: 'sales',
-          client_name: 'Vikram Malhotra',
-          action_tab: 'active-traders',
-          action_label: 'View Trader',
-          is_read: true,
-          created_at: subHours(3),
-        },
-        {
-          id: `sample-${currentUser.id}-4`,
-          user_id: currentUser.id,
-          user_name: currentUser.name,
-          title: 'Daily Attendance Recorded',
-          message: 'Morning shift login recorded at 09:15 AM. Status is marked Online.',
-          type: 'info',
-          category: 'system',
-          is_read: true,
-          created_at: subHours(5),
-        },
-      ];
-
-      setNotifications((prev) => [...sampleNotifs, ...prev]);
-    }
-  }, [currentUser]);
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
@@ -3661,22 +3586,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const markNotificationRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-  };
+  const accountNotifications = useMemo(() => accountNotificationFeed(
+    currentUser, buildAccountNotifications(currentUser, payments, leads, users), notifications
+  ), [currentUser, payments, leads, users, notifications]);
 
+  const saveNotificationState = (items: NotificationItem[]) => {
+    const updates = new Map(items.map(n => [n.id, n]));
+    setNotifications(prev => [...prev.filter(n => n.user_id !== currentUser?.id || !updates.has(n.id)), ...items]);
+  };
+  const markNotificationRead = (id: string, isRead = true) => {
+    const item = accountNotifications.find(n => n.id === id);
+    if (item) saveNotificationState([{ ...item, is_read: isRead }]);
+  };
   const markAllNotificationsRead = (userId?: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (!userId || n.user_id === userId ? { ...n, is_read: true } : n))
-    );
+    if (userId && userId !== currentUser?.id) return;
+    saveNotificationState(accountNotifications.map(n => ({ ...n, is_read: true })));
   };
-
   const deleteNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    const item = accountNotifications.find(n => n.id === id);
+    if (item) saveNotificationState([{ ...item, dismissed_at: new Date().toISOString() }]);
   };
-
   const clearAllNotifications = (userId?: string) => {
-    setNotifications((prev) => (userId ? prev.filter((n) => n.user_id !== userId) : []));
+    if (userId && userId !== currentUser?.id) return;
+    saveNotificationState(accountNotifications.map(n => ({ ...n, dismissed_at: new Date().toISOString() })));
   };
 
   const isAdmin = currentUser?.role === 'admin';
@@ -3711,7 +3643,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addManagerAdvance,
         updateManagerAdvance,
         deleteManagerAdvance,
-        notifications: notifications.filter(n => n.user_id === selfId),
+        notifications: accountNotifications,
         auditLogs: isAdmin ? auditLogs : [],
         filters,
         setFilters,

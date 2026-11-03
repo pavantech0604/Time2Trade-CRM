@@ -276,6 +276,7 @@ export interface NotificationItem {
   type: 'info' | 'success' | 'warning' | 'danger';
   category?: NotificationCategory;
   is_read: boolean;
+  dismissed_at?: string;
   link_path?: string;
   action_tab?: string;
   action_label?: string;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Building2,
   Lock,
@@ -14,7 +14,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { BackgroundEffects } from '../common/BackgroundEffects';
+import { AuthShell } from './AuthShell';
 
 interface SignupPageProps {
   onNavigateToLogin: () => void;
@@ -37,6 +37,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({
 
   const [localLoading, setLocalLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (errorMsg) { errorRef.current?.focus(); errorRef.current?.scrollIntoView({ block: 'nearest' }); } }, [errorMsg]);
 
   // Password strength calculation
   const getPasswordStrength = (pass: string) => {
@@ -97,17 +99,9 @@ export const SignupPage: React.FC<SignupPageProps> = ({
   const isLoading = localLoading || authLoading;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex items-center justify-center p-4 sm:p-6 font-sans relative overflow-hidden">
-      <BackgroundEffects />
-
-      <div className="max-w-md w-full relative z-10 space-y-6 animate-fade-in">
-        {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <img src="/logo-tight.png" alt="Time2Trade Logo" className="w-56 h-auto object-contain mx-auto mb-1 drop-shadow-md" />
-        </div>
-
+    <AuthShell mode="signup">
         {/* Card Form */}
-        <div className="bg-white/95 backdrop-blur-xl border border-[#0ea5e9]/20 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-[#312e81]/10 space-y-6">
+        <div className="auth-card">
           <div className="space-y-1 text-center sm:text-left">
             <h2 className="text-lg font-bold text-[#312e81]">Create Employee Account</h2>
             <p className="text-xs text-slate-500">
@@ -116,21 +110,23 @@ export const SignupPage: React.FC<SignupPageProps> = ({
           </div>
 
           {errorMsg && (
-            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-800 text-xs flex items-start gap-2.5">
+            <div role="alert" ref={errorRef} tabIndex={-1} className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-800 text-xs flex items-start gap-2.5">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               <div className="font-medium leading-relaxed">{errorMsg}</div>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
             {/* Full Name */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 block font-mono uppercase">
+              <label htmlFor="signup-name" className="text-xs font-semibold text-slate-600 block font-mono uppercase">
                 Full Name *
               </label>
               <div className="relative group">
                 <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-[#0ea5e9] transition-colors" />
                 <input
+                  id="signup-name"
+                  autoComplete="name"
                   type="text"
                   required
                   value={fullName}
@@ -143,12 +139,14 @@ export const SignupPage: React.FC<SignupPageProps> = ({
 
             {/* Email Address */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 block font-mono uppercase">
-                Email Address (Gmail / Corporate) *
+              <label htmlFor="signup-email" className="text-xs font-semibold text-slate-600 block font-mono uppercase">
+                Login Email *
               </label>
               <div className="relative group">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-[#0ea5e9] transition-colors" />
                 <input
+                  id="signup-email"
+                  autoComplete="email"
                   type="email"
                   required
                   value={email}
@@ -160,13 +158,15 @@ export const SignupPage: React.FC<SignupPageProps> = ({
             </div>
 
             {/* Phone Number */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 block font-mono uppercase">
+            <div className="space-y-1.5 sm:col-span-2">
+              <label htmlFor="signup-phone" className="text-xs font-semibold text-slate-600 block font-mono uppercase">
                 Contact Phone (Optional)
               </label>
               <div className="relative group">
                 <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-[#0ea5e9] transition-colors" />
                 <input
+                  id="signup-phone"
+                  autoComplete="tel"
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -178,12 +178,14 @@ export const SignupPage: React.FC<SignupPageProps> = ({
 
             {/* Password */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 block font-mono uppercase">
+              <label htmlFor="signup-password" className="text-xs font-semibold text-slate-600 block font-mono uppercase">
                 Create Password *
               </label>
               <div className="relative group">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-[#0ea5e9] transition-colors" />
                 <input
+                  id="signup-password"
+                  autoComplete="new-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
@@ -193,6 +195,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({
                 />
                 <button
                   type="button"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
                 >
@@ -218,12 +221,14 @@ export const SignupPage: React.FC<SignupPageProps> = ({
 
             {/* Confirm Password */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 block font-mono uppercase">
+              <label htmlFor="signup-confirm" className="text-xs font-semibold text-slate-600 block font-mono uppercase">
                 Confirm Password *
               </label>
               <div className="relative group">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-[#0ea5e9] transition-colors" />
                 <input
+                  id="signup-confirm"
+                  autoComplete="new-password"
                   type={showConfirmPassword ? 'text' : 'password'}
                   required
                   value={confirmPassword}
@@ -233,6 +238,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({
                 />
                 <button
                   type="button"
+                  aria-label={showConfirmPassword ? "Hide confirmed password" : "Show confirmed password"}
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
                 >
@@ -244,7 +250,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 px-4 bg-[#312e81] border border-[#0ea5e9]/35 hover:bg-[#28256a] hover:border-[#0ea5e9] text-white font-bold text-xs rounded-xl shadow-lg shadow-[#312e81]/15 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-4"
+              className="sm:col-span-2 w-full py-3 px-4 bg-[#312e81] border border-[#0ea5e9]/35 hover:bg-[#28256a] hover:border-[#0ea5e9] text-white font-bold text-xs rounded-xl shadow-lg shadow-[#312e81]/15 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-4"
             >
               {isLoading ? (
                 <>
@@ -275,12 +281,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({
           </div>
         </div>
 
-        {/* Security Footer Notice */}
-        <div className="flex items-center justify-center gap-2 text-slate-400 text-[11px] font-mono">
-          <ShieldCheck className="w-3.5 h-3.5 text-[#0ea5e9]" />
-          <span>Role Assigned Post-Approval • Cryptographically Verified</span>
-        </div>
-      </div>
-    </div>
+    </AuthShell>
   );
 };
