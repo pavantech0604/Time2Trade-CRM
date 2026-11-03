@@ -38,6 +38,7 @@ import {
 import { ownsPayment } from '../lib/accessControl';
 import { saveAuthPassword } from '../lib/passwordService';
 import { getAccountAccessIssue } from '../lib/accountAccess';
+import { normalizeLoginIdentifier, isLoginIdentifier } from '../lib/loginIdentifier';
 import { calculateTraderStreak } from '../lib/calculations';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { dispatchDeletePaymentFromGoogleSheets } from '../lib/googleSheets';
@@ -248,7 +249,7 @@ export const normalizeUserRole = (u: User): User => {
     office_phone: u.office_phone || u.office_number || '',
     office_number: u.office_number || u.office_phone || '',
     blood_group: u.blood_group || '',
-    manager_id: u.manager_id || (u.role === 'employee' ? '10000000-0000-0000-0000-000000000001' : undefined),
+    manager_id: u.manager_id || (u.role === 'employee' ? 'a8e3c034-b564-418e-85ce-ffd03d7a20ba' : undefined),
     manager_name: u.manager_name || (u.role === 'employee' ? 'Karthik Muni' : (u.manager_id ? 'Assigned Manager' : undefined)),
     joining_date: u.joining_date || (u.created_at ? u.created_at.split('T')[0] : '2026-01-01'),
     employee_code: u.employee_code
@@ -954,7 +955,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                 const fallbackEmpId = (p.employee_id && isValidUUID(p.employee_id))
                   ? p.employee_id
-                  : (userList.find((u) => isValidUUID(u.id))?.id || '10000000-0000-0000-0000-000000000001');
+                  : (userList.find((u) => isValidUUID(u.id))?.id || 'a8e3c034-b564-418e-85ce-ffd03d7a20ba');
 
                 let joinDate = new Date().toISOString().split('T')[0];
                 if (typeof p.transaction_time === 'string' && p.transaction_time.includes('T')) {
@@ -1639,31 +1640,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
 
     try {
-      const cleanedInput = emailInput.trim().replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\u00A0/g, ' ');
-      let normalizedEmail = cleanedInput.toLowerCase();
-
-      // Resolve username/alias without domain (e.g. 'karthik' -> 'karthik@time2trade.com')
-      if (!normalizedEmail.includes('@') && normalizedEmail.length > 0) {
-        const matched = users.find(
-          (u) =>
-            u.email.toLowerCase().split('@')[0] === normalizedEmail ||
-            u.name.toLowerCase() === normalizedEmail
-        );
-        if (matched?.email) {
-          normalizedEmail = matched.email.toLowerCase();
-        } else {
-          normalizedEmail = `${normalizedEmail}@time2trade.com`;
-        }
-      } else if (normalizedEmail.endsWith('@time2trade')) {
-        normalizedEmail = `${normalizedEmail}.com`;
+      const normalizedEmail = normalizeLoginIdentifier(emailInput);
+      if (!isLoginIdentifier(normalizedEmail)) {
+        setLoading(false);
+        return { success: false, status: 'error', message: 'Enter your registered login email.' };
       }
 
       let authenticatedUser: User | null = null;
       let lastAuthError: string | null = null;
 
       // Check standard email format to avoid Supabase GoTrue 422 (Unprocessable Content)
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const isValidEmailFormat = emailRegex.test(normalizedEmail);
+      const isValidEmailFormat = isLoginIdentifier(normalizedEmail);
 
       // 1. Authenticate with Supabase Auth using the user's actual signup password
       if (supabase && isValidEmailFormat) {
@@ -2887,7 +2874,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? paymentInput.employee_id
         : currentUser && isValidUUID(currentUser.id)
         ? currentUser.id
-        : validEmp?.id || '10000000-0000-0000-0000-000000000001';
+        : validEmp?.id || 'a8e3c034-b564-418e-85ce-ffd03d7a20ba';
 
       const normalizedServiceType = paymentInput.service_type === 'Future Option' ? 'Option' : (paymentInput.service_type || 'Option');
       const serviceDescription = [
@@ -3393,7 +3380,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? targetPayment.employee_id
           : currentUser && isValidUUID(currentUser.id)
           ? currentUser.id
-          : validEmp?.id || '10000000-0000-0000-0000-000000000001';
+          : validEmp?.id || 'a8e3c034-b564-418e-85ce-ffd03d7a20ba';
 
         const normalizedServiceType = targetPayment.service_type === 'Future Option' ? 'Option' : (targetPayment.service_type || 'Option');
         const serviceDescription = [

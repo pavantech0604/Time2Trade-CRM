@@ -87,7 +87,7 @@ export const EmployeeProfileDrawer: React.FC<EmployeeProfileDrawerProps> = ({
       setBloodGroup(employee.blood_group || 'Unknown');
       setDesignation(employee.designation || 'Relationship Manager');
       setDepartment(employee.department || 'Client Operations & Advisory');
-      setManagerId(employee.manager_id || '10000000-0000-0000-0000-000000000001');
+      setManagerId(employee.manager_id || 'a8e3c034-b564-418e-85ce-ffd03d7a20ba');
       setEmployeeCode(
         employee.employee_code?.startsWith('T2T-')
           ? employee.employee_code

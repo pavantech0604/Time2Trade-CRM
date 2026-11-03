@@ -164,7 +164,7 @@ export function buildStagingRecords(users: User[]): ImportStagingRecord[] {
     // Search for match in existing users
     const matchedUser = users.find((u) => {
       // Karthik manager match
-      if (item.raw_id === 1 && (u.email === 'karthik@time2trade.com' || u.id === '10000000-0000-0000-0000-000000000001')) {
+      if (item.raw_id === 1 && (u.email === 'karthik@time2trade.com' || u.id === 'a8e3c034-b564-418e-85ce-ffd03d7a20ba')) {
         return true;
       }
 
