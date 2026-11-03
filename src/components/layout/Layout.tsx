@@ -12,6 +12,7 @@ import {
   MessageSquare,
   CalendarDays,
 } from 'lucide-react';
+import { canAccessTab } from '../../lib/accessControl';
 import { useAuth } from '../../context/AuthContext';
 import { BackgroundEffects } from '../common/BackgroundEffects';
 
@@ -61,7 +62,7 @@ export const Layout: React.FC<LayoutProps> = ({
         { id: 'employee-management', label: 'Staff', icon: UserCog },
       ];
     }
-    return [...items, { id: 'mobile-menu', label: 'More Menu', icon: Menu }];
+    return [...items.filter(item => canAccessTab(role, item.id)), { id: 'mobile-menu', label: 'More Menu', icon: Menu }];
   };
 
   const mobileNavItems = getMobileNavItems();
@@ -120,6 +121,14 @@ export const Layout: React.FC<LayoutProps> = ({
         
         {/* Responsive padding: mobile-first optimized with bottom navbar offset */}
         <main className="flex-1 p-3 sm:p-5 md:p-6 lg:p-7 pb-24 md:pb-8 max-w-7xl w-full mx-auto space-y-6 overflow-y-auto touch-scroll overscroll-y-contain">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm">
+            <span className="text-xs font-bold text-slate-700">
+              {role === 'admin' ? 'Administrator workspace' : role === 'manager' ? 'Team management workspace' : 'My sales workspace'}
+            </span>
+            <span className="text-xs text-slate-500" title="Access is determined by your account role.">
+              {role === 'admin' ? 'Full access · Expenses & payment approvals' : role === 'manager' ? 'All employees · Profiles & sales' : 'Your sales · Payment submission status'}
+            </span>
+          </div>
           {children}
         </main>
 

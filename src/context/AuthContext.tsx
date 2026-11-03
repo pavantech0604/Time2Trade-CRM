@@ -35,6 +35,7 @@ import {
   INITIAL_USER_PRESENCE,
   INITIAL_ATTENDANCE_LOGS,
 } from '../lib/mockData';
+import { ownsPayment } from '../lib/accessControl';
 import { calculateTraderStreak } from '../lib/calculations';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { dispatchDeletePaymentFromGoogleSheets } from '../lib/googleSheets';
@@ -635,13 +636,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     lastFetchTimeRef.current = now;
     setIsLiveSyncing(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      const { data: viewer } = await supabase.from('users').select('role').eq('id', session.user.id).maybeSingle();
       const [uRes, lRes, tRes, pRes, tdRes, expRes, allocRes, maRes] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('leads').select('*').order('created_at', { ascending: false }),
         supabase.from('active_traders').select('*').order('joined_at', { ascending: false }),
         supabase.from('payments').select('*').order('created_at', { ascending: false }),
         supabase.from('trading_days').select('*').order('trade_date', { ascending: false }),
-        supabase.from('expenses').select('*').order('date', { ascending: false }),
+        viewer?.role === 'admin' ? supabase.from('expenses').select('*').order('date', { ascending: false }) : Promise.resolve({ data: [] }),
         Promise.resolve(supabase.from('payment_allocations').select('*').order('created_at', { ascending: true })).catch(() => ({ data: null })),
         Promise.resolve(supabase.from('manager_advances').select('*').order('date', { ascending: false })).catch(() => ({ data: null })),
       ]);
@@ -1313,6 +1317,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
 
+        if (isSupabaseConfigured) {
+          localStorage.removeItem('time2trade_auth_user');
+          setCurrentUser(null);
+          return;
+        }
+
         // Check local persisted session
         const storedUser = localStorage.getItem('time2trade_auth_user');
         if (storedUser) {
@@ -1694,8 +1704,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 name: authData.user.user_metadata?.full_name || authData.user.email?.split('@')[0] || 'User',
                 email: authData.user.email || normalizedEmail,
                 phone: authData.user.user_metadata?.phone,
-                role: 'admin' as UserRole,
-                is_active: true,
+                role: 'pending' as UserRole,
+                is_active: false,
                 approval_status: 'approved',
                 created_at: authData.user.created_at || new Date().toISOString(),
               };
@@ -1716,7 +1726,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.getItem(`time2trade_must_reset_${normalizedEmail}`) === 'true';
 
       // Fallback for CRM staff/admins when Supabase auth.users account is missing, unconfirmed, or dummy
-      if (!authenticatedUser) {
+      if (!authenticatedUser && !isSupabaseConfigured) {
         // Step A: Search existing loaded users in React state
         let foundStaff = users.find((u) => u.email.toLowerCase() === normalizedEmail);
 
@@ -3394,6 +3404,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const verifyPayment = async (paymentId: string, isApproved: boolean, remarks?: string) => {
+    if (currentUser?.role !== 'admin') throw new Error('Administrator access required.');
     const targetPayment = payments.find((p) => p.id === paymentId);
     if (!targetPayment) return;
 
@@ -3673,6 +3684,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deletePayment = async (paymentId: string) => {
+    if (currentUser?.role !== 'admin') throw new Error('Administrator access required.');
     const target = payments.find((p) => p.id === paymentId);
 
     // Automatically remove from Google Sheets and linked Google Form responses to prevent duplicates
@@ -3725,6 +3737,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const clearAllPayments = async () => {
+    if (currentUser?.role !== 'admin') throw new Error('Administrator access required.');
     setPayments([]);
     setTraders((prev) => prev.filter((t) => isMockId(t.id)));
     try {
@@ -3742,6 +3755,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addExpense = async (expenseInput: Omit<Expense, 'id' | 'created_at'>) => {
+    if (currentUser?.role !== 'admin') throw new Error('Administrator access required.');
     const newExpId = generateUUID();
     const now = new Date().toISOString();
     const newExpense: Expense = {
@@ -3772,6 +3786,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Manager Advance CRUD (admin-only) ──────────────────────────────────────
   const addManagerAdvance = async (advanceInput: Omit<ManagerAdvance, 'id' | 'created_at'>) => {
+    if (currentUser?.role !== 'admin') throw new Error('Administrator access required.');
     const newId = generateUUID();
     const now = new Date().toISOString();
     const mgr = users.find((u) => u.id === advanceInput.manager_id);
@@ -3813,6 +3828,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateManagerAdvance = async (id: string, updates: Partial<ManagerAdvance>) => {
+    if (currentUser?.role !== 'admin') throw new Error('Administrator access required.');
     const now = new Date().toISOString();
     const oldAdvance = managerAdvances.find((a) => a.id === id);
     setManagerAdvances((prev) =>
@@ -3845,6 +3861,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deleteManagerAdvance = async (id: string) => {
+    if (currentUser?.role !== 'admin') throw new Error('Administrator access required.');
     const now = new Date().toISOString();
     const oldAdvance = managerAdvances.find((a) => a.id === id);
     setManagerAdvances((prev) => prev.filter((a) => a.id !== id));
@@ -3887,34 +3904,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setNotifications((prev) => (userId ? prev.filter((n) => n.user_id !== userId) : []));
   };
 
+  const isAdmin = currentUser?.role === 'admin';
+  const isStaffViewer = isAdmin || currentUser?.role === 'manager';
+  const selfId = currentUser?.id;
+  const visibleTraders = isStaffViewer ? traders : traders.filter(t => t.employee_id === selfId);
+  const visiblePayments = isStaffViewer ? payments : payments.filter(p => Boolean(selfId && ownsPayment(p, selfId)));
+
   return (
     <AuthContext.Provider
       value={{
         currentUser,
-        users,
+        users: isAdmin ? users : users.filter(u => u.id === selfId || (currentUser?.role === 'manager' && u.role === 'employee')),
         loading,
         error,
         signup,
         login,
         logout,
         currentPresence,
-        presenceList,
-        attendanceLogs,
+        presenceList: isStaffViewer ? presenceList : presenceList.filter(p => p.user_id === selfId),
+        attendanceLogs: isStaffViewer ? attendanceLogs : attendanceLogs.filter(l => l.user_id === selfId),
         updateUserPresence,
         assignRoleAndApprove,
         rejectEmployee,
         toggleEmployeeActive,
-        leads,
-        traders,
-        tradingDays,
-        payments,
-        expenses,
-        managerAdvances,
+        leads: isStaffViewer ? leads : leads.filter(l => l.assigned_to === selfId),
+        traders: visibleTraders,
+        tradingDays: isStaffViewer ? tradingDays : tradingDays.filter(d => visibleTraders.some(t => t.id === d.trader_id)),
+        payments: visiblePayments,
+        expenses: isAdmin ? expenses : [],
+        managerAdvances: isAdmin ? managerAdvances : managerAdvances.filter(a => currentUser?.role === 'manager' && a.manager_id === selfId),
         addManagerAdvance,
         updateManagerAdvance,
         deleteManagerAdvance,
-        notifications,
-        auditLogs,
+        notifications: notifications.filter(n => n.user_id === selfId),
+        auditLogs: isAdmin ? auditLogs : [],
         filters,
         setFilters,
         setDateFilter,
@@ -3935,7 +3958,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearAllNotifications,
         updateUserAvatar,
         updateUserProfile,
-        clientAssignments,
+        clientAssignments: isStaffViewer ? clientAssignments : clientAssignments.filter(a => a.employee_id === selfId),
         transferClient,
         updateEmployeeManager,
         importApprovedEmployees,
@@ -3947,7 +3970,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toggleDarkMode,
         refreshLivePayments: loadSupabaseData,
         isLiveSyncing,
-        chatMessages,
+        chatMessages: isStaffViewer ? chatMessages : [],
         sendMessage,
         sendCelebrationMessage,
         addMessageReaction,

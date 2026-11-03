@@ -24,6 +24,7 @@ import { PasswordResetModal } from './components/auth/PasswordResetModal';
 import { EmployeeDetailsView } from './components/employeeDetails/EmployeeDetailsView';
 import { EmployeeSelfProfile } from './components/employeeDetails/EmployeeSelfProfile';
 import { Loader2, Building2 } from 'lucide-react';
+import { canAccessTab } from './lib/accessControl';
 
 const getRoleHomeTab = (role?: string) => {
   if (role === 'employee') return 'employee-dashboard';
@@ -107,6 +108,11 @@ const MainApp: React.FC = () => {
   }
 
   const renderContent = () => {
+    if (!canAccessTab(currentUser.role, activeTab)) {
+      if (currentUser.role === 'employee') return <EmployeeDashboard />;
+      if (currentUser.role === 'manager') return <ManagerDashboard />;
+      return <PendingApprovalPage onBackToLogin={() => setAuthView('login')} />;
+    }
     switch (activeTab) {
       // Admin Views
       case 'dashboard':
@@ -197,7 +203,7 @@ const MainApp: React.FC = () => {
       >
         {renderContent()}
       </Layout>
-      <FloatingChatWidget onOpenFullChat={() => setActiveTab('team-chat')} />
+      {canAccessTab(currentUser.role, 'team-chat') && <FloatingChatWidget onOpenFullChat={() => setActiveTab('team-chat')} />}
       {isPasswordResetRequired && <PasswordResetModal />}
     </>
   );

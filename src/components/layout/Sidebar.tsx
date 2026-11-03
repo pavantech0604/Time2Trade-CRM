@@ -17,6 +17,7 @@ import {
   Users,
   UserCheck,
 } from 'lucide-react';
+import { canAccessTab } from '../../lib/accessControl';
 import { useAuth } from '../../context/AuthContext';
 
 interface SidebarProps {
@@ -82,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, class
     ];
   };
 
-  const navItems = getNavItems();
+  const navItems = getNavItems().filter(item => canAccessTab(role, item.id));
 
   return (
     <aside
