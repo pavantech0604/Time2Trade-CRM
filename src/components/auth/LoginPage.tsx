@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BackgroundEffects } from '../common/BackgroundEffects';
+import { EmployeeRecoveryForm } from './EmployeeRecoveryForm';
+import { isEmployeeRecoveryEnabled } from '../../lib/employeeRecovery';
 
 interface LoginPageProps {
   onNavigateToSignup?: () => void;
@@ -30,6 +32,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [localLoading, setLocalLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pendingMsg, setPendingMsg] = useState<string | null>(null);
+  const [recoveryTicket, setRecoveryTicket] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +49,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       const res = await login(email.trim(), password);
 
       if (!res.success) {
+        if (res.status === 'password_reset_required' && res.recoveryToken) {
+          setPassword('');
+          setRecoveryTicket(res.recoveryToken);
+          return;
+        }
         if (res.status === 'pending') {
           setPendingMsg(res.message || 'Your account is pending admin approval.');
         } else {
@@ -108,7 +116,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {recoveryTicket ? <EmployeeRecoveryForm ticket={recoveryTicket}
+            onCancel={() => { setRecoveryTicket(null); setErrorMsg(null); }}
+            onComplete={async newPassword => {
+              const result = await login(email.trim(), newPassword);
+              if (!result.success) {
+                setRecoveryTicket(null);
+                setErrorMsg(`Your password was saved. ${result.message || 'Sign in with your new password.'}`);
+              }
+            }} /> : <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="login-email" className="text-xs font-semibold text-slate-600 block font-mono uppercase">
                 Login Email
@@ -133,6 +149,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <p id="login-email-help" className="text-[11px] text-slate-500">
                 Use the email assigned to your account, including internal staff login addresses.
               </p>
+              {isEmployeeRecoveryEnabled && <p className="text-[11px] text-blue-700">
+                Forgot your password? Enter your employee email and the shared recovery code provided by your administrator. You will choose a new password before signing in.
+              </p>}
             </div>
 
             <div className="space-y-1.5">
@@ -184,7 +203,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </>
               )}
             </button>
-          </form>
+          </form>}
 
           {/* New Employee Signup Link */}
           {onNavigateToSignup && (

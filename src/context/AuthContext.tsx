@@ -39,6 +39,7 @@ import { ownsPayment } from '../lib/accessControl';
 import { saveAuthPassword } from '../lib/passwordService';
 import { getAccountAccessIssue } from '../lib/accountAccess';
 import { normalizeLoginIdentifier, isLoginIdentifier } from '../lib/loginIdentifier';
+import { employeeRecovery, isEmployeeRecoveryEnabled } from '../lib/employeeRecovery';
 import { calculateTraderStreak } from '../lib/calculations';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { dispatchDeletePaymentFromGoogleSheets } from '../lib/googleSheets';
@@ -46,8 +47,9 @@ import { buildStagingRecords, normalizePhone } from '../lib/employeeImportData';
 
 interface AuthResponse {
   success: boolean;
-  status?: 'approved' | 'pending' | 'rejected' | 'disabled' | 'error';
+  status?: 'approved' | 'pending' | 'rejected' | 'disabled' | 'error' | 'password_reset_required';
   message?: string;
+  recoveryToken?: string;
 }
 
 interface AuthContextType {
@@ -1648,6 +1650,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let authenticatedUser: User | null = null;
       let lastAuthError: string | null = null;
+      let recoveryMessage: string | undefined;
+
+      if (isEmployeeRecoveryEnabled) {
+        const recovery = await employeeRecovery({ action: 'start', email: normalizedEmail, password: passwordInput });
+        if (recovery.success && recovery.recoveryToken) {
+          setLoading(false);
+          return { success: false, status: 'password_reset_required', recoveryToken: recovery.recoveryToken };
+        }
+        recoveryMessage = recovery.message;
+      }
 
       // Check standard email format to avoid Supabase GoTrue 422 (Unprocessable Content)
       const isValidEmailFormat = isLoginIdentifier(normalizedEmail);
@@ -1662,7 +1674,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (authError) {
             lastAuthError = authError.code === 'invalid_credentials'
-              ? 'The email or password was not accepted. Use your existing Supabase password; ask an administrator to run the employee login audit if it still fails.'
+              ? recoveryMessage || 'The email or password was not accepted. Use your existing Supabase password; ask an administrator to run the employee login audit if it still fails.'
               : authError.code === 'email_not_confirmed'
               ? 'Your login needs administrator confirmation. Ask an administrator to run the employee account repair; a working mailbox is not required.'
               : authError.message;
