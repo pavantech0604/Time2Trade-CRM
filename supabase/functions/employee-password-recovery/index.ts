@@ -41,9 +41,11 @@ Deno.serve(async (request: Request) => {
       });
       if (limitError) return reply({ success: false, message: 'Employee recovery is unavailable. Contact an administrator.' });
       if (!allowed) return reply({ success: false, message: 'Recovery attempt limit reached. Wait 15 minutes or contact an administrator.' });
-      if (!await sameSecret(password, recoverySecret)) return reply({ success: false });
+      if (!await sameSecret(password.trim(), recoverySecret)) return reply({ success: false });
+      // Match the login email without interpreting email characters as SQL wildcards.
+      const emailPattern = email.replace(/[\\%_]/g, '\\$&');
       const { data: profile, error } = await admin.from('users')
-        .select('id,email,role,is_active,approval_status').eq('email', email).maybeSingle();
+        .select('id,email,role,is_active,approval_status').ilike('email', emailPattern).maybeSingle();
       if (error || profile?.role !== 'employee' || !profile.is_active || profile.approval_status !== 'approved') {
         return reply({ success: false, message: 'Recovery is available only for approved employee accounts. Contact an administrator.' });
       }
@@ -61,7 +63,7 @@ Deno.serve(async (request: Request) => {
       });
       if (ticketError) return reply({ success: false, message: 'Recovery could not be started. Contact an administrator.' });
       // No Auth session or employee records are returned to this caller.
-      return reply({ success: true, recoveryToken: ticket, expiresAt });
+      return reply({ success: true, recoveryToken: ticket, expiresAt, expiresInSeconds: 300 });
     }
 
     if (body.action === 'finish') {
@@ -69,11 +71,12 @@ Deno.serve(async (request: Request) => {
           typeof body.newPassword !== 'string' || body.newPassword.length < 8 || body.newPassword.length > 128) {
         return reply({ success: false, message: 'Enter a new password with 8–128 characters.' });
       }
-      if (await sameSecret(body.newPassword, recoverySecret)) {
+      if (await sameSecret(body.newPassword.trim(), recoverySecret)) {
         return reply({ success: false, message: 'Choose a personal password different from the shared recovery code.' });
       }
+      const ticketHash = await digest(body.ticket);
       const { data: userId, error: ticketError } = await admin.rpc('crm_consume_employee_recovery', {
-        ticket_digest: await digest(body.ticket),
+        ticket_digest: ticketHash,
       });
       if (ticketError || !userId) return reply({ success: false, restart: true, message: 'This reset request expired or was already used. Start recovery again.' });
       // Recheck eligibility and the Auth ban immediately before changing anything.
@@ -88,7 +91,16 @@ Deno.serve(async (request: Request) => {
       const { error: updateError } = await admin.auth.admin.updateUserById(userId, {
         password: body.newPassword, email_confirm: true,
       });
-      if (updateError) return reply({ success: false, restart: true, message: `${updateError.message} Start recovery again to retry.` });
+      if (updateError) {
+        if (updateError.code === 'weak_password' || updateError.code === 'same_password') {
+          // Auth rejected the password without saving it. Allow a corrected submission.
+          const { error: reopenError } = await admin.from('employee_recovery_tickets')
+            .update({ consumed_at: null }).eq('token_hash', ticketHash).eq('user_id', userId)
+            .gt('expires_at', new Date().toISOString());
+          if (!reopenError) return reply({ success: false, message: updateError.message });
+        }
+        return reply({ success: false, restart: true, message: `${updateError.message} Start recovery again to retry.` });
+      }
       await admin.from('users').update({ must_reset_password: false }).eq('id', userId);
       return reply({ success: true, userId, email: profile.email });
     }

@@ -12,6 +12,10 @@ export async function employeeRecovery(body: Record<string, string>): Promise<{
   }
   const { data, error } = await supabase.functions.invoke('employee-password-recovery', { body });
   if (error) return { success: false, message: 'Employee recovery is unavailable. Contact an administrator.' };
+  if (body.action === 'start' && data?.success && typeof data.expiresInSeconds === 'number') {
+    // Use the server's lifetime instead of comparing two machines' clocks.
+    data.expiresAt = new Date(Date.now() + data.expiresInSeconds * 1000).toISOString();
+  }
   if (body.action === 'finish' && data?.success && data.userId && data.email) {
     // Clear only the recovered employee's legacy reset markers after Auth saved
     // the new password, so they are not prompted to reset a second time.
