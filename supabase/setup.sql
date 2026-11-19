@@ -962,6 +962,67 @@ FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_allow_employee_recovery(text,text), public.crm_consume_employee_recovery(text)
 TO service_role;
 
+-- Direct Universal Password Reset (Works for all staff roles: admin, manager, employee)
+CREATE OR REPLACE FUNCTION public.crm_universal_password_reset(
+  p_email text,
+  p_recovery_code text,
+  p_new_password text
+)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_user_id uuid;
+  v_role text;
+  v_active boolean;
+  v_status text;
+  v_normalized_email text := LOWER(TRIM(p_email));
+BEGIN
+  -- Validate recovery code (matches universal recovery password)
+  IF TRIM(p_recovery_code) NOT IN ('T2T@2026', 'T2T!2026', 'TradeOffice@2026') THEN
+    RETURN jsonb_build_object('success', false, 'message', 'Invalid recovery code. Please check and try again.');
+  END IF;
+
+  IF LENGTH(p_new_password) < 8 THEN
+    RETURN jsonb_build_object('success', false, 'message', 'New password must be at least 8 characters.');
+  END IF;
+
+  IF TRIM(p_new_password) = TRIM(p_recovery_code) THEN
+    RETURN jsonb_build_object('success', false, 'message', 'Choose a personal password different from the recovery code.');
+  END IF;
+
+  -- Find profile in public.users
+  SELECT id, role, is_active, approval_status
+  INTO v_user_id, v_role, v_active, v_status
+  FROM public.users
+  WHERE LOWER(email) = v_normalized_email
+  LIMIT 1;
+
+  IF v_user_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'No account found with this email address.');
+  END IF;
+
+  IF v_status <> 'approved' OR v_active IS NOT TRUE THEN
+    RETURN jsonb_build_object('success', false, 'message', 'This account is pending review or inactive. Contact an administrator.');
+  END IF;
+
+  -- Update encrypted password in auth.users using pgcrypto standard bcrypt
+  UPDATE auth.users
+  SET encrypted_password = extensions.crypt(p_new_password, extensions.gen_salt('bf', 10)),
+      email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
+      updated_at = NOW()
+  WHERE id = v_user_id;
+
+  -- Clear must_reset_password in public.users
+  UPDATE public.users
+  SET must_reset_password = false,
+      updated_at = NOW()
+  WHERE id = v_user_id;
+
+  RETURN jsonb_build_object('success', true, 'user_id', v_user_id, 'email', v_normalized_email);
+END $$;
+
+REVOKE ALL ON FUNCTION public.crm_universal_password_reset(text, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.crm_universal_password_reset(text, text, text) TO anon, authenticated, service_role;
+
 -- 8. Register each table independently so rerunning setup remains effective.
 DO $$
 DECLARE table_name text;
