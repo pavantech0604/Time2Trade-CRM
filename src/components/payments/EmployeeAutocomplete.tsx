@@ -30,57 +30,84 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastFetchTimestampRef = useRef<number>(0);
 
-  // Query Supabase directly for active, approved staff members to guarantee
-  // all colleagues are always present in the autocomplete candidate pool.
-  useEffect(() => {
-    let isMounted = true;
-    (async () => {
-      if (!supabase) return;
-      try {
-        setIsLoadingFallback(true);
-        // 1. Try direct security-definer staff directory RPC first
-        const { data: rpcData, error: rpcError } = await supabase.rpc('get_active_staff_directory');
-        if (!rpcError && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
-          if (isMounted) setFallbackUsers(rpcData as User[]);
-          return;
-        }
-
-        // 2. Fallback to direct table query
-        const { data: tableData } = await supabase
-          .from('users')
-          .select('id, name, email, phone, role, employee_code, designation, department, avatar_url, is_active, approval_status');
-        if (tableData && Array.isArray(tableData) && isMounted) {
-          setFallbackUsers(tableData as User[]);
-        }
-      } catch {
-        // ignore
-      } finally {
-        if (isMounted) setIsLoadingFallback(false);
+  // High-reliability staff directory fetcher with security definer RPC + fallback
+  const fetchStaffList = async () => {
+    if (!supabase) return;
+    try {
+      setIsLoadingFallback(true);
+      // 1. Try direct security-definer staff directory RPC first
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_active_staff_directory');
+      if (!rpcError && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
+        setFallbackUsers(rpcData as User[]);
+        lastFetchTimestampRef.current = Date.now();
+        return;
       }
-    })();
+
+      // 2. Fallback to direct table query
+      const { data: tableData } = await supabase
+        .from('users')
+        .select('id, name, email, phone, role, employee_code, designation, department, avatar_url, is_active, approval_status');
+      if (tableData && Array.isArray(tableData) && tableData.length > 0) {
+        setFallbackUsers(tableData as User[]);
+        lastFetchTimestampRef.current = Date.now();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingFallback(false);
+    }
+  };
+
+  // 1. Fetch on mount & subscribe to Realtime changes on users table
+  useEffect(() => {
+    fetchStaffList();
+
+    if (!supabase) return;
+    const staffChannel = supabase
+      .channel('realtime-staff-autocomplete')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        () => {
+          fetchStaffList();
+        }
+      )
+      .subscribe();
 
     return () => {
-      isMounted = false;
+      supabase?.removeChannel(staffChannel);
     };
   }, []);
+
+  // 2. Auto-refresh when input is focused if more than 3 seconds elapsed
+  const handleInputFocus = () => {
+    if (!isLimitReached) {
+      setIsOpen(true);
+      const now = Date.now();
+      if (now - lastFetchTimestampRef.current > 3000) {
+        fetchStaffList();
+      }
+    }
+  };
 
   // Combine prop users and fallback users into a deduplicated candidate pool
   const candidateUsers = useMemo(() => {
     const userMap = new Map<string, User>();
     for (const u of allUsers || []) {
-      if (u && u.id && u.name) userMap.set(u.id, u);
+      if (u && u.id && (u.name || u.email)) userMap.set(u.id, u);
     }
     for (const u of fallbackUsers) {
-      if (u && u.id && u.name && !userMap.has(u.id)) {
+      if (u && u.id && (u.name || u.email) && !userMap.has(u.id)) {
         userMap.set(u.id, u);
       }
     }
 
     return Array.from(userMap.values()).filter((u) => {
-      const isActive = u.is_active !== false && u.approval_status !== 'rejected';
-      const isStaff = u.role === 'employee' || u.role === 'admin' || u.role === 'manager';
-      return isActive && isStaff;
+      const isActive = u.is_active !== false;
+      const notRejected = u.approval_status !== 'rejected';
+      return isActive && notRejected;
     });
   }, [allUsers, fallbackUsers]);
 
@@ -99,27 +126,31 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
   // Compute suggestions synchronously (0ms delay for maximum responsiveness)
   const suggestions = useMemo(() => {
     if (!cleanQuery) {
-      // If user typed only "@" or empty, show available unselected staff
-      return unselectedCandidates.slice(0, 10);
+      // If user typed only "@" or focused empty input, show available unselected staff alphabetically
+      return [...unselectedCandidates]
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .slice(0, 10);
     }
 
     const q = cleanQuery;
+    const qClean = q.replace(/[^a-z0-9]/g, '');
     const scored = unselectedCandidates
       .map((u) => {
-        const name = (u.name || '').toLowerCase();
+        const rawName = (u.name || '').toLowerCase();
+        const cleanName = rawName.replace(/[^a-z0-9\s]/g, '');
         const code = (u.employee_code || `EMP-${u.id.slice(0, 4)}`).toLowerCase();
         const email = (u.email || '').toLowerCase();
         const phone = (u.phone || '').toLowerCase();
         const designation = (u.designation || u.department || '').toLowerCase();
 
         let score = -1;
-        if (name === q) {
+        if (rawName === q || cleanName === qClean) {
           score = 150; // exact match
-        } else if (name.startsWith(q)) {
+        } else if (rawName.startsWith(q) || cleanName.startsWith(qClean)) {
           score = 100; // name prefix match
-        } else if (name.split(/\s+/).some((part) => part.startsWith(q))) {
-          score = 85; // word prefix (e.g. last name)
-        } else if (name.includes(q)) {
+        } else if (cleanName.split(/\s+/).some((part) => part.startsWith(qClean))) {
+          score = 85; // word prefix (handles "A. Praveen" when searching "pra", "Bhavani N" when searching "bhava")
+        } else if (rawName.includes(q) || cleanName.includes(qClean)) {
           score = 65; // name contains
         } else if (code.startsWith(q) || code.includes(q)) {
           score = 50; // employee code match
@@ -289,14 +320,10 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
               setInputValue(e.target.value);
               setIsOpen(true);
             }}
-            onFocus={() => {
-              if (!isLimitReached) {
-                setIsOpen(true);
-              }
-            }}
+            onFocus={handleInputFocus}
             onClick={() => {
               if (!isLimitReached && !isOpen) {
-                setIsOpen(true);
+                handleInputFocus();
               }
             }}
             onKeyDown={handleKeyDown}

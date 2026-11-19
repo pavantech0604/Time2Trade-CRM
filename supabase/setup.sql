@@ -801,7 +801,7 @@ BEGIN
   FOR item IN SELECT * FROM (VALUES
     ('expenses', 'public.crm_access_role() = ''admin'''),
     ('manager_advances', 'public.crm_access_role() = ''admin'' OR (public.crm_access_role() = ''manager'' AND manager_id = auth.uid())'),
-    ('users', 'public.crm_access_role() = ''admin'' OR (is_active IS NOT FALSE AND approval_status = ''approved'') OR id = auth.uid()'),
+    ('users', 'public.crm_access_role() IN (''admin'', ''manager'', ''employee'') OR (is_active IS NOT FALSE AND approval_status <> ''rejected'') OR id = auth.uid()'),
     ('leads', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND assigned_to = auth.uid())'),
     ('active_traders', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND assigned_to = auth.uid())'),
     ('payments', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND public.crm_owns_payment(id))'),
@@ -885,18 +885,40 @@ USING (bucket_id <> 'expense-receipts' OR public.crm_access_role() = 'admin')
 WITH CHECK (bucket_id <> 'expense-receipts' OR public.crm_access_role() = 'admin');
 
 
--- 6. Server-side pending profiles for signup.
+-- 6. Server-side auto-provisioning profiles for joined staff.
 CREATE OR REPLACE FUNCTION public.crm_create_signup_profile() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
-  INSERT INTO public.users (id, name, email, phone, role, is_active, approval_status)
+  INSERT INTO public.users (
+    id, name, email, phone, role, is_active, approval_status, employee_code, created_at, updated_at
+  )
   VALUES (
     NEW.id,
     COALESCE(NULLIF(trim(NEW.raw_user_meta_data ->> 'full_name'), ''), split_part(NEW.email, '@', 1)),
     lower(trim(NEW.email)),
     NULLIF(trim(NEW.raw_user_meta_data ->> 'phone'), ''),
-    'pending', false, 'pending_admin_review'
-  ) ON CONFLICT (id) DO NOTHING;
+    'employee',
+    true,
+    'approved',
+    COALESCE(NULLIF(trim(NEW.raw_user_meta_data ->> 'employee_code'), ''), 'T2T-' || upper(substring(replace(NEW.id::text, '-', ''), 1, 4))),
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    name = COALESCE(NULLIF(EXCLUDED.name, ''), public.users.name),
+    email = EXCLUDED.email,
+    phone = COALESCE(EXCLUDED.phone, public.users.phone),
+    role = CASE WHEN public.users.role = 'pending' THEN 'employee' ELSE public.users.role END,
+    is_active = true,
+    approval_status = CASE WHEN public.users.approval_status = 'rejected' THEN 'rejected' ELSE 'approved' END,
+    employee_code = COALESCE(public.users.employee_code, EXCLUDED.employee_code),
+    updated_at = NOW();
+
+  -- Auto-confirm email in auth.users so new employees are not blocked from signing in
+  UPDATE auth.users
+  SET email_confirmed_at = COALESCE(email_confirmed_at, NOW())
+  WHERE id = NEW.id;
+
   RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION public.crm_create_signup_profile() FROM PUBLIC, anon, authenticated;
@@ -979,8 +1001,9 @@ RETURNS TABLE (
 ) LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
   SELECT id, name, email, phone, role, employee_code, designation, department, avatar_url, is_active, approval_status
   FROM public.users
-  WHERE (is_active IS NOT FALSE AND approval_status = 'approved')
-     OR id = auth.uid();
+  WHERE (is_active IS NOT FALSE AND approval_status <> 'rejected')
+     OR id = auth.uid()
+  ORDER BY name ASC;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.get_active_staff_directory() TO authenticated, anon, service_role;
@@ -1063,6 +1086,20 @@ BEGIN
     END LOOP;
   END IF;
 END $$;
+
+-- Auto-provision/heal existing staff so newly joined employees are immediately active and approved
+UPDATE public.users
+SET role = CASE WHEN role = 'pending' OR role IS NULL OR role = '' THEN 'employee' ELSE role END,
+    is_active = true,
+    approval_status = CASE WHEN approval_status = 'rejected' THEN 'rejected' ELSE 'approved' END,
+    employee_code = COALESCE(employee_code, 'T2T-' || upper(substring(replace(id::text, '-', ''), 1, 4)))
+WHERE approval_status IS DISTINCT FROM 'rejected';
+
+-- Auto-confirm any pending auth accounts so staff are ready to sign in immediately
+UPDATE auth.users
+SET email_confirmed_at = COALESCE(email_confirmed_at, NOW())
+WHERE email_confirmed_at IS NULL AND email IS NOT NULL;
+
 NOTIFY pgrst, 'reload schema';
 COMMIT;
 

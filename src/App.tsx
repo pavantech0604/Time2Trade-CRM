@@ -94,7 +94,7 @@ const MainApp: React.FC = () => {
       return (
         <SignupPage
           onNavigateToLogin={() => setAuthView('login')}
-          onSignupSuccess={() => setAuthView('pending')}
+          onSignupSuccess={() => setAuthView('login')}
         />
       );
     }

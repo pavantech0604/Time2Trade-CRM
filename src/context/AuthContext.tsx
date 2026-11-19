@@ -1320,6 +1320,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           loadSupabaseData();
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        (payload) => {
+          console.log('[Realtime] Live staff change detected:', payload.eventType);
+          loadSupabaseData(true);
+        }
+      )
       .subscribe((status) => {
         console.log('[Realtime] Payments channel status:', status);
       });
@@ -1505,25 +1513,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Authentication service is not configured.');
       }
 
-      const newPendingUser: User = {
+      const newStaffUser: User = {
         id: newUserId,
         name: fullName.trim(),
         email: normalizedEmail,
         phone: phoneInput?.trim() || undefined,
-        role: 'pending',
-        is_active: false,
-        approval_status: 'pending_admin_review',
+        role: 'employee',
+        is_active: true,
+        approval_status: 'approved',
+        employee_code: `T2T-${newUserId.replace(/-/g, '').slice(0, 4).toUpperCase()}`,
         created_at: new Date().toISOString(),
       };
 
-      setUsers((prev) => [newPendingUser, ...prev]);
+      setUsers((prev) => [newStaffUser, ...prev]);
 
       // Add to presence list as offline
       setPresenceList((prev) => [
         {
           user_id: newUserId,
-          user_name: newPendingUser.name,
-          user_email: newPendingUser.email,
+          user_name: newStaffUser.name,
+          user_email: newStaffUser.email,
           user_role: 'employee',
           current_status: 'offline',
           last_status_change: new Date().toISOString(),
@@ -3622,7 +3631,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         currentUser,
-        users: isAdmin ? users : users.filter(u => (u.approval_status === 'approved' && u.is_active !== false) || u.id === selfId),
+        users: isAdmin ? users : users.filter(u => (u.approval_status !== 'rejected' && u.is_active !== false) || u.id === selfId),
         loading,
         error,
         signup,
