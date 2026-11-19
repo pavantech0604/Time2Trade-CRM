@@ -1,3 +1,4 @@
+/// <reference path="../deno.d.ts" />
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const cors = {

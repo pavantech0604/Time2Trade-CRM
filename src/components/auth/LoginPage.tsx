@@ -59,7 +59,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           setRecoveryExpiresAt(recovery.expiresAt);
           setPassword('');
         } else {
-          setErrorMsg(recovery.message || 'Your email or recovery code was not accepted. Use your approved employee account.');
+          setErrorMsg(recovery.message || 'Your email or recovery code was not accepted. Use your approved staff account.');
         }
         return;
       }
@@ -95,7 +95,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           <div className="space-y-1 text-center sm:text-left">
             <h2 className="text-lg font-bold text-[#312e81]">{recoveryView ? "Reset your password" : "Staff Sign In"}</h2>
             <p className="text-xs text-slate-500">
-              {recoveryView ? "For approved employees. Your mailbox is not needed." : "Enter your authorized staff credentials to continue to your workspace."}
+              {recoveryView ? "For authorized staff. Your mailbox is not needed." : "Enter your authorized staff credentials to continue to your workspace."}
             </p>
           </div>
 
@@ -162,14 +162,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 Use the email assigned to your account, including internal staff login addresses.
               </p>
               {isEmployeeRecoveryEnabled && <p className="text-[11px] text-blue-700">
-                {isRecoveryMode ? "Step 1 of 2: enter the recovery code provided by your administrator. You will choose your own password next." : "Employee password recovery works here without an email inbox."}
+                {isRecoveryMode ? "Step 1 of 2: enter the universal recovery code. You will choose your own password next." : "Universal password recovery works here without an email inbox."}
               </p>}
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label htmlFor="login-password" className="text-xs font-semibold text-slate-600 block font-mono uppercase">
-                  {isRecoveryMode ? "Recovery code" : "Password"}
+                  {isRecoveryMode ? "Universal recovery code" : "Password"}
                 </label>
                 {isEmployeeRecoveryEnabled && <button type="button" onClick={() => { setIsRecoveryMode(!isRecoveryMode); setPassword(''); setErrorMsg(null); setPendingMsg(null); }} className="min-h-9 px-1 text-xs font-semibold text-teal-700 hover:underline">{isRecoveryMode ? "Use my password" : "Forgot password?"}</button>}
               </div>
@@ -183,7 +183,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={isRecoveryMode ? "Enter your employee recovery code" : "••••••••••••"}
+                  placeholder={isRecoveryMode ? "Enter the universal recovery code" : "••••••••••••"}
                   className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-10 py-3 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#0ea5e9] focus:ring-1 focus:ring-[#0ea5e9] transition-all shadow-inner"
                 />
                 <button

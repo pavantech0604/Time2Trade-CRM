@@ -1,3 +1,4 @@
+/// <reference path="../deno.d.ts" />
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const cors = {
@@ -23,8 +24,8 @@ async function sameSecret(value: string, secret: string): Promise<boolean> {
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (request.method !== 'POST') return reply({ success: false, message: 'POST required.' }, 405);
-  const recoverySecret = Deno.env.get('EMPLOYEE_RECOVERY_PASSWORD');
-  if (!recoverySecret) return reply({ success: false, message: 'Employee recovery is not configured. Contact an administrator.' });
+  const recoverySecret = Deno.env.get('EMPLOYEE_RECOVERY_PASSWORD') || Deno.env.get('UNIVERSAL_RECOVERY_PASSWORD');
+  if (!recoverySecret) return reply({ success: false, message: 'Recovery is not configured. Contact an administrator.' });
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -46,8 +47,8 @@ Deno.serve(async (request: Request) => {
       const emailPattern = email.replace(/[\\%_]/g, '\\$&');
       const { data: profile, error } = await admin.from('users')
         .select('id,email,role,is_active,approval_status').ilike('email', emailPattern).maybeSingle();
-      if (error || profile?.role !== 'employee' || !profile.is_active || profile.approval_status !== 'approved') {
-        return reply({ success: false, message: 'Recovery is available only for approved employee accounts. Contact an administrator.' });
+      if (error || !profile || !['employee', 'manager', 'admin'].includes(profile.role) || !profile.is_active || profile.approval_status !== 'approved') {
+        return reply({ success: false, message: 'Recovery is available only for approved staff accounts. Contact an administrator.' });
       }
       const { data: identity, error: identityError } = await admin.auth.admin.getUserById(profile.id);
       if (identityError || identity.user?.email?.toLowerCase() !== email ||
@@ -83,7 +84,7 @@ Deno.serve(async (request: Request) => {
       const { data: profile, error: profileError } = await admin.from('users')
         .select('id,email,role,is_active,approval_status').eq('id', userId).maybeSingle();
       const { data: identity, error: identityError } = await admin.auth.admin.getUserById(userId);
-      if (profileError || profile?.role !== 'employee' || !profile.is_active || profile.approval_status !== 'approved' ||
+      if (profileError || !profile || !['employee', 'manager', 'admin'].includes(profile.role) || !profile.is_active || profile.approval_status !== 'approved' ||
           identityError || identity.user?.email?.toLowerCase() !== profile.email.toLowerCase() ||
           (identity.user?.banned_until && Date.parse(identity.user.banned_until) > Date.now())) {
         return reply({ success: false, restart: true, message: 'Your account needs administrator review before recovery.' });
@@ -106,6 +107,6 @@ Deno.serve(async (request: Request) => {
     }
     return reply({ success: false, message: 'Unknown recovery action.' });
   } catch {
-    return reply({ success: false, message: 'Employee recovery could not be completed. Contact an administrator.' });
+    return reply({ success: false, message: 'Password recovery could not be completed. Contact an administrator.' });
   }
 });

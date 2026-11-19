@@ -8,10 +8,10 @@ export async function employeeRecovery(body: Record<string, string>): Promise<{
   success: boolean; recoveryToken?: string; expiresAt?: string; restart?: boolean; message?: string; userId?: string; email?: string;
 }> {
   if (!supabase || !isEmployeeRecoveryEnabled) {
-    return { success: false, message: 'Employee recovery is not enabled. Contact an administrator.' };
+    return { success: false, message: 'Password recovery is not enabled. Contact an administrator.' };
   }
   const { data, error } = await supabase.functions.invoke('employee-password-recovery', { body });
-  if (error) return { success: false, message: 'Employee recovery is unavailable. Contact an administrator.' };
+  if (error) return { success: false, message: 'Password recovery is unavailable. Contact an administrator.' };
   if (body.action === 'start' && data?.success && typeof data.expiresInSeconds === 'number') {
     // Use the server's lifetime instead of comparing two machines' clocks.
     data.expiresAt = new Date(Date.now() + data.expiresInSeconds * 1000).toISOString();

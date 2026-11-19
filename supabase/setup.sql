@@ -1,51 +1,16 @@
--- ========================================================================================
--- TIME2TRADE CRM & KYC - CONSOLIDATED UNIFIED MASTER DATABASE SCRIPT
--- ========================================================================================
--- File: complete_master_schema.sql
--- Description:
---   Complete, unified, idempotent, and non-destructive PostgreSQL setup script for Supabase.
---   Consolidates all 8 previous SQL scripts into a single source of truth:
---     1. Base Schema (users, leads, active_traders, trading_days, payments, expenses)
---     2. Manager Role & Manager Advances Ledger
---     3. Payment Allocations & Service Classification Fields
---     4. Attendance Logs & Live Staff Presence Tracking
---     5. KYC Applications Portal Schema
---     6. Automated Triggers & Streak Calculation Functions
---     7. Performance Indexes
---     8. Row Level Security (RLS) Policies (Zero 400/401/403/404 errors)
---     9. Storage Buckets (Payment Proofs, Avatars, Expense Receipts, Leads Photos)
---    10. Supabase Realtime Publication
---    11. Safe Data Hygiene (purges mock demo entries while preserving real team)
---    12. PostgREST Cache Invalidation
---
--- How to Run:
---   Open Supabase Dashboard -> SQL Editor -> New Query -> Paste this entire script -> Run.
--- ========================================================================================
+-- TIME2TRADE CRM: single database setup file
+-- Run the entire file as the Supabase project owner in SQL Editor.
+-- Includes schema, permissions, role boundaries, signup profiles and recovery.
+-- Does not seed employees, delete business records, rekey accounts or reset passwords.
+-- Existing one-time repairs remain in Git history; do not repeat them as setup.
+-- Edge Function source stays in supabase/functions and is deployed separately.
 
-
--- ====================================================================
--- SECTION 1: EXTENSIONS & PERMISSIONS CONFIGURATION
--- ====================================================================
+BEGIN;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
 GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
-GRANT ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA public TO postgres, anon, authenticated, service_role;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;
 
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO postgres, anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON ROUTINES TO postgres, anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres, anon, authenticated, service_role;
-
-
--- ====================================================================
--- SECTION 2: CORE TABLES & SAFELY ADD MISSING COLUMNS
--- ====================================================================
-
--- --------------------------------------------------------------------
--- 1. USERS TABLE
--- --------------------------------------------------------------------
+-- 1. Core schema, indexes, calculation triggers and base policies.
 CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
@@ -86,20 +51,20 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_sign_in_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 -- Check constraint: support admin, manager, employee, pending
-DO $$ 
+DO $$
 BEGIN
     ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
-    ALTER TABLE public.users ADD CONSTRAINT users_role_check 
+    ALTER TABLE public.users ADD CONSTRAINT users_role_check
         CHECK (role IN ('admin', 'manager', 'employee', 'pending'));
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'users_role_check constraint updated';
 END $$;
 
 -- Check constraint: approval_status
-DO $$ 
+DO $$
 BEGIN
     ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_approval_status_check;
-    ALTER TABLE public.users ADD CONSTRAINT users_approval_status_check 
+    ALTER TABLE public.users ADD CONSTRAINT users_approval_status_check
         CHECK (approval_status IN ('pending_admin_review', 'approved', 'rejected'));
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'users_approval_status_check constraint updated';
@@ -121,7 +86,7 @@ CREATE TABLE IF NOT EXISTS public.leads (
     notes TEXT,
     investment_capacity TEXT,
     trading_experience TEXT,
-    preferred_market TEXT, 
+    preferred_market TEXT,
     next_follow_up_at TIMESTAMPTZ,
     upload_batch_id TEXT,
     upload_date DATE,
@@ -148,10 +113,10 @@ ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 -- Check constraint: lead status
-DO $$ 
+DO $$
 BEGIN
     ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status_check;
-    ALTER TABLE public.leads ADD CONSTRAINT leads_status_check 
+    ALTER TABLE public.leads ADD CONSTRAINT leads_status_check
         CHECK (status IN ('new', 'called', 'not_interested', 'callback_requested', 'interested', 'follow_up_later', 'active_trader', 'lost'));
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'leads_status_check constraint updated';
@@ -258,10 +223,10 @@ ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS admin_remarks TEXT;
 ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
 
 -- Check constraint: payment status
-DO $$ 
+DO $$
 BEGIN
     ALTER TABLE public.payments DROP CONSTRAINT IF EXISTS payments_status_check;
-    ALTER TABLE public.payments ADD CONSTRAINT payments_status_check 
+    ALTER TABLE public.payments ADD CONSTRAINT payments_status_check
         CHECK (status IN ('pending_verification', 'approved', 'rejected'));
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'payments_status_check constraint updated';
@@ -290,7 +255,7 @@ CREATE TABLE IF NOT EXISTS public.payment_allocations (
 CREATE TABLE IF NOT EXISTS public.expenses (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     date DATE NOT NULL DEFAULT CURRENT_DATE,
-    category TEXT NOT NULL, 
+    category TEXT NOT NULL,
     amount NUMERIC(15,2) NOT NULL CHECK (amount > 0),
     description TEXT NOT NULL,
     added_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
@@ -366,10 +331,10 @@ CREATE TABLE IF NOT EXISTS public.kyc_applications (
 );
 
 -- Check constraint: KYC status
-DO $$ 
+DO $$
 BEGIN
     ALTER TABLE public.kyc_applications DROP CONSTRAINT IF EXISTS kyc_status_check;
-    ALTER TABLE public.kyc_applications ADD CONSTRAINT kyc_status_check 
+    ALTER TABLE public.kyc_applications ADD CONSTRAINT kyc_status_check
         CHECK (status IN ('under_review', 'approved', 'rejected'));
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'kyc_status_check constraint updated';
@@ -535,7 +500,7 @@ FOR EACH ROW EXECUTE FUNCTION public.recalculate_trader_profit_shared();
 
 
 -- Helper function: Get Current Role
-CREATE OR REPLACE FUNCTION public.get_current_role() 
+CREATE OR REPLACE FUNCTION public.get_current_role()
 RETURNS TEXT AS $$
     SELECT role FROM public.users WHERE id = auth.uid();
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
@@ -561,69 +526,69 @@ ALTER TABLE public.kyc_applications ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users read all" ON public.users;
 DROP POLICY IF EXISTS "Admin manage users" ON public.users;
 DROP POLICY IF EXISTS "Enable all operations on users" ON public.users;
-CREATE POLICY "Enable all operations on users" 
-ON public.users FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on users"
+ON public.users FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 -- 2. LEADS POLICIES
 DROP POLICY IF EXISTS "Enable all operations on leads" ON public.leads;
 DROP POLICY IF EXISTS "Enable anon operations on leads" ON public.leads;
-CREATE POLICY "Enable all operations on leads" 
-ON public.leads FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on leads"
+ON public.leads FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 -- 3. ACTIVE TRADERS POLICIES
 DROP POLICY IF EXISTS "Enable all operations on active_traders" ON public.active_traders;
 DROP POLICY IF EXISTS "Enable anon operations on active_traders" ON public.active_traders;
-CREATE POLICY "Enable all operations on active_traders" 
-ON public.active_traders FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on active_traders"
+ON public.active_traders FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 -- 4. TRADING DAYS POLICIES
 DROP POLICY IF EXISTS "Enable all operations on trading_days" ON public.trading_days;
 DROP POLICY IF EXISTS "Enable anon operations on trading_days" ON public.trading_days;
-CREATE POLICY "Enable all operations on trading_days" 
-ON public.trading_days FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on trading_days"
+ON public.trading_days FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 -- 5. PAYMENTS POLICIES
 DROP POLICY IF EXISTS "Enable all operations on payments" ON public.payments;
 DROP POLICY IF EXISTS "Enable anon operations on payments" ON public.payments;
 DROP POLICY IF EXISTS "Public payment submission" ON public.payments;
-CREATE POLICY "Enable all operations on payments" 
-ON public.payments FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on payments"
+ON public.payments FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 -- 6. PAYMENT ALLOCATIONS POLICIES
 DROP POLICY IF EXISTS "Enable all operations on payment_allocations" ON public.payment_allocations;
-CREATE POLICY "Enable all operations on payment_allocations" 
-ON public.payment_allocations FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on payment_allocations"
+ON public.payment_allocations FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 -- 7. EXPENSES POLICIES
 DROP POLICY IF EXISTS "Enable all operations on expenses" ON public.expenses;
 DROP POLICY IF EXISTS "Enable anon operations on expenses" ON public.expenses;
-CREATE POLICY "Enable all operations on expenses" 
-ON public.expenses FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on expenses"
+ON public.expenses FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 -- 8. MANAGER ADVANCES POLICIES
 DROP POLICY IF EXISTS "Enable all operations on manager_advances" ON public.manager_advances;
 DROP POLICY IF EXISTS "Enable anon operations on manager_advances" ON public.manager_advances;
-CREATE POLICY "Enable all operations on manager_advances" 
-ON public.manager_advances FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on manager_advances"
+ON public.manager_advances FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 -- 9. ATTENDANCE LOGS POLICIES
 DROP POLICY IF EXISTS "Enable all operations on attendance_logs" ON public.attendance_logs;
-CREATE POLICY "Enable all operations on attendance_logs" 
-ON public.attendance_logs FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on attendance_logs"
+ON public.attendance_logs FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 -- 10. USER PRESENCE POLICIES
 DROP POLICY IF EXISTS "Enable all operations on user_presence" ON public.user_presence;
-CREATE POLICY "Enable all operations on user_presence" 
-ON public.user_presence FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on user_presence"
+ON public.user_presence FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 -- 11. KYC APPLICATIONS POLICIES
@@ -631,16 +596,16 @@ DROP POLICY IF EXISTS "Allow public insert to kyc_applications" ON public.kyc_ap
 DROP POLICY IF EXISTS "Allow public read of kyc_applications" ON public.kyc_applications;
 DROP POLICY IF EXISTS "Allow public update of kyc_applications" ON public.kyc_applications;
 DROP POLICY IF EXISTS "Enable all operations on kyc_applications" ON public.kyc_applications;
-CREATE POLICY "Enable all operations on kyc_applications" 
-ON public.kyc_applications FOR ALL TO anon, authenticated 
+CREATE POLICY "Enable all operations on kyc_applications"
+ON public.kyc_applications FOR ALL TO anon, authenticated
 USING (true) WITH CHECK (true);
 
 
 -- ====================================================================
 -- SECTION 6: STORAGE BUCKETS & POLICIES (PROOF & RECEIPTS UPLOADS)
 -- ====================================================================
-INSERT INTO storage.buckets (id, name, public) 
-VALUES 
+INSERT INTO storage.buckets (id, name, public)
+VALUES
   ('payment-proofs', 'payment-proofs', true),
   ('avatars', 'avatars', true),
   ('expense-receipts', 'expense-receipts', true),
@@ -650,111 +615,403 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Storage Policies
 DROP POLICY IF EXISTS "Public access to payment proofs" ON storage.objects;
-CREATE POLICY "Public access to payment proofs" 
-ON storage.objects FOR ALL TO anon, authenticated 
+CREATE POLICY "Public access to payment proofs"
+ON storage.objects FOR ALL TO anon, authenticated
 USING (bucket_id = 'payment-proofs') WITH CHECK (bucket_id = 'payment-proofs');
 
 DROP POLICY IF EXISTS "Public access to avatars" ON storage.objects;
-CREATE POLICY "Public access to avatars" 
-ON storage.objects FOR ALL TO anon, authenticated 
+CREATE POLICY "Public access to avatars"
+ON storage.objects FOR ALL TO anon, authenticated
 USING (bucket_id = 'avatars') WITH CHECK (bucket_id = 'avatars');
 
 DROP POLICY IF EXISTS "Public access to expense receipts" ON storage.objects;
-CREATE POLICY "Public access to expense receipts" 
-ON storage.objects FOR ALL TO anon, authenticated 
+CREATE POLICY "Public access to expense receipts"
+ON storage.objects FOR ALL TO anon, authenticated
 USING (bucket_id = 'expense-receipts') WITH CHECK (bucket_id = 'expense-receipts');
 
 DROP POLICY IF EXISTS "Public access to receipts" ON storage.objects;
-CREATE POLICY "Public access to receipts" 
-ON storage.objects FOR ALL TO anon, authenticated 
+CREATE POLICY "Public access to receipts"
+ON storage.objects FOR ALL TO anon, authenticated
 USING (bucket_id = 'receipts') WITH CHECK (bucket_id = 'receipts');
 
 DROP POLICY IF EXISTS "Public access to leads photos" ON storage.objects;
-CREATE POLICY "Public access to leads photos" 
-ON storage.objects FOR ALL TO anon, authenticated 
+CREATE POLICY "Public access to leads photos"
+ON storage.objects FOR ALL TO anon, authenticated
 USING (bucket_id = 'leads-photos') WITH CHECK (bucket_id = 'leads-photos');
 
 
+
+-- 2. Employee profiles and client assignment history.
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS personal_phone TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS office_phone TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS blood_group TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS manager_id UUID REFERENCES public.users(id) ON DELETE SET NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS joining_date DATE;
+
+-- Performance indexes for users extensions
+CREATE INDEX IF NOT EXISTS idx_users_office_phone ON public.users(office_phone);
+CREATE INDEX IF NOT EXISTS idx_users_personal_phone ON public.users(personal_phone);
+CREATE INDEX IF NOT EXISTS idx_users_manager_id ON public.users(manager_id);
+
+-- 2. CREATE CLIENT ASSIGNMENTS TABLE (CURRENT & PREVIOUS HANDLING HISTORY)
+CREATE TABLE IF NOT EXISTS public.client_assignments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID NOT NULL,
+    client_type TEXT NOT NULL DEFAULT 'trader',
+    client_name TEXT NOT NULL,
+    client_phone TEXT,
+    employee_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    employee_name TEXT,
+    assigned_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    assigned_by_name TEXT,
+    start_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    end_date TIMESTAMPTZ,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'transferred', 'reassigned', 'completed', 'closed')),
+    transfer_reason TEXT,
+    transferred_to_employee_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    transferred_to_employee_name TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Performance indexes for client assignments
+CREATE INDEX IF NOT EXISTS idx_client_assignments_client_id ON public.client_assignments(client_id);
+CREATE INDEX IF NOT EXISTS idx_client_assignments_employee_id ON public.client_assignments(employee_id);
+CREATE INDEX IF NOT EXISTS idx_client_assignments_status ON public.client_assignments(status);
+CREATE INDEX IF NOT EXISTS idx_client_assignments_dates ON public.client_assignments(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_client_assignments_transferred_to ON public.client_assignments(transferred_to_employee_id);
+
+-- 3. CREATE EMPLOYEE IMPORT STAGING TABLE (FOR AUDITED HANDWRITTEN / SHEET REVIEW)
+CREATE TABLE IF NOT EXISTS public.employee_import_staging (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    raw_id INT NOT NULL UNIQUE,
+    employee_name TEXT NOT NULL,
+    personal_phone TEXT NOT NULL,
+    office_phone TEXT,
+    matched_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'pending_review' CHECK (status IN ('pending_review', 'matched', 'needs_review', 'conflict', 'approved_imported', 'rejected')),
+    handwriting_notes TEXT,
+    confidence TEXT DEFAULT 'high',
+    verified_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 4. ROW LEVEL SECURITY (RLS) POLICIES
+ALTER TABLE public.client_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_import_staging ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Enable all operations on client_assignments" ON public.client_assignments;
+CREATE POLICY "Enable all operations on client_assignments"
+ON public.client_assignments FOR ALL TO anon, authenticated
+USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Enable all operations on employee_import_staging" ON public.employee_import_staging;
+CREATE POLICY "Enable all operations on employee_import_staging"
+ON public.employee_import_staging FOR ALL TO anon, authenticated
+USING (true) WITH CHECK (true);
+
+
+-- 3. Reporting targets and indexes.
 -- ====================================================================
--- SECTION 7: SUPABASE REALTIME PUBLICATION SETUP
+-- MONTHLY SALES MODULE: TARGETS TABLE & PERFORMANCE INDEXES
 -- ====================================================================
+
+-- 1. Index on payments for optimal reporting performance by transaction date & status
+CREATE INDEX IF NOT EXISTS idx_payments_transaction_time_status
+ON public.payments(transaction_time, status);
+
+CREATE INDEX IF NOT EXISTS idx_payments_status_transaction_time
+ON public.payments(status, transaction_time);
+
+CREATE INDEX IF NOT EXISTS idx_payments_employee_id_tx_time
+ON public.payments(employee_id, transaction_time);
+
+CREATE INDEX IF NOT EXISTS idx_payment_allocations_payment_employee
+ON public.payment_allocations(payment_id, employee_id);
+
+-- 2. Monthly Targets table for tracking historical company & employee targets
+CREATE TABLE IF NOT EXISTS public.monthly_targets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    year INTEGER NOT NULL CHECK (year >= 2020 AND year <= 2100),
+    month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+    target_amount NUMERIC(15, 2) NOT NULL CHECK (target_amount >= 0),
+    employee_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    notes TEXT,
+    created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Either an employee-specific target for that month, or company-wide target (employee_id IS NULL)
+    CONSTRAINT unique_monthly_target UNIQUE NULLS NOT DISTINCT (year, month, employee_id)
+);
+
+-- Enable RLS
+ALTER TABLE public.monthly_targets ENABLE ROW LEVEL SECURITY;
+
+-- Allow authenticated users to view monthly targets
 DO $$
 BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.leads;
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.active_traders;
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.trading_days;
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.payments;
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.payment_allocations;
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.manager_advances;
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.attendance_logs;
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.user_presence;
+    DROP POLICY IF EXISTS "Allow authenticated users to read monthly_targets" ON public.monthly_targets;
+    CREATE POLICY "Allow authenticated users to read monthly_targets"
+    ON public.monthly_targets FOR SELECT
+    TO authenticated
+    USING (true);
+
+    DROP POLICY IF EXISTS "Allow admins and managers to upsert monthly_targets" ON public.monthly_targets;
+    CREATE POLICY "Allow admins and managers to upsert monthly_targets"
+    ON public.monthly_targets FOR ALL
+    TO authenticated
+    USING (true)
+    WITH CHECK (true);
 EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Realtime publication updated or already contains tables: %', SQLERRM;
+    RAISE NOTICE 'Policies setup completed';
 END $$;
 
+-- 4. Explicit table grants only. Do not grant access to every future table/RPC.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+  public.users, public.leads, public.active_traders, public.trading_days,
+  public.payments, public.payment_allocations, public.expenses,
+  public.manager_advances, public.attendance_logs, public.user_presence,
+  public.kyc_applications, public.client_assignments,
+  public.employee_import_staging, public.monthly_targets
+TO anon, authenticated, service_role;
 
--- ====================================================================
--- SECTION 8: CLEANUP OF OLD MOCK DATA & ENSURE REAL ACCOUNTS
--- ====================================================================
--- Purges hardcoded dummy demo records while strictly preserving all real accounts.
+-- 5. Current restrictive role boundaries and expense protection.
+CREATE OR REPLACE FUNCTION public.crm_access_role() RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT role::text FROM public.users
+      WHERE id = auth.uid() AND is_active IS NOT FALSE
+        AND approval_status = 'approved' $$;
 
--- 1. Remove mock trading days
-DELETE FROM public.trading_days 
-WHERE trader_id IN (SELECT id FROM public.active_traders WHERE id::text LIKE '30000000%') 
-   OR id::text LIKE '30000000%';
+CREATE OR REPLACE FUNCTION public.crm_owns_payment(payment_uuid uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT EXISTS (
+  SELECT 1 FROM public.payments p WHERE p.id = payment_uuid AND (
+    p.employee_id = auth.uid() OR p.submitted_by_employee_id = auth.uid()
+    OR EXISTS (SELECT 1 FROM public.payment_allocations a
+               WHERE a.payment_id = p.id AND a.employee_id = auth.uid())
+  )
+) $$;
 
--- 2. Remove mock payments
-DELETE FROM public.payments 
-WHERE id::text LIKE '40000000%' 
-   OR utr IN ('UTR994820194821', 'IMPS883019284711');
+-- Restrict anon as well as authenticated callers, including old public policies.
+DO $$
+DECLARE item record;
+BEGIN
+  FOR item IN SELECT * FROM (VALUES
+    ('expenses', 'public.crm_access_role() = ''admin'''),
+    ('manager_advances', 'public.crm_access_role() = ''admin'' OR (public.crm_access_role() = ''manager'' AND manager_id = auth.uid())'),
+    ('users', 'public.crm_access_role() = ''admin'' OR id = auth.uid() OR (public.crm_access_role() = ''manager'' AND role = ''employee'')'),
+    ('leads', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND assigned_to = auth.uid())'),
+    ('active_traders', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND assigned_to = auth.uid())'),
+    ('payments', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND public.crm_owns_payment(id))'),
+    ('payment_allocations', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND employee_id = auth.uid())'),
+    ('trading_days', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND EXISTS (SELECT 1 FROM public.active_traders t WHERE t.id = trader_id AND t.assigned_to = auth.uid()))'),
+    ('client_assignments', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND employee_id = auth.uid())'),
+    ('employee_import_staging', 'public.crm_access_role() = ''admin'''),
+    ('attendance_logs', 'public.crm_access_role() IN (''admin'', ''manager'') OR user_id = auth.uid()'),
+    ('user_presence', 'public.crm_access_role() IN (''admin'', ''manager'') OR user_id = auth.uid()')
+  ) AS rules(table_name, predicate)
+  LOOP
+    IF to_regclass('public.' || item.table_name) IS NOT NULL THEN
+      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', item.table_name);
+      EXECUTE format('DROP POLICY IF EXISTS crm_read_boundary ON public.%I', item.table_name);
+      EXECUTE format('CREATE POLICY crm_read_boundary ON public.%I AS RESTRICTIVE FOR SELECT TO anon, authenticated USING (%s)', item.table_name, item.predicate);
+    END IF;
+  END LOOP;
+END $$;
 
--- 3. Remove mock active traders
-DELETE FROM public.active_traders 
-WHERE id::text LIKE '30000000%' 
-   OR name IN ('Sneha Kapoor', 'Devendra Patel', 'Amitabh Singhania');
+-- Expenses and privileged financial actions are exclusively administrative.
+DO $$
+DECLARE table_name text; operation text;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY['expenses', 'manager_advances', 'payments', 'payment_allocations'] LOOP
+    FOREACH operation IN ARRAY ARRAY['UPDATE', 'DELETE'] LOOP
+      EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', 'crm_admin_' || lower(operation), table_name);
+      EXECUTE format('CREATE POLICY %I ON public.%I AS RESTRICTIVE FOR %s TO anon, authenticated USING (public.crm_access_role() = ''admin'')', 'crm_admin_' || lower(operation), table_name, operation);
+    END LOOP;
+  END LOOP;
+  FOREACH table_name IN ARRAY ARRAY['expenses', 'manager_advances'] LOOP
+    EXECUTE format('DROP POLICY IF EXISTS crm_admin_insert ON public.%I', table_name);
+    EXECUTE format('CREATE POLICY crm_admin_insert ON public.%I AS RESTRICTIVE FOR INSERT TO anon, authenticated WITH CHECK (public.crm_access_role() = ''admin'')', table_name);
+  END LOOP;
+END $$;
 
--- 4. Remove mock leads
-DELETE FROM public.leads 
-WHERE id::text LIKE '20000000%' 
-   OR name IN ('Aarav Mehta', 'Sneha Kapoor', 'Rohan Gupta', 'Kavita Joshi');
+-- A self-service profile edit cannot grant a role or reactivate an account.
+CREATE OR REPLACE FUNCTION public.crm_guard_user_privileges() RETURNS trigger
+LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  IF current_user IN ('postgres', 'service_role', 'supabase_admin') THEN RETURN NEW; END IF;
+  IF public.crm_access_role() = 'admin' THEN RETURN NEW; END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.id IS DISTINCT FROM auth.uid() OR NEW.role <> 'pending'
+       OR NEW.approval_status <> 'pending_admin_review' THEN
+      RAISE EXCEPTION 'Administrator approval required';
+    END IF;
+  ELSIF NEW.role IS DISTINCT FROM OLD.role
+     OR NEW.is_active IS DISTINCT FROM OLD.is_active
+     OR NEW.approval_status IS DISTINCT FROM OLD.approval_status
+     OR NEW.id IS DISTINCT FROM OLD.id THEN
+    RAISE EXCEPTION 'Only administrators can change account privileges';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS crm_guard_user_privileges ON public.users;
+CREATE TRIGGER crm_guard_user_privileges BEFORE INSERT OR UPDATE ON public.users
+FOR EACH ROW EXECUTE FUNCTION public.crm_guard_user_privileges();
 
--- 5. Remove mock expenses
-DELETE FROM public.expenses 
-WHERE id::text LIKE '50000000%';
+DROP POLICY IF EXISTS crm_profile_update ON public.users;
+CREATE POLICY crm_profile_update ON public.users AS RESTRICTIVE FOR UPDATE TO anon, authenticated
+USING (public.crm_access_role() = 'admin' OR id = auth.uid()
+       OR (public.crm_access_role() = 'manager' AND role = 'employee'))
+WITH CHECK (public.crm_access_role() = 'admin' OR id = auth.uid()
+       OR (public.crm_access_role() = 'manager' AND role = 'employee'));
+DROP POLICY IF EXISTS crm_profile_delete ON public.users;
+CREATE POLICY crm_profile_delete ON public.users AS RESTRICTIVE FOR DELETE TO anon, authenticated
+USING (public.crm_access_role() = 'admin');
 
--- 6. Remove mock attendance logs
-DELETE FROM public.attendance_logs 
-WHERE user_name IN ('Priya Verma', 'Ankit Kumar', 'Vikram Malhotra', 'Rahul Saxena', 'Rajesh Sharma')
-   OR user_id::text LIKE '10000000-0000-0000-0000-00000000000[2-9]';
+-- Submission cannot self-approve a payment.
+DROP POLICY IF EXISTS crm_payment_submit ON public.payments;
+CREATE POLICY crm_payment_submit ON public.payments AS RESTRICTIVE FOR INSERT TO anon, authenticated
+WITH CHECK (public.crm_access_role() = 'admin' OR
+  (public.crm_access_role() IN ('employee', 'manager') AND status = 'pending_verification'
+   AND submitted_by_employee_id = auth.uid()));
 
--- 7. Remove mock demo employees
-DELETE FROM public.users 
-WHERE email ILIKE '%@capitalgrow.com'
-   OR name IN ('Priya Verma', 'Ankit Kumar', 'Vikram Malhotra', 'Rahul Saxena', 'Rajesh Sharma')
-   OR id IN (
-       '10000000-0000-0000-0000-000000000002',
-       '10000000-0000-0000-0000-000000000003',
-       '10000000-0000-0000-0000-000000000004',
-       '10000000-0000-0000-0000-000000000005'
-   );
-
--- 8. Ensure Manager account exists and is approved
-INSERT INTO public.users (id, name, email, role, is_active, approval_status)
-VALUES ('10000000-0000-0000-0000-000000000001', 'Karthik Muni', 'karthik@time2trade.com', 'manager', true, 'approved')
-ON CONFLICT (id) DO UPDATE SET 
-    name = 'Karthik Muni',
-    email = 'karthik@time2trade.com',
-    role = 'manager',
-    is_active = true,
-    approval_status = 'approved';
+-- Expense receipt URLs must not bypass the table restrictions.
+UPDATE storage.buckets SET public = false WHERE id = 'expense-receipts';
+DROP POLICY IF EXISTS crm_expense_receipts ON storage.objects;
+CREATE POLICY crm_expense_receipts ON storage.objects AS RESTRICTIVE FOR ALL TO anon, authenticated
+USING (bucket_id <> 'expense-receipts' OR public.crm_access_role() = 'admin')
+WITH CHECK (bucket_id <> 'expense-receipts' OR public.crm_access_role() = 'admin');
 
 
--- ====================================================================
--- SECTION 9: RELOAD POSTGREST CACHE (IMMEDIATE DEPLOYMENT)
--- ====================================================================
+-- 6. Server-side pending profiles for signup.
+CREATE OR REPLACE FUNCTION public.crm_create_signup_profile() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  INSERT INTO public.users (id, name, email, phone, role, is_active, approval_status)
+  VALUES (
+    NEW.id,
+    COALESCE(NULLIF(trim(NEW.raw_user_meta_data ->> 'full_name'), ''), split_part(NEW.email, '@', 1)),
+    lower(trim(NEW.email)),
+    NULLIF(trim(NEW.raw_user_meta_data ->> 'phone'), ''),
+    'pending', false, 'pending_admin_review'
+  ) ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.crm_create_signup_profile() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS crm_create_signup_profile ON auth.users;
+CREATE TRIGGER crm_create_signup_profile AFTER INSERT ON auth.users
+FOR EACH ROW WHEN (NEW.email IS NOT NULL)
+EXECUTE FUNCTION public.crm_create_signup_profile();
+
+-- 7. Server-only employee recovery storage and functions.
+CREATE TABLE IF NOT EXISTS public.employee_recovery_attempts (
+  email_hash text NOT NULL,
+  ip_hash text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS employee_recovery_attempts_email_time
+ON public.employee_recovery_attempts(email_hash, created_at);
+CREATE INDEX IF NOT EXISTS employee_recovery_attempts_ip_time
+ON public.employee_recovery_attempts(ip_hash, created_at);
+CREATE TABLE IF NOT EXISTS public.employee_recovery_tickets (
+  token_hash text PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz
+);
+ALTER TABLE public.employee_recovery_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_recovery_tickets ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.employee_recovery_attempts, public.employee_recovery_tickets FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.employee_recovery_attempts, public.employee_recovery_tickets TO service_role;
+
+CREATE OR REPLACE FUNCTION public.crm_allow_employee_recovery(email_digest text, ip_digest text)
+RETURNS boolean LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  -- Serialize attempts for both keys so parallel requests cannot exceed limits.
+  PERFORM pg_advisory_xact_lock(hashtextextended('ip:' || ip_digest, 0));
+  PERFORM pg_advisory_xact_lock(hashtextextended('email:' || email_digest, 0));
+  DELETE FROM public.employee_recovery_attempts WHERE created_at < NOW() - INTERVAL '1 day';
+  IF (SELECT COUNT(*) FROM public.employee_recovery_attempts
+      WHERE email_hash = email_digest AND created_at > NOW() - INTERVAL '15 minutes') >= 5
+     OR (SELECT COUNT(*) FROM public.employee_recovery_attempts
+      WHERE ip_hash = ip_digest AND created_at > NOW() - INTERVAL '15 minutes') >= 30 THEN
+    RETURN false;
+  END IF;
+  INSERT INTO public.employee_recovery_attempts(email_hash, ip_hash) VALUES (email_digest, ip_digest);
+  DELETE FROM public.employee_recovery_tickets WHERE expires_at < NOW() - INTERVAL '1 day';
+  RETURN true;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.crm_consume_employee_recovery(ticket_digest text)
+RETURNS uuid LANGUAGE plpgsql SET search_path = '' AS $$
+DECLARE target_id uuid;
+BEGIN
+  UPDATE public.employee_recovery_tickets ticket
+  SET consumed_at = NOW()
+  WHERE token_hash = ticket_digest AND consumed_at IS NULL AND expires_at > NOW()
+    AND EXISTS (SELECT 1 FROM public.users profile
+                WHERE profile.id = ticket.user_id AND profile.role IN ('employee', 'manager', 'admin')
+                  AND profile.is_active = true AND profile.approval_status = 'approved')
+  RETURNING user_id INTO target_id;
+  RETURN target_id;
+END $$;
+REVOKE ALL ON FUNCTION public.crm_allow_employee_recovery(text,text), public.crm_consume_employee_recovery(text)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.crm_allow_employee_recovery(text,text), public.crm_consume_employee_recovery(text)
+TO service_role;
+
+-- 8. Register each table independently so rerunning setup remains effective.
+DO $$
+DECLARE table_name text;
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    FOREACH table_name IN ARRAY ARRAY[
+      'users','leads','active_traders','trading_days','payments','payment_allocations',
+      'expenses','manager_advances','attendance_logs','user_presence',
+      'client_assignments','employee_import_staging','monthly_targets'
+    ] LOOP
+      IF NOT EXISTS (SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = table_name) THEN
+        EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', table_name);
+      END IF;
+    END LOOP;
+  END IF;
+END $$;
 NOTIFY pgrst, 'reload schema';
+COMMIT;
 
--- Verification output
-SELECT 'Time2Trade unified master database script executed successfully! All tables, columns, indexes, triggers, storage buckets, and RLS policies are operational.' AS result;
+-- 9. Read-only account audit. These results do not modify employee access.
+-- Read-only. Run as the project owner in Supabase SQL Editor.
+-- This reports readiness without revealing passwords or changing any account.
+SELECT profile.id AS crm_user_id, profile.name, profile.email, profile.role,
+       account.id AS auth_user_id,
+       CASE
+         WHEN profile.approval_status = 'rejected' THEN 'REJECTED_IN_CRM'
+         WHEN profile.approval_status IS DISTINCT FROM 'approved' THEN 'AWAITING_ADMIN_APPROVAL'
+         WHEN profile.is_active IS NOT TRUE THEN 'DISABLED_IN_CRM'
+         WHEN profile.role NOT IN ('admin', 'manager', 'employee') THEN 'ROLE_NEEDS_REVIEW'
+         WHEN account.id IS NULL AND EXISTS (
+           SELECT 1 FROM auth.users other_account
+           WHERE lower(trim(other_account.email)) = lower(trim(profile.email))
+         ) THEN 'AUTH_ID_MISMATCH_REVIEW_REQUIRED'
+         WHEN account.id IS NULL THEN 'MISSING_AUTH_ACCOUNT'
+         WHEN lower(trim(account.email)) IS DISTINCT FROM lower(trim(profile.email)) THEN 'EMAIL_MISMATCH_REVIEW_REQUIRED'
+         WHEN account.banned_until > NOW() THEN 'AUTH_ACCOUNT_BANNED'
+         WHEN NOT EXISTS (SELECT 1 FROM auth.identities identity
+                          WHERE identity.user_id = account.id AND identity.provider = 'email')
+           THEN 'MISSING_EMAIL_PASSWORD_IDENTITY'
+         WHEN COALESCE(account.encrypted_password, '') = '' THEN 'PASSWORD_NOT_SET'
+         WHEN account.email_confirmed_at IS NULL THEN 'NEEDS_ADMIN_CONFIRMATION'
+         ELSE 'READY_USE_EXISTING_PASSWORD'
+       END AS login_status
+FROM public.users profile
+LEFT JOIN auth.users account ON account.id = profile.id
+ORDER BY login_status, profile.name;
+
+-- Existing Auth accounts with no matching CRM profile need administrator review.
+SELECT account.id AS auth_user_id, account.email, 'MISSING_CRM_PROFILE' AS login_status
+FROM auth.users account
+WHERE NOT EXISTS (SELECT 1 FROM public.users profile WHERE profile.id = account.id)
+ORDER BY account.email;

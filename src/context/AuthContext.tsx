@@ -1495,7 +1495,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .select('id').eq('id', newUserId).maybeSingle();
             await supabase.auth.signOut();
             if (profileError || !newProfile) {
-              throw new Error('Your login account was created, but its staff profile needs repair. Ask an administrator to apply employee_login_readiness.sql before trying again.');
+              throw new Error('Your login account was created, but its staff profile needs repair. Ask an administrator to apply setup.sql before trying again.');
             }
           }
         } catch (signupError) {
@@ -3622,7 +3622,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         currentUser,
-        users: isAdmin ? users : users.filter(u => u.id === selfId || (currentUser?.role === 'manager' && u.role === 'employee')),
+        users: isAdmin ? users : users.filter(u => (u.approval_status === 'approved' && u.is_active !== false) || u.id === selfId),
         loading,
         error,
         signup,

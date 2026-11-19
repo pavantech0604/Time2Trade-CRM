@@ -1701,7 +1701,6 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
                     selectedEmployeeIds={allocations.filter((a) => !a.is_primary).map((a) => a.employee_id)}
                     onSelectEmployee={handleSelectEmployee}
                     maxSharedEmployees={3}
-                    disabled={totalPaymentAmount <= 0}
                   />
                 </div>
               </div>
