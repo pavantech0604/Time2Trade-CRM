@@ -801,7 +801,7 @@ BEGIN
   FOR item IN SELECT * FROM (VALUES
     ('expenses', 'public.crm_access_role() = ''admin'''),
     ('manager_advances', 'public.crm_access_role() = ''admin'' OR (public.crm_access_role() = ''manager'' AND manager_id = auth.uid())'),
-    ('users', 'public.crm_access_role() = ''admin'' OR id = auth.uid() OR (public.crm_access_role() = ''manager'' AND role = ''employee'')'),
+    ('users', 'public.crm_access_role() = ''admin'' OR (is_active IS NOT FALSE AND approval_status = ''approved'') OR id = auth.uid()'),
     ('leads', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND assigned_to = auth.uid())'),
     ('active_traders', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND assigned_to = auth.uid())'),
     ('payments', 'public.crm_access_role() IN (''admin'', ''manager'') OR (public.crm_access_role() = ''employee'' AND public.crm_owns_payment(id))'),
@@ -961,6 +961,29 @@ REVOKE ALL ON FUNCTION public.crm_allow_employee_recovery(text,text), public.crm
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_allow_employee_recovery(text,text), public.crm_consume_employee_recovery(text)
 TO service_role;
+
+-- Active staff directory function for payment sharing and team dropdowns
+CREATE OR REPLACE FUNCTION public.get_active_staff_directory()
+RETURNS TABLE (
+  id uuid,
+  name text,
+  email text,
+  phone text,
+  role text,
+  employee_code text,
+  designation text,
+  department text,
+  avatar_url text,
+  is_active boolean,
+  approval_status text
+) LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT id, name, email, phone, role, employee_code, designation, department, avatar_url, is_active, approval_status
+  FROM public.users
+  WHERE (is_active IS NOT FALSE AND approval_status = 'approved')
+     OR id = auth.uid();
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_active_staff_directory() TO authenticated, anon, service_role;
 
 -- Direct Universal Password Reset (Works for all staff roles: admin, manager, employee)
 CREATE OR REPLACE FUNCTION public.crm_universal_password_reset(

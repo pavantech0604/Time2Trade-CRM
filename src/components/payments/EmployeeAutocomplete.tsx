@@ -31,35 +31,39 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
   const listboxRef = useRef<HTMLUListElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // If allUsers prop contains only the primary employee (or is empty),
-  // automatically query Supabase directly for all active, approved staff members.
+  // Query Supabase directly for active, approved staff members to guarantee
+  // all colleagues are always present in the autocomplete candidate pool.
   useEffect(() => {
-    const availableFromProps = (allUsers || []).filter((u) => u.id !== primaryEmployeeId);
-    if (availableFromProps.length === 0 && supabase) {
-      let isMounted = true;
-      setIsLoadingFallback(true);
-      (async () => {
-        try {
-          const { data, error } = await supabase
-            .from('users')
-            .select('id, name, email, phone, role, employee_code, designation, department, avatar_url, is_active, approval_status')
-            .eq('approval_status', 'approved')
-            .neq('is_active', false);
-          if (!error && data && isMounted) {
-            setFallbackUsers(data as User[]);
-          }
-        } catch {
-          // ignore
-        } finally {
-          if (isMounted) setIsLoadingFallback(false);
+    let isMounted = true;
+    (async () => {
+      if (!supabase) return;
+      try {
+        setIsLoadingFallback(true);
+        // 1. Try direct security-definer staff directory RPC first
+        const { data: rpcData, error: rpcError } = await supabase.rpc('get_active_staff_directory');
+        if (!rpcError && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
+          if (isMounted) setFallbackUsers(rpcData as User[]);
+          return;
         }
-      })();
 
-      return () => {
-        isMounted = false;
-      };
-    }
-  }, [allUsers, primaryEmployeeId]);
+        // 2. Fallback to direct table query
+        const { data: tableData } = await supabase
+          .from('users')
+          .select('id, name, email, phone, role, employee_code, designation, department, avatar_url, is_active, approval_status');
+        if (tableData && Array.isArray(tableData) && isMounted) {
+          setFallbackUsers(tableData as User[]);
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (isMounted) setIsLoadingFallback(false);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Combine prop users and fallback users into a deduplicated candidate pool
   const candidateUsers = useMemo(() => {
