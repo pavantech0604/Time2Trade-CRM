@@ -1,0 +1,81 @@
+/* TIME2TRADE brand colors, shared across the website, KYC portal and CRM. */
+:root {
+  --brand-primary-50: #f5f0ff;
+  --brand-primary-100: #ede4ff;
+  --brand-primary-200: #d9c5ff;
+  --brand-primary-400: #9460ed;
+  --brand-primary-500: #7135d1;
+  --brand-primary-600: #4c1d95;
+  --brand-primary-700: #391174;
+  --brand-primary-800: #2a0e57;
+  --brand-primary-900: #1b083a;
+  --brand-primary-rgb: 76, 29, 149;
+  --brand-cyan: #00a8ed;
+  --brand-cyan-dark: #0369a1;
+  --brand-success: #15803d;
+  --brand-danger: #dc2626;
+  --brand-ink: #201432;
+  --brand-canvas: #f8f7fc;
+  --brand-gradient: linear-gradient(120deg, #391174, #5b21b6 65%, #0369a1);
+  --brand-focus: #7c3aed;
+}
+
+.t2t-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.t2t-logo-crop {
+  position: relative;
+  display: block;
+  width: 62px;
+  aspect-ratio: 1;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 12px;
+}
+.t2t-logo-crop > img {
+  position: absolute;
+  display: block;
+  width: 154%;
+  height: 154%;
+  max-width: none;
+  max-height: none;
+  left: -27%;
+  top: -27%;
+  object-fit: contain;
+}
+a .t2t-logo-crop { transition: box-shadow .2s ease, transform .2s ease; }
+a:hover .t2t-logo-crop { box-shadow: 0 5px 18px #4c1d9518; transform: translateY(-1px); }
+.t2t-wordmark {
+  color: var(--brand-primary-800);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 900;
+  font-size: 17px;
+  letter-spacing: -.045em;
+  line-height: 1.15;
+}
+.t2t-brand--footer .t2t-logo-crop { width: 92px; }
+.t2t-brand--footer .t2t-wordmark { font-size: 21px; }
+.t2t-brand--auth .t2t-logo-crop { width: clamp(112px, 22vw, 250px); border-radius: 24px; }
+.t2t-brand--auth { justify-content: center; }
+.t2t-brand--welcome .t2t-logo-crop { width: 136px; border-radius: 22px; }
+:where(a, button, input, textarea, select):focus-visible {
+  outline: 3px solid var(--brand-focus);
+  outline-offset: 3px;
+}
+::selection { background: #d9c5ff; color: #2a0e57; }
+@media (max-width: 640px) {
+  .t2t-logo-crop { width: 54px; }
+  .t2t-wordmark { font-size: 15px; }
+}
+@media (max-height: 620px) {
+  .t2t-brand--auth .t2t-logo-crop { width: 94px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

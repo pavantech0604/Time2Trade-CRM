@@ -1,3 +1,4 @@
+import { BrandLogo } from './BrandLogo';
 import React from 'react';
 import {
   LayoutDashboard,
@@ -94,8 +95,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, class
       {/* Scrollable Navigation Area */}
       <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
         {/* Brand Header */}
-        <div className="h-16 border-b border-slate-100 px-4 flex items-center justify-center shrink-0">
-          <img src="/logo-tight.png" alt="Time2Trade Logo" className="h-10 w-auto object-contain shrink-0 drop-shadow-sm" />
+        <div className="h-20 border-b border-slate-100 px-4 flex items-center justify-center shrink-0">
+          <BrandLogo />
         </div>
 
         {/* Navigation Section */}

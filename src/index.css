@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --brand-gold: #0D9488;
+    --brand-gold: #4c1d95;
     --brand-emerald: #16A34A;
     --brand-navy: #0F172A;
   }
@@ -31,29 +31,29 @@
   body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #FAF8F5;
+    background-color: var(--brand-canvas);
     color: #0F172A;
     font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
 }
 
 /* Custom Scrollbar */
-.auth-shell { position: relative; isolation: isolate; width: 100%; height: 100%; height: 100dvh; overflow: hidden; background: #f3f7f7; color: #0f172a; }
+.auth-shell { position: relative; isolation: isolate; width: 100%; height: 100%; height: 100dvh; overflow: hidden; background: #f8f7fc; color: #0f172a; }
 .auth-scroll { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
 .auth-layout { display: grid; width: 100%; max-width: 1020px; min-width: 0; gap: 20px; margin-block: auto; }
 .auth-brand { min-width: 0; display: flex; justify-content: center; }
-.auth-logo { width: 170px; max-width: 100%; height: auto; object-fit: contain; }
+
 .auth-brand-copy { display: none; }
 .auth-form-column { width: 100%; max-width: 540px; min-width: 0; margin-inline: auto; }
 .auth-card { width: 100%; min-width: 0; padding: 22px; border: 1px solid #dce5e9; border-radius: 24px; background: rgba(255,255,255,.97); box-shadow: 0 18px 60px -36px #14344d66; }
 .auth-card > * + * { margin-top: 18px; }
 .auth-card input:not([type='checkbox']) { min-width: 0; font-size: 16px; min-height: 44px; }
-.auth-card button:focus-visible, .auth-card input:focus-visible { outline: 3px solid #14b8a6; outline-offset: 3px; }
+.auth-card button:focus-visible, .auth-card input:focus-visible { outline: 3px solid #00a8ed; outline-offset: 3px; }
 .auth-security { display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; color: #64748b; font-size: 11px; padding-top: 14px; }
 .auth-security svg { flex-shrink: 0; }
 .auth-glow { position: absolute; width: 550px; height: 550px; max-width: 100vw; border-radius: 50%; filter: blur(80px); opacity: .14; pointer-events: none; }
-.auth-glow-one { top: -220px; left: -180px; background: #14b8a6; }
-.auth-glow-two { bottom: -260px; right: -200px; background: #818cf8; }
+.auth-glow-one { top: -220px; left: -180px; background: #00a8ed; }
+.auth-glow-two { bottom: -260px; right: -200px; background: #9460ed; }
 @media (min-width: 640px) {
   .auth-scroll { padding: 24px; }
   .auth-card { padding: 26px; }
@@ -62,17 +62,17 @@
 @media (min-width: 1024px) {
   .auth-layout { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: center; gap: 60px; }
   .auth-brand { display: block; }
-  .auth-logo { width: 210px; }
+
   .auth-brand-copy { display: block; margin-top: 36px; }
-  .auth-eyebrow { color: #0f766e; font-size: 11px; font-weight: 800; letter-spacing: .16em; }
+  .auth-eyebrow { color: #4c1d95; font-size: 11px; font-weight: 800; letter-spacing: .16em; }
   .auth-brand-copy h1 { font-size: clamp(32px, 3.5vw, 46px); font-weight: 800; line-height: 1.12; letter-spacing: -.045em; white-space: pre-line; margin: 14px 0; }
   .auth-brand-copy p { max-width: 330px; color: #64748b; font-size: 14px; line-height: 1.7; }
-  .auth-brand-note { display: flex; align-items: center; gap: 8px; margin-top: 28px; font-size: 12px; color: #0f766e; }
+  .auth-brand-note { display: flex; align-items: center; gap: 8px; margin-top: 28px; font-size: 12px; color: #4c1d95; }
 }
 @media (max-height: 620px) {
   .auth-scroll { padding-block: 12px; }
   .auth-layout { gap: 12px; }
-  .auth-logo { width: 140px; }
+
   .auth-card { padding: 18px; }
 }
 
@@ -132,11 +132,11 @@
 
   0%,
   100% {
-    box-shadow: 0 0 12px rgba(13, 148, 136, 0.15);
+    box-shadow: 0 0 12px rgba(var(--brand-primary-rgb), 0.15);
   }
 
   50% {
-    box-shadow: 0 0 24px rgba(13, 148, 136, 0.3);
+    box-shadow: 0 0 24px rgba(var(--brand-primary-rgb), 0.3);
   }
 }
 
@@ -407,3 +407,25 @@ button:active:not(:disabled) {
 }
 
 
+
+/* CRM logo presentation uses the artwork's own lettering. */
+.t2t-brand--navbar .t2t-logo-crop { width: 66px; background: transparent; }
+
+/* Keep the login branding in the open layout beside the form. */
+.auth-shell--login .t2t-logo-crop {
+  width: 110px;
+  background: transparent;
+}
+
+@media (min-width: 1024px) {
+  .auth-shell--login .t2t-logo-crop { width: 170px; }
+  .auth-shell--login .auth-brand-copy { margin-top: 24px; }
+}
+
+@media (max-height: 620px) {
+  .auth-shell--login .t2t-logo-crop { width: 94px; }
+}
+
+@media (min-width: 1024px) and (max-height: 620px) {
+  .auth-shell--login .t2t-logo-crop { width: 140px; }
+}
