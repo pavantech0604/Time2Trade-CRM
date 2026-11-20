@@ -1,3 +1,4 @@
+import { balancePaymentAllocations } from '../../lib/paymentAllocation';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -320,27 +321,18 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
         ];
       }
 
-      // If only primary employee exists, keep full amount synced
-      if (prev.length === 1 && prev[0].is_primary) {
-        return [
-          {
-            ...prev[0],
-            employee_id: effectivePrimaryUser.id,
-            employee_name: effectivePrimaryUser.name,
-            allocation_amount: numAmount,
-            allocation_percentage: 100,
-          },
-        ];
-      }
-
-      return prev;
+      return balancePaymentAllocations(prev.map((allocation) => allocation.is_primary ? {
+        ...allocation,
+        employee_id: effectivePrimaryUser.id,
+        employee_name: effectivePrimaryUser.name,
+      } : allocation), numAmount);
     });
   }, [amount, effectivePrimaryUser.id]);
 
   // Derived Allocation Totals
   const totalPaymentAmount = typeof amount === 'number' ? amount : 0;
   const totalAllocatedAmount = allocations.reduce((sum, a) => sum + (Number(a.allocation_amount) || 0), 0);
-  const remainingAmount = totalPaymentAmount - totalAllocatedAmount;
+  const remainingAmount = Math.round((totalPaymentAmount - totalAllocatedAmount) * 100) / 100;
   const isAllocationValid = totalPaymentAmount > 0 && remainingAmount === 0 && allocations.every((a) => a.allocation_amount > 0);
 
   // File Upload Handler
@@ -424,13 +416,17 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
     if (alloc.allocation_amount > 0) {
       setRemoveConfirmEmp(alloc);
     } else {
-      setAllocations((prev) => prev.filter((a) => a.employee_id !== alloc.employee_id));
+      setAllocations((prev) => balancePaymentAllocations(
+        prev.filter((a) => a.employee_id !== alloc.employee_id), totalPaymentAmount,
+      ));
     }
   };
 
   const confirmRemoveEmployee = () => {
     if (!removeConfirmEmp) return;
-    setAllocations((prev) => prev.filter((a) => a.employee_id !== removeConfirmEmp.employee_id));
+    setAllocations((prev) => balancePaymentAllocations(
+      prev.filter((a) => a.employee_id !== removeConfirmEmp.employee_id), totalPaymentAmount,
+    ));
     setRemoveConfirmEmp(null);
   };
 
@@ -440,15 +436,13 @@ export const PublicPaymentForm: React.FC<PublicPaymentFormProps> = ({ onBack }) 
     const cleaned = value.replace(/[^0-9]/g, '');
     const num = cleaned === '' ? 0 : Number(cleaned);
 
-    setAllocations((prev) =>
-      prev.map((a) => {
-        if (a.employee_id === employeeId) {
-          const pct = totalPaymentAmount > 0 ? Number(((num / totalPaymentAmount) * 100).toFixed(1)) : 0;
-          return { ...a, allocation_amount: num, allocation_percentage: pct };
-        }
-        return a;
-      })
-    );
+    if (!Number.isFinite(num)) return;
+    setAllocations((prev) => balancePaymentAllocations(
+      prev.map((allocation) => allocation.employee_id === employeeId && !allocation.is_primary
+        ? { ...allocation, allocation_amount: num }
+        : allocation),
+      totalPaymentAmount,
+    ));
   };
 
   // Quick Action: Split Equally
@@ -675,7 +669,7 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
         </div>
 
         {/* Transaction Summary Card */}
-        <div className="bg-[#FAF8F5] p-5 rounded-2xl border border-slate-200 space-y-3 text-xs text-left">
+        <div className="bg-[#f8f7fc] p-5 rounded-2xl border border-slate-200 space-y-3 text-xs text-left">
           <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
             <span className="text-slate-500 font-semibold">Reference Tracking ID:</span>
             <span className="font-mono font-bold text-brand-primary text-sm">{submittedRefId}</span>
@@ -1669,6 +1663,9 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
                               type="text"
                               inputMode="numeric"
                               pattern="[0-9]*"
+                              readOnly={isPrimary}
+                              aria-label={`${alloc.employee_name} allocation amount`}
+                              aria-describedby={isPrimary ? 'primary-allocation-help' : undefined}
                               value={alloc.allocation_amount === 0 ? '' : alloc.allocation_amount}
                               onChange={(e) => handleAllocationAmountChange(alloc.employee_id, e.target.value)}
                               placeholder="0"
@@ -1692,6 +1689,10 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
                     );
                   })}
                 </div>
+
+                <p id="primary-allocation-help" className="text-[11px] text-blue-700 bg-blue-50 rounded-lg px-3 py-2" aria-live="polite">
+                  {effectivePrimaryUser.name} receives {formatINR(allocations.find((allocation) => allocation.is_primary)?.allocation_amount || 0)} automatically after shared amounts are deducted.
+                </p>
 
                 {/* Autocomplete Search & Quick Add Chips Placed Directly Beneath Staff Cards */}
                 <div className="pt-1">
@@ -1738,7 +1739,7 @@ ${screenshotUrl ? `• Proof Screenshot: ${screenshotUrl}` : ''}`;
                 className={`border-2 border-dashed rounded-2xl p-6 text-center space-y-2 cursor-pointer relative transition-all min-h-[120px] flex flex-col items-center justify-center ${
                   screenshotUrl
                     ? 'border-emerald-500/50 bg-emerald-50/30'
-                    : 'border-slate-300 hover:border-brand-primary/50 bg-[#FAF8F5]'
+                    : 'border-slate-300 hover:border-brand-primary/50 bg-[#f8f7fc]'
                 }`}
               >
                 <input

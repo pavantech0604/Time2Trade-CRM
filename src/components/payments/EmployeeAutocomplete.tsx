@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User } from '../../types';
-import { Search, AlertCircle, Loader2, AtSign, Check, X, UserPlus, Sparkles } from 'lucide-react';
+import { Search, AlertCircle, Loader2, AtSign, Check, X, UserPlus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface EmployeeAutocompleteProps {
@@ -24,7 +24,8 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [announcement, setAnnouncement] = useState('');
-  const [fallbackUsers, setFallbackUsers] = useState<User[]>([]);
+  const [fallbackUsers, setFallbackUsers] = useState<User[] | null>(null);
+  const [directoryError, setDirectoryError] = useState(false);
   const [isLoadingFallback, setIsLoadingFallback] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -32,31 +33,40 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const lastFetchTimestampRef = useRef<number>(0);
 
-  // High-reliability staff directory fetcher with security definer RPC + fallback
-  const fetchStaffList = async () => {
-    if (!supabase) return;
-    try {
-      setIsLoadingFallback(true);
-      // 1. Try direct security-definer staff directory RPC first
-      const { data: rpcData, error: rpcError } = await supabase.rpc('get_active_staff_directory');
-      if (!rpcError && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
-        setFallbackUsers(rpcData as User[]);
-        lastFetchTimestampRef.current = Date.now();
-        return;
-      }
+  const directoryRequest = useRef<AbortController | null>(null);
 
-      // 2. Fallback to direct table query
-      const { data: tableData } = await supabase
-        .from('users')
-        .select('id, name, email, phone, role, employee_code, designation, department, avatar_url, is_active, approval_status');
-      if (tableData && Array.isArray(tableData) && tableData.length > 0) {
-        setFallbackUsers(tableData as User[]);
-        lastFetchTimestampRef.current = Date.now();
-      }
+  // The users table is restricted to each employee's own profile. Shared-payment
+  // suggestions must use the staff directory RPC instead of that table.
+  const fetchStaffList = async () => {
+    if (!supabase || directoryRequest.current) return;
+    const controller = new AbortController();
+    directoryRequest.current = controller;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    setIsLoadingFallback(true);
+    setDirectoryError(false);
+    try {
+      const response = await Promise.race([
+        supabase.rpc('get_active_staff_directory').abortSignal(controller.signal),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => {
+            controller.abort();
+            reject(new Error('Employee directory request timed out'));
+          }, 10000);
+        }),
+      ]);
+      if (directoryRequest.current !== controller) return;
+      if (response.error) throw response.error;
+      if (!Array.isArray(response.data)) throw new Error('Invalid employee directory response');
+      setFallbackUsers(response.data as User[]);
+      lastFetchTimestampRef.current = Date.now();
     } catch {
-      // ignore
+      if (directoryRequest.current === controller) setDirectoryError(true);
     } finally {
-      setIsLoadingFallback(false);
+      clearTimeout(timeout);
+      if (directoryRequest.current === controller) {
+        directoryRequest.current = null;
+        setIsLoadingFallback(false);
+      }
     }
   };
 
@@ -77,13 +87,16 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
       .subscribe();
 
     return () => {
+      directoryRequest.current?.abort();
+      directoryRequest.current = null;
       supabase?.removeChannel(staffChannel);
     };
   }, []);
 
   // 2. Auto-refresh when input is focused if more than 3 seconds elapsed
   const handleInputFocus = () => {
-    if (!isLimitReached) {
+    if (!disabled && !isLimitReached) {
+      setActiveIndex(0);
       setIsOpen(true);
       const now = Date.now();
       if (now - lastFetchTimestampRef.current > 3000) {
@@ -92,35 +105,38 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
     }
   };
 
-  // Combine prop users and fallback users into a deduplicated candidate pool
+  // Use database identities so payment credits always reference real staff records.
   const candidateUsers = useMemo(() => {
     const userMap = new Map<string, User>();
-    for (const u of allUsers || []) {
-      if (u && u.id && (u.name || u.email)) userMap.set(u.id, u);
-    }
-    for (const u of fallbackUsers) {
-      if (u && u.id && (u.name || u.email) && !userMap.has(u.id)) {
-        userMap.set(u.id, u);
+
+    // A successful directory response replaces cached users, including an empty response.
+    for (const u of fallbackUsers ?? allUsers ?? []) {
+      if (u && u.id && (u.name || u.email)) {
+        userMap.set(u.id.toLowerCase(), u);
       }
     }
 
     return Array.from(userMap.values()).filter((u) => {
       const isActive = u.is_active !== false;
-      const notRejected = u.approval_status !== 'rejected';
-      return isActive && notRejected;
+      const isApproved = u.approval_status === 'approved';
+      const isStaff = ['employee', 'manager', 'admin'].includes(u.role);
+      return isActive && isApproved && isStaff;
     });
   }, [allUsers, fallbackUsers]);
 
   // Available unselected candidates (excluding primary employee and already added shared employees)
   const unselectedCandidates = useMemo(() => {
+    const primaryId = (primaryEmployeeId || '').toLowerCase().trim();
+    const selectedIds = new Set(selectedEmployeeIds.map((id) => (id || '').toLowerCase().trim()));
+
     return candidateUsers.filter(
-      (u) => u.id !== primaryEmployeeId && !selectedEmployeeIds.includes(u.id)
+      (u) => u.id.toLowerCase().trim() !== primaryId && !selectedIds.has(u.id.toLowerCase().trim())
     );
   }, [candidateUsers, primaryEmployeeId, selectedEmployeeIds]);
 
   // Clean query string: removes leading '@' and excess whitespace
   const cleanQuery = useMemo(() => {
-    return inputValue.replace(/^@+/, '').trim().toLowerCase();
+    return inputValue.trim().replace(/^@+/, '').trim().toLowerCase();
   }, [inputValue]);
 
   // Compute suggestions synchronously (0ms delay for maximum responsiveness)
@@ -137,20 +153,20 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
     const scored = unselectedCandidates
       .map((u) => {
         const rawName = (u.name || '').toLowerCase();
-        const cleanName = rawName.replace(/[^a-z0-9\s]/g, '');
+        const cleanName = rawName.replace(/[^a-z0-9]/g, '');
         const code = (u.employee_code || `EMP-${u.id.slice(0, 4)}`).toLowerCase();
         const email = (u.email || '').toLowerCase();
         const phone = (u.phone || '').toLowerCase();
         const designation = (u.designation || u.department || '').toLowerCase();
 
         let score = -1;
-        if (rawName === q || cleanName === qClean) {
+        if (rawName === q || (qClean && cleanName === qClean)) {
           score = 150; // exact match
-        } else if (rawName.startsWith(q) || cleanName.startsWith(qClean)) {
+        } else if (rawName.startsWith(q) || (qClean && cleanName.startsWith(qClean))) {
           score = 100; // name prefix match
-        } else if (cleanName.split(/\s+/).some((part) => part.startsWith(qClean))) {
+        } else if (qClean && rawName.split(/[^a-z0-9]+/).some((part) => part.startsWith(qClean))) {
           score = 85; // word prefix (handles "A. Praveen" when searching "pra", "Bhavani N" when searching "bhava")
-        } else if (rawName.includes(q) || cleanName.includes(qClean)) {
+        } else if (rawName.includes(q) || (qClean && cleanName.includes(qClean))) {
           score = 65; // name contains
         } else if (code.startsWith(q) || code.includes(q)) {
           score = 50; // employee code match
@@ -199,7 +215,7 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
   const isLimitReached = selectedEmployeeIds.length >= maxSharedEmployees;
 
   const handleSelect = (user: User) => {
-    if (isLimitReached) return;
+    if (disabled || isLimitReached) return;
     if (user.id === primaryEmployeeId) return;
     if (selectedEmployeeIds.includes(user.id)) return;
 
@@ -210,7 +226,7 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (isLimitReached) return;
+    if (disabled || isLimitReached) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -226,19 +242,21 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
         setActiveIndex((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
       }
     } else if (e.key === 'Enter') {
-      if (isOpen && activeIndex >= 0 && activeIndex < suggestions.length) {
-        e.preventDefault();
-        handleSelect(suggestions[activeIndex]);
-      } else if (isOpen && suggestions.length === 1) {
-        // If there is exactly 1 match and user presses Enter, select it
-        e.preventDefault();
-        handleSelect(suggestions[0]);
+      e.preventDefault();
+      if (isOpen && suggestions.length > 0) {
+        handleSelect(suggestions[activeIndex >= 0 && activeIndex < suggestions.length ? activeIndex : 0]);
       }
     } else if (e.key === 'Escape') {
       setIsOpen(false);
       setActiveIndex(-1);
     }
   };
+
+  useEffect(() => {
+    if (isOpen && activeIndex >= 0) {
+      listboxRef.current?.children[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [activeIndex, isOpen]);
 
   const getInitials = (name?: string) => {
     if (!name) return 'EM';
@@ -309,8 +327,9 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
             aria-haspopup="listbox"
             aria-controls="employee-suggestions-listbox"
             aria-autocomplete="list"
+            autoComplete="off"
             aria-activedescendant={
-              activeIndex >= 0 && suggestions[activeIndex]
+              isOpen && activeIndex >= 0 && suggestions[activeIndex]
                 ? `employee-opt-${suggestions[activeIndex].id}`
                 : undefined
             }
@@ -318,6 +337,7 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
             value={inputValue}
             onChange={(e) => {
               setInputValue(e.target.value);
+              setActiveIndex(0);
               setIsOpen(true);
             }}
             onFocus={handleInputFocus}
@@ -367,10 +387,6 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
                 key={u.id}
                 type="button"
                 disabled={disabled}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  handleSelect(u);
-                }}
                 onClick={(e) => {
                   e.preventDefault();
                   handleSelect(u);
@@ -387,12 +403,20 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
         )}
       </div>
 
+      {directoryError && (
+        <div role="status" className="mt-2 flex items-center justify-between gap-2 text-xs text-amber-700">
+          <span>Couldn’t load the shared employee directory. Retry or ask an administrator to check directory access.</span>
+          <button type="button" disabled={disabled || isLoadingFallback} onClick={fetchStaffList}
+            className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
+        </div>
+      )}
+
       {/* Dropdown Suggestions Listbox */}
       {isOpen && !isLimitReached && (
         <div
           onMouseDown={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
-          className="absolute z-50 mt-1.5 w-full bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150"
+          className="relative z-50 mt-1.5 w-full bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150"
         >
           <div className="px-3 py-2 bg-slate-50/90 border-b border-slate-100 flex items-center justify-between text-[11px] font-semibold text-slate-500">
             <span>
@@ -412,10 +436,10 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
               <li className="p-4 text-center text-xs text-slate-500 space-y-1">
                 <AlertCircle className="w-5 h-5 mx-auto text-amber-500" />
                 <p className="font-semibold text-slate-700">
-                  {cleanQuery ? `No active employee found for "@${cleanQuery}".` : 'No other active staff available.'}
+                  {isLoadingFallback ? 'Loading available employees…' : cleanQuery ? `No active employee found for "@${cleanQuery}".` : 'No other active staff available.'}
                 </p>
                 <p className="text-[11px] text-slate-400">
-                  Check the spelling or try searching by employee code or email.
+                  {isLoadingFallback ? 'Please wait while we fetch the staff list.' : directoryError ? 'Use Retry above to reload the staff list.' : 'Check the spelling or try searching by employee code or email.'}
                 </p>
               </li>
             ) : (
@@ -436,18 +460,7 @@ export const EmployeeAutocomplete: React.FC<EmployeeAutocompleteProps> = ({
                     role="option"
                     aria-selected={isCurrentActive}
                     aria-disabled={isSelected || isPrimary}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      if (!isSelected && !isPrimary) {
-                        handleSelect(user);
-                      }
-                    }}
-                    onTouchEnd={(e) => {
-                      e.preventDefault();
-                      if (!isSelected && !isPrimary) {
-                        handleSelect(user);
-                      }
-                    }}
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={(e) => {
                       e.preventDefault();
                       if (!isSelected && !isPrimary) {

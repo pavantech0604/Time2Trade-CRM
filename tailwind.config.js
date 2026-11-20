@@ -5,6 +5,8 @@ export default {
   theme: {
     extend: {
       colors: {
+        blue: { 50: '#f5f0ff', 100: '#ede4ff', 200: '#d9c5ff', 300: '#c0a0f2', 400: '#9460ed', 500: '#7135d1', 600: '#5b21b6', 700: '#4c1d95', 800: '#391174', 900: '#2a0e57', 950: '#1b083a' },
+        indigo: { 50: '#f5f0ff', 100: '#ede4ff', 200: '#d9c5ff', 300: '#c0a0f2', 400: '#9460ed', 500: '#7135d1', 600: '#5b21b6', 700: '#4c1d95', 800: '#391174', 900: '#2a0e57', 950: '#1b083a' },
         navy: {
           50: '#f0f4f8',
           100: '#d9e2ec',
@@ -19,11 +21,11 @@ export default {
           950: '#0b1b2b',
         },
         brand: {
-          primary: '#312e81', // Deep Purple from logo
-          primaryLight: '#4338ca',
-          accent: '#0ea5e9', // Sky Blue from logo
-          accentLight: '#38bdf8',
-          emerald: '#16a34a', // Green from logo chart
+          primary: '#4c1d95', // Deep Purple from logo
+          primaryLight: '#6d28d9',
+          accent: '#00a8ed', // Sky Blue from logo
+          accentLight: '#67d5ff',
+          emerald: '#15803d', // Green from logo chart
           slate: '#1E293B',
           blue: '#1e40af',
           sky: '#0284c7',
